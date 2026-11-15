@@ -344,12 +344,7 @@ def build_in65_docx_bytes(
     # NOTA DE RODAPÉ
     p_ft = doc.add_paragraph()
     p_ft.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p_ft.paragraph_format.space_before = Pt(24)
-    r_ft = p_ft.add_run(
-        "Documento emitido eletronicamente via Sistema GovTech NLLC • Amparado na Lei nº 14.133/2021 e IN SEGES/ME nº 65/2021"
-    )
-    r_ft.font.size = Pt(7.5)
-    r_ft.font.color.rgb = RGBColor(148, 163, 184)
+    pass  # Rodapé de sistema removido a pedido
 
     buf = io.BytesIO()
     doc.save(buf)
@@ -679,12 +674,7 @@ def build_in65_pdf_bytes(
     ]))
     story.append(KeepTogether(t_sig))
     story.append(Spacer(1, 4 * mm))
-    story.append(
-        Paragraph(
-            "Documento emitido eletronicamente via GovTech NLLC • Trilha de Auditoria Auditável no PNCP / Compras.gov.br",
-            st_footer,
-        )
-    )
+    pass  # Rodapé de sistema removido a pedido
 
     doc.build(story)
     return buf.getvalue()

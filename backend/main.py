@@ -1,3 +1,6 @@
+import docx
+from docx.shared import Inches, Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_COLOR_INDEX
 # -*- coding: utf-8 -*-
 """
 SERVIDOR UNIFICADO DO APLICATIVO GOVTECH NLLC (PORTA 8080)
@@ -170,64 +173,82 @@ def build_in65_excel_bytes(report: dict, quantity: int, uasg_name: str = "MARINH
     return buf.getvalue()
 
 
-def build_highlighted_docx_bytes(title: str, clauses: list) -> bytes:
-    """Gera em memória um arquivo Word (.DOCX) com todas as cláusulas editadas marcadas em AMARELO."""
-    p_list = []
+def build_highlighted_docx_bytes(title: str, clauses: list, org_name: str = "MARINHA DO BRASIL - CAPITANIA FLUVIAL DE JUAZEIRO") -> bytes:
+    """Gera em memória um arquivo Word (.DOCX) oficial com Brasão da República e cláusulas editadas em AMARELO."""
+    doc = docx.Document()
+    for section in doc.sections:
+        section.top_margin = Inches(0.8)
+        section.bottom_margin = Inches(0.8)
+        section.left_margin = Inches(0.8)
+        section.right_margin = Inches(0.8)
 
-    def add_p_xml(text_str, bold=False, highlight=False, size=22, color=None):
-        rpr = ['<w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/>', f'<w:sz w:val="{size}"/>']
-        if bold:
-            rpr.append("<w:b/>")
-        if highlight:
-            rpr.append('<w:highlight w:val="yellow"/>')
-        if color:
-            rpr.append(f'<w:color w:val="{color}"/>')
-        rpr.append("</w:rPr>")
-        return (
-            '<w:p><w:pPr><w:spacing w:after="120" w:line="260" w:lineRule="auto"/></w:pPr>'
-            f'<w:r>{"".join(rpr)}<w:t xml:space="preserve">{html.escape(text_str, quote=True)}</w:t></w:r></w:p>'
-        )
+    brasao_p = os.path.join(BASE_DIR, "brasao_oficial.png")
+    if os.path.exists(brasao_p):
+        p_img = doc.add_paragraph()
+        p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_img.paragraph_format.space_before = Pt(0)
+        p_img.paragraph_format.space_after = Pt(4)
+        run_img = p_img.add_run()
+        run_img.add_picture(brasao_p, width=Inches(1.1))
 
-    p_list.append(add_p_xml("MARINHA DO BRASIL - CAPITANIA FLUVIAL DE JUAZEIRO", bold=True, size=28, color="003366"))
-    p_list.append(add_p_xml(title, bold=True, size=24, color="222222"))
-    p_list.append(add_p_xml(
-        "NOTA DE AUDITORIA: Todas as cláusulas corrigidas/inseridas pelo Motor RAG (Padrão AGU / Lei 14.133/2021) estão destacadas em AMARELO abaixo.",
-        bold=True, highlight=True, size=20
-    ))
+    p_head = doc.add_paragraph()
+    p_head.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_head.paragraph_format.line_spacing = 1.05
+    p_head.paragraph_format.space_after = Pt(12)
+
+    r0 = p_head.add_run(f"REPÚBLICA FEDERATIVA DO BRASIL\nMINISTÉRIO DA DEFESA\nCOMANDO DA MARINHA\n{org_name}\n")
+    r0.font.name = "Calibri"
+    r0.font.size = Pt(10.5)
+    r0.font.bold = True
+
+    p_tit = doc.add_paragraph()
+    p_tit.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_tit.paragraph_format.space_after = Pt(10)
+    r_tit = p_tit.add_run(title + "\n")
+    r_tit.font.name = "Calibri"
+    r_tit.font.size = Pt(12)
+    r_tit.font.bold = True
+
+    p_note = doc.add_paragraph()
+    p_note.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    p_note.paragraph_format.space_after = Pt(14)
+    r_note = p_note.add_run("NOTA DE AUDITORIA: Todas as cláusulas corrigidas/inseridas pelo Motor RAG (Padrão AGU / Lei nº 14.133/2021) estão destacadas em AMARELO abaixo.")
+    r_note.font.name = "Calibri"
+    r_note.font.size = Pt(9.5)
+    r_note.font.bold = True
+    r_note.font.highlight_color = WD_COLOR_INDEX.YELLOW
 
     for c in clauses:
         num = c.get("num") or c.get("clause_number") or ""
         sec = c.get("title") or c.get("section_title") or ""
         txt = c.get("text") or c.get("content") or ""
         mod = bool(c.get("modified") or c.get("is_modified_by_agu"))
-        p_list.append(add_p_xml(f"[{num} - {sec}]", bold=True, highlight=mod, size=20, color="555555"))
-        p_list.append(add_p_xml(txt, bold=mod, highlight=mod, size=22))
 
-    content_types = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
-        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
-        '<Default Extension="xml" ContentType="application/xml"/>'
-        '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
-        '</Types>'
-    )
-    rels = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
-        '</Relationships>'
-    )
-    doc_xml = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
-        f'<w:body>{"".join(p_list)}</w:body></w:document>'
-    )
+        # Onde tem o nome rascunho, ignora a menção isolada
+        if "rascunho" in txt.lower() and len(txt.strip()) < 15:
+            continue
+
+        p = doc.add_paragraph()
+        p.paragraph_format.space_after = Pt(6)
+        p.paragraph_format.line_spacing = 1.15
+
+        if num or sec:
+            r_sec = p.add_run(f"[{num} - {sec}]\n")
+            r_sec.font.name = "Calibri"
+            r_sec.font.size = Pt(10)
+            r_sec.font.bold = True
+            if mod:
+                r_sec.font.highlight_color = WD_COLOR_INDEX.YELLOW
+
+        r_txt = p.add_run(txt)
+        r_txt.font.name = "Calibri"
+        r_txt.font.size = Pt(10.5)
+        if mod:
+            r_txt.font.bold = True
+            r_txt.font.highlight_color = WD_COLOR_INDEX.YELLOW
 
     buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("[Content_Types].xml", content_types)
-        z.writestr("_rels/.rels", rels)
-        z.writestr("word/document.xml", doc_xml)
+    doc.save(buf)
     return buf.getvalue()
 
 
