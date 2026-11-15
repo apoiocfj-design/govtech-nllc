@@ -201,7 +201,7 @@
       <div class="text-3xl">🔎</div>
       <h3 class="text-sm font-extrabold text-slate-800">Pronto para pesquisar — digite no buscador acima</h3>
       <p class="text-xs text-slate-500 max-w-xl mx-auto">
-        Pesquise por qualquer palavra-chave nas bases oficiais <code>catmat.csv</code> e <code>catser.csv</code>, selecione o item desejado e o sistema calcula o preço da IN 65/2021, permitindo baixar o <strong>Excel Oficial</strong>, emitir o <strong>Relatório Formal da Marinha (PDF)</strong> ou gerar a <strong>Minuta de DFD / TR</strong> para edição online imediata.
+        Pesquise por qualquer palavra-chave nas bases oficiais <code>catmat.csv</code> e <code>catser.csv</code>, selecione o item desejado e o sistema calcula o preço da IN 65/2021, permitindo baixar o <strong>Excel Oficial</strong> ou emitir o <strong>Relatório Formal da Marinha (PDF)</strong> com trilha de auditoria.
       </p>
     </div>
 
@@ -220,19 +220,13 @@
           </div>
         </div>
 
-        <!-- BARRA DE AÇÕES DIRETAS (EXCEL, PDF OFICIAL DA MARINHA, GERAR DFD E TR ONLINE) -->
+        <!-- BARRA DE AÇÕES DIRETAS (EXCEL E PDF OFICIAL DA MARINHA) -->
         <div class="pt-3 border-t border-slate-800 flex flex-wrap items-center gap-2.5">
           <button onclick="downloadLiveExcel()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-4 py-2.5 rounded-xl text-xs shadow transition flex items-center gap-1.5">
             <span>📊</span> Baixar Mapa Comparativo (.XLSX)
           </button>
           <button onclick="openFormalReportModal()" class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black px-4 py-2.5 rounded-xl text-xs shadow transition flex items-center gap-1.5">
             <span>🖨️</span> Emitir Relatório Oficial (PDF A4 / Fatura Marinha)
-          </button>
-          <button onclick="generateArtifactDraft('DFD')" class="bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 font-extrabold px-3.5 py-2.5 rounded-xl text-xs transition flex items-center gap-1.5">
-            <span>📝</span> Gerar DFD com este Preço (Editar Online)
-          </button>
-          <button onclick="generateArtifactDraft('TR')" class="bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700 font-extrabold px-3.5 py-2.5 rounded-xl text-xs transition flex items-center gap-1.5">
-            <span>📋</span> Gerar TR com este Preço (Editar Online)
           </button>
         </div>
       </div>
