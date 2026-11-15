@@ -220,13 +220,19 @@
           </div>
         </div>
 
-        <!-- BARRA DE AÇÕES DIRETAS (EXCEL E PDF OFICIAL DA MARINHA) -->
+        <!-- BARRA DE AÇÕES DIRETAS (EXCEL, WORD, PDF E RELATÓRIO OFICIAL) -->
         <div class="pt-3 border-t border-slate-800 flex flex-wrap items-center gap-2.5">
           <button onclick="downloadLiveExcel()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-4 py-2.5 rounded-xl text-xs shadow transition flex items-center gap-1.5">
             <span>📊</span> Baixar Mapa Comparativo (.XLSX)
           </button>
+          <button onclick="downloadLiveWord()" class="bg-blue-600 hover:bg-blue-500 text-white font-black px-4 py-2.5 rounded-xl text-xs shadow transition flex items-center gap-1.5">
+            <span>📄</span> Baixar Relatório em Word (.DOCX)
+          </button>
+          <button onclick="downloadLivePdf()" class="bg-rose-600 hover:bg-rose-500 text-white font-black px-4 py-2.5 rounded-xl text-xs shadow transition flex items-center gap-1.5">
+            <span>📥</span> Baixar Relatório em PDF (.PDF)
+          </button>
           <button onclick="openFormalReportModal()" class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black px-4 py-2.5 rounded-xl text-xs shadow transition flex items-center gap-1.5">
-            <span>🖨️</span> Emitir Relatório Oficial (PDF A4 / Fatura Marinha)
+            <span>👁️</span> Visualizar Relatório Oficial
           </button>
         </div>
       </div>
@@ -411,15 +417,21 @@
       <!-- BARRA DE FERRAMENTAS DO RELATÓRIO -->
       <div class="bg-slate-900 text-white px-6 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800">
         <div class="flex items-center gap-2">
-          <span class="text-lg">🖨️</span>
+          <span class="text-lg">📋</span>
           <div>
-            <h3 class="font-extrabold text-sm text-white">Visualização de Impressão Oficial (A4 Formal / Padrão Marinha do Brasil)</h3>
-            <p class="text-[11px] text-slate-400">Calibrado com os modelos da Corveta Caboclo e Anexo III da IN 65/2021.</p>
+            <h3 class="font-extrabold text-sm text-white">Relatório Oficial de Pesquisa de Preços (A4 / Marinha do Brasil)</h3>
+            <p class="text-[11px] text-slate-400">Em conformidade com a Lei nº 14.133/2021 e a Instrução Normativa SEGES/ME nº 65/2021.</p>
           </div>
         </div>
         <div class="flex items-center gap-2">
-          <button onclick="printFormalReport()" class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black px-4 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5">
-            <span>🖨️</span> Imprimir / Salvar em PDF (A4)
+          <button onclick="downloadLiveWord()" class="bg-blue-600 hover:bg-blue-500 text-white font-black px-3.5 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5">
+            <span>📄</span> Baixar em Word (.DOCX)
+          </button>
+          <button onclick="downloadLivePdf()" class="bg-rose-600 hover:bg-rose-500 text-white font-black px-3.5 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5">
+            <span>📥</span> Baixar em PDF (.PDF)
+          </button>
+          <button onclick="printFormalReport()" class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black px-3.5 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5">
+            <span>🖨️</span> Imprimir Direto (A4)
           </button>
           <button onclick="closeFormalReportModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-3 py-2 rounded-xl text-xs transition">
             ✕ Fechar
@@ -873,13 +885,40 @@
       `).join("");
     }
 
-    function downloadLiveExcel() {
+    function getReportParams() {
       const code = document.getElementById("inputCatmat").value.trim();
-      if (!code) return;
       const itemType = document.getElementById("inputItemType").value || "MATERIAL";
-      const unit = document.getElementById("inputUnit").value.trim().toUpperCase();
+      const unit = document.getElementById("inputUnit").value.trim().toUpperCase() || "UN";
       const qty = document.getElementById("inputQty").value.trim() || "1";
-      window.location.href = `/api/v1/prices/export-xlsx/${code}?item_type=${encodeURIComponent(itemType)}&supply_unit=${encodeURIComponent(unit)}&qty=${encodeURIComponent(qty)}`;
+      const elabInput = document.getElementById("sig1Nome");
+      const ordenInput = document.getElementById("sig2Nome");
+      const elab = elabInput ? elabInput.value.trim() : "ENCARREGADO DO SETOR DE OBTENÇÃO";
+      const orden = ordenInput ? ordenInput.value.trim() : "ORDENADOR DE DESPESAS";
+      return { code, itemType, unit, qty, elab, orden };
+    }
+
+    function downloadLiveExcel() {
+      const p = getReportParams();
+      if (!p.code) return;
+      window.location.href = `/api/v1/prices/export-xlsx/${p.code}?item_type=${encodeURIComponent(p.itemType)}&supply_unit=${encodeURIComponent(p.unit)}&qty=${encodeURIComponent(p.qty)}`;
+    }
+
+    function downloadLiveWord() {
+      const p = getReportParams();
+      if (!p.code) {
+        alert("Realize uma pesquisa de preços antes de baixar o relatório em Word.");
+        return;
+      }
+      window.location.href = `/api/v1/prices/export-docx/${p.code}?item_type=${encodeURIComponent(p.itemType)}&supply_unit=${encodeURIComponent(p.unit)}&qty=${encodeURIComponent(p.qty)}&elaborador=${encodeURIComponent(p.elab)}&ordenador=${encodeURIComponent(p.orden)}`;
+    }
+
+    function downloadLivePdf() {
+      const p = getReportParams();
+      if (!p.code) {
+        alert("Realize uma pesquisa de preços antes de baixar o relatório em PDF.");
+        return;
+      }
+      window.location.href = `/api/v1/prices/export-pdf/${p.code}?item_type=${encodeURIComponent(p.itemType)}&supply_unit=${encodeURIComponent(p.unit)}&qty=${encodeURIComponent(p.qty)}&elaborador=${encodeURIComponent(p.elab)}&ordenador=${encodeURIComponent(p.orden)}`;
     }
 
     // =========================================================================
