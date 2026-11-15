@@ -1114,7 +1114,8 @@
     }
 
     function renderCatalogSearchResultsList() {
-      const list = document.getElementById("catalogSearchList");
+      const list = document.getElementById("catalogResultsList");
+      if (!list) return;
       const results = window.lastCatalogSearchResults || [];
       const demandMap = window.catalogDemandMap || {};
 
@@ -1170,7 +1171,7 @@
                 class="${btnBatchCls} font-extrabold px-3 py-1.5 rounded-xl text-xs transition shadow-sm flex items-center gap-1"
                 title="${dem && !dem.has_demand ? 'Atenção: Este código não teve compras nos últimos 12 meses' : 'Adicionar ao lote de pesquisa'}"
               >
-                <span>${dem && !dem.has_demand ? '⚠️' : '➕'}</span> Incluir no Lote
+                <span>➕</span> Incluir no Lote
               </button>
               <button
                 onclick="selectCatalogItem('${item.item_type}', ${item.codigo}, 1, '${recUnit}')"
@@ -1185,7 +1186,7 @@
 
       list.innerHTML = htmlRows.length > 0
         ? htmlRows.join("")
-        : `<div class="p-4 text-xs text-rose-700 font-bold bg-rose-50">Nenhum dos itens retornados teve compras homologadas nos últimos 12 meses. Tente outro termo de busca.</div>`;
+        : `<div class="p-4 text-xs text-slate-500 font-bold bg-slate-50">Nenhum item com demanda nos últimos 12 meses para o filtro atual. Desmarque "Ocultar Itens Sem Compras" para ver todos.</div>`;
     }
 
     async function verifyCatalogDemandInBackground(items) {
@@ -1270,8 +1271,7 @@
       const key = `${(itemType || 'MATERIAL').toUpperCase()}:${codigo}`;
       const dem = (window.catalogDemandMap || {})[key];
       if (dem && !dem.has_demand) {
-        showAppNotification(`Cód. ${codigo}: Sem compras nos últimos 12 meses — a pesquisa não converge. Prefira itens com selo verde "✅ compras (12m)".`, "error");
-        return;
+        showAppNotification(`Cód. ${codigo}: Atenção - Sem compras homologadas nos últimos 12 meses. A pesquisa de preços no Compras.gov.br pode não retornar cotações.`, "warn");
       }
       document.getElementById("inputItemType").value = itemType;
       document.getElementById("inputCatmat").value = codigo;
