@@ -1086,7 +1086,8 @@
           return;
         }
 
-        list.innerHTML = data.results.map(item => {
+        window.lastCatalogSearchResults = data.results || [];
+        list.innerHTML = data.results.map((item, idx) => {
           const isServ = item.item_type === "SERVICO";
           const badgeCls = isServ ? "bg-purple-100 text-purple-900 border-purple-300" : "bg-sky-100 text-sky-900 border-sky-300";
           const labelType = isServ ? "CATSER (SERVIÇO)" : "CATMAT (MATERIAL)";
@@ -1102,7 +1103,7 @@
               </div>
               <div class="flex items-center gap-1.5 shrink-0">
                 <button
-                  onclick="addItemToBatchTray('${item.item_type}', ${item.codigo}, `${item.descricao}`, '${item.unidade || 'UN'}')"
+                  onclick="addCatalogResultToBatch(${idx})"
                   class="bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold px-3 py-1.5 rounded-xl text-xs transition shadow-sm flex items-center gap-1"
                 >
                   <span>➕</span> Incluir no Lote
@@ -1167,12 +1168,20 @@
                     <span>
                       <strong>[${m.item_type} ${m.codigo}]</strong> ${m.descricao.slice(0, 110)}
                     </span>
-                    <button
-                      onclick="selectCatalogItem('${m.item_type}', ${m.codigo}, ${row.suggested_quantity}, '')"
-                      class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-2.5 py-1 rounded text-[11px] shrink-0 ml-2"
-                    >
-                      Pesquisar Preço ↗
-                    </button>
+                    <div class="flex items-center gap-1.5 shrink-0 ml-2">
+                      <button
+                        onclick="selectCatalogItem('${m.item_type}', ${m.codigo}, ${row.suggested_quantity || 1}, '${row.suggested_unit || ''}')"
+                        class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-2.5 py-1 rounded text-[11px]"
+                      >
+                        Pesquisar Preço ↗
+                      </button>
+                      <button
+                        onclick="addItemToBatchTray('${m.item_type}', ${m.codigo}, decodeURIComponent('${encodeURIComponent(m.descricao || '')}'), '${row.suggested_unit || m.unidade || 'UN'}', ${row.suggested_quantity || 1})"
+                        class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-2.5 py-1 rounded text-[11px]"
+                      >
+                        ➕ Incluir no Lote
+                      </button>
+                    </div>
                   </div>
                 `).join("") || '<span class="text-xs text-slate-400">Nenhuma correspondência direta.</span>'}
               </div>
@@ -1260,8 +1269,9 @@
       document.getElementById("resJustification").textContent = rep.legal_methodology_justification;
 
       const allQuotes = [...rep.valid_quotes, ...rep.purged_quotes];
+      window.currentAllQuotes = allQuotes;
       const tbody = document.getElementById("quotesTableBody");
-      tbody.innerHTML = allQuotes.map(q => `
+      tbody.innerHTML = allQuotes.map((q, idx) => `
         <tr class="${q.is_outlier ? 'bg-rose-50/60' : 'hover:bg-slate-50'}">
           <td class="py-3 px-4">
             <strong class="block text-slate-900">UASG ${q.buyer_uasg} (${q.buyer_uf})</strong>
@@ -1283,7 +1293,7 @@
             <p class="text-[11px] text-slate-600 mt-0.5">${q.purge_justification || ''}</p>
           </td>
           <td class="py-3 px-4 text-center space-y-1">
-            <button onclick='openQuoteDossier(${JSON.stringify(q)})' class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-2.5 py-1.5 rounded-lg text-[10px] shadow transition flex items-center justify-center gap-1 w-full whitespace-nowrap">
+            <button onclick="openQuoteDossierByIndex(${idx})" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-2.5 py-1.5 rounded-lg text-[10px] shadow transition flex items-center justify-center gap-1 w-full whitespace-nowrap">
               <span>📂</span> Ver Documentos & Termos
             </button>
             <a href="${q.pncp_or_compras_uri}" target="_blank" class="text-[10px] text-slate-500 hover:text-blue-700 font-bold underline block">
@@ -1292,6 +1302,12 @@
           </td>
         </tr>
       `).join("");
+    }
+
+    function openQuoteDossierByIndex(idx) {
+      if (window.currentAllQuotes && window.currentAllQuotes[idx]) {
+        openQuoteDossier(window.currentAllQuotes[idx]);
+      }
     }
 
     
@@ -1770,6 +1786,386 @@
         document.getElementById("btnCnpjRfb").href = `https://servicos.receita.fazenda.gov.br/Servicos/certidao/CNDConjuntaInter/InformaNICertidao.asp?tipo=2&NI=${v}`;
       } else {
         document.getElementById("btnCnpjRfb").href = `https://servicos.receita.fazenda.gov.br/Servicos/certidao/CNDConjuntaInter/InformaNICertidao.asp?tipo=2`;
+      }
+    }
+
+    // =========================================================================
+    // SISTEMA DE LOTE (CARRINHO DE MÚLTIPLOS CATMAT/CATSER E PESQUISA INDIVIDUALIZADA)
+    // =========================================================================
+    let batchTrayItems = [];
+    let batchResearchResults = [];
+
+    function addCatalogResultToBatch(idx) {
+      const results = window.lastCatalogSearchResults || [];
+      const item = results[idx];
+      if (!item) return;
+      addItemToBatchTray(item.item_type || "MATERIAL", item.codigo, item.descricao || "", item.unidade || "UN", 1);
+    }
+
+    function addItemToBatchTray(itemType, codigo, descricao, unidade, qty = 1) {
+      const codeNum = parseInt(codigo, 10);
+      if (!codeNum) return;
+      const existing = batchTrayItems.find(it => it.code === codeNum && it.type === itemType);
+      if (existing) {
+        existing.qty = (parseFloat(existing.qty) || 1) + (parseFloat(qty) || 1);
+      } else {
+        batchTrayItems.push({
+          code: codeNum,
+          type: itemType || "MATERIAL",
+          description: descricao || `${itemType === 'SERVICO' ? 'CATSER' : 'CATMAT'} ${codeNum}`,
+          unit: (unidade || "UN").toUpperCase(),
+          qty: parseFloat(qty) || 1
+        });
+      }
+      renderBatchTray();
+    }
+
+    async function addCurrentInputToBatch() {
+      const code = document.getElementById("inputCatmat").value.trim();
+      const itemType = document.getElementById("inputItemType").value || "MATERIAL";
+      const unit = document.getElementById("inputUnit").value.trim().toUpperCase() || "UN";
+      const qty = parseFloat(document.getElementById("inputQty").value) || 1;
+      if (!code) {
+        alert("Informe um código CATMAT/CATSER ou selecione um item na busca acima para incluir no lote.");
+        return;
+      }
+      let desc = `${itemType === "SERVICO" ? "CATSER" : "CATMAT"} ${code}`;
+      try {
+        const resp = await fetch(`/api/v1/catalog/search?q=${encodeURIComponent(code)}&type=${encodeURIComponent(itemType)}&limit=5`);
+        if (resp.ok) {
+          const data = await resp.json();
+          const exact = (data.results || []).find(r => String(r.codigo) === String(code));
+          if (exact && exact.descricao) desc = exact.descricao;
+        }
+      } catch (e) {
+        console.warn("Falha ao buscar descrição do código:", e);
+      }
+      addItemToBatchTray(itemType, code, desc, unit, qty);
+    }
+
+    function updateBatchItemQty(idx, val) {
+      if (!batchTrayItems[idx]) return;
+      const n = parseFloat(val);
+      batchTrayItems[idx].qty = n > 0 ? n : 1;
+    }
+
+    function updateBatchItemUnit(idx, val) {
+      if (!batchTrayItems[idx]) return;
+      batchTrayItems[idx].unit = (val || "UN").trim().toUpperCase();
+    }
+
+    function removeBatchItem(idx) {
+      batchTrayItems.splice(idx, 1);
+      renderBatchTray();
+    }
+
+    function clearBatchTray() {
+      if (batchTrayItems.length === 0) return;
+      batchTrayItems = [];
+      renderBatchTray();
+    }
+
+    function renderBatchTray() {
+      const countBadge = document.getElementById("batchCountBadge");
+      const emptyMsg = document.getElementById("batchEmptyMessage");
+      const tableCont = document.getElementById("batchTableContainer");
+      const tbody = document.getElementById("batchTrayBody");
+
+      if (countBadge) countBadge.textContent = batchTrayItems.length;
+      if (batchTrayItems.length === 0) {
+        if (emptyMsg) emptyMsg.classList.remove("hidden");
+        if (tableCont) tableCont.classList.add("hidden");
+        if (tbody) tbody.innerHTML = "";
+        return;
+      }
+      if (emptyMsg) emptyMsg.classList.add("hidden");
+      if (tableCont) tableCont.classList.remove("hidden");
+
+      tbody.innerHTML = batchTrayItems.map((it, idx) => `
+        <tr class="hover:bg-slate-800/60 transition">
+          <td class="py-2 px-3 font-mono text-slate-400">${idx + 1}</td>
+          <td class="py-2 px-3">
+            <span class="px-2 py-0.5 rounded text-[10px] font-black ${it.type === 'SERVICO' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'}">
+              ${it.type === 'SERVICO' ? 'CATSER' : 'CATMAT'}
+            </span>
+          </td>
+          <td class="py-2 px-3 font-mono font-bold text-amber-400">${it.code}</td>
+          <td class="py-2 px-3 text-slate-200 max-w-md truncate" title="${(it.description || '').replace(/"/g, '&quot;')}">${it.description}</td>
+          <td class="py-2 px-3 text-center">
+            <input type="text" value="${it.unit || 'UN'}" onchange="updateBatchItemUnit(${idx}, this.value)"
+              class="w-16 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-center font-mono text-xs text-white" />
+          </td>
+          <td class="py-2 px-3 text-center">
+            <input type="number" min="1" value="${it.qty || 1}" onchange="updateBatchItemQty(${idx}, this.value)"
+              class="w-16 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-center font-mono text-xs text-white" />
+          </td>
+          <td class="py-2 px-3 text-right">
+            <button onclick="removeBatchItem(${idx})" class="bg-rose-600/80 hover:bg-rose-500 text-white font-bold px-2 py-1 rounded text-[10px]">
+              🗑️ Excluir
+            </button>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    function togglePasteBatchModal() {
+      const modal = document.getElementById("pasteBatchModal");
+      if (modal) modal.classList.toggle("hidden");
+    }
+
+    async function addPastedCodesToBatch() {
+      const textarea = document.getElementById("pasteBatchTextarea");
+      if (!textarea) return;
+      const raw = textarea.value.trim();
+      if (!raw) {
+        alert("Cole pelo menos um código CATMAT/CATSER ou linha com código.");
+        return;
+      }
+
+      const lines = raw.split(/[\r\n,;]+/).map(s => s.trim()).filter(Boolean);
+      const extracted = [];
+      for (const line of lines) {
+        const parts = line.split(/[:|\t-]+/).map(p => p.trim());
+        const codeMatch = (parts[0] || line).match(/\b(\d{3,9})\b/);
+        if (codeMatch) {
+          const code = parseInt(codeMatch[1], 10);
+          let qty = 1;
+          if (parts.length > 1) {
+            const qMatch = parts[1].match(/(\d+(?:[.,]\d+)?)/);
+            if (qMatch) qty = parseFloat(qMatch[1].replace(",", ".")) || 1;
+          }
+          extracted.push({ code, qty });
+        }
+      }
+
+      if (extracted.length === 0) {
+        alert("Nenhum código numérico válido (3 a 9 dígitos) foi identificado no texto colado.");
+        return;
+      }
+
+      for (const item of extracted) {
+        let itemType = "MATERIAL";
+        let desc = `CATMAT/CATSER ${item.code}`;
+        let unit = "UN";
+        try {
+          const resp = await fetch(`/api/v1/catalog/search?q=${item.code}&type=ALL&limit=5`);
+          if (resp.ok) {
+            const data = await resp.json();
+            const exact = (data.results || []).find(r => Number(r.codigo) === item.code) || (data.results || [])[0];
+            if (exact) {
+              itemType = exact.item_type || "MATERIAL";
+              desc = exact.descricao || desc;
+              unit = exact.unidade || "UN";
+            }
+          }
+        } catch (e) {
+          console.warn(e);
+        }
+        addItemToBatchTray(itemType, item.code, desc, unit, item.qty);
+      }
+
+      textarea.value = "";
+      togglePasteBatchModal();
+    }
+
+    async function processBatchResearch() {
+      if (batchTrayItems.length === 0) {
+        alert("O lote está vazio! Inclua pelo menos 1 item (via busca no catálogo, botão '➕ Incluir no Lote' ou '📋 Colar Lista em Lote') antes de processar.");
+        return;
+      }
+
+      const btn = document.getElementById("btnProcessBatch");
+      const loading = document.getElementById("priceLoadingBar");
+      const origText = btn ? btn.innerHTML : "";
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = "⏳ Processando Lote...";
+      }
+      if (loading) loading.classList.remove("hidden");
+
+      try {
+        const resp = await fetch("/api/v1/prices/batch-research", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: batchTrayItems.map(it => ({
+              code: it.code,
+              type: it.type || "MATERIAL",
+              unit: it.unit === "UN" ? "" : (it.unit || ""),
+              qty: it.qty || 1
+            })),
+            months_back: 12
+          })
+        });
+        const data = await resp.json();
+        if (loading) loading.classList.add("hidden");
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = origText;
+        }
+
+        if (!resp.ok || data.status !== "SUCCESS") {
+          alert(data.message || data.error || "Erro ao processar lote de pesquisas.");
+          return;
+        }
+
+        batchResearchResults = data.results || [];
+        renderBatchResults(data);
+
+        if (batchResearchResults.length > 0) {
+          inspectBatchItem(0, false);
+        }
+      } catch (e) {
+        if (loading) loading.classList.add("hidden");
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = origText;
+        }
+        alert("Erro na pesquisa em lote: " + e.message);
+      }
+    }
+
+    function renderBatchResults(data) {
+      const sec = document.getElementById("batchResultsSection");
+      const countEl = document.getElementById("batchResCount");
+      const totalEl = document.getElementById("batchGrandTotal");
+      const tbody = document.getElementById("batchResultsTableBody");
+
+      if (sec) sec.classList.remove("hidden");
+      if (countEl) countEl.textContent = data.total_items || batchResearchResults.length;
+      if (totalEl) {
+        const grand = Number(data.total_lote || 0);
+        totalEl.textContent = `R$ ${grand.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      }
+
+      tbody.innerHTML = batchResearchResults.map((res, idx) => {
+        const rep = res.report || {};
+        const sm = rep.sanitized_metrics || {};
+        const vCount = (rep.valid_quotes || []).length;
+        const needsJust = vCount < 3;
+        const unitPrice = Number(res.unit_price || rep.final_estimated_unit_price || 0);
+        const totalPrice = Number(res.total_price || (unitPrice * (res.qty || 1)));
+        const code = res.code || rep.catmat_catser_code;
+        const itemType = res.type || "MATERIAL";
+        const unit = res.unit || rep.target_supply_unit || "UN";
+        const qty = res.qty || 1;
+        const queryParams = `item_type=${encodeURIComponent(itemType)}&supply_unit=${encodeURIComponent(unit === 'UN' ? '' : unit)}&quantity=${qty}`;
+
+        return `
+          <tr class="hover:bg-indigo-50/40 transition">
+            <td class="py-3 px-4 font-mono font-bold text-slate-600">Item ${res.item_index || (idx + 1)}</td>
+            <td class="py-3 px-4">
+              <span class="inline-block px-2 py-0.5 rounded text-[10px] font-black ${itemType === 'SERVICO' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'} mr-1">
+                ${itemType === 'SERVICO' ? 'CATSER' : 'CATMAT'} ${code}
+              </span>
+              <strong class="block text-slate-900 mt-0.5">${rep.item_description || ''}</strong>
+            </td>
+            <td class="py-3 px-4 text-center font-mono font-bold">${qty} ${unit}</td>
+            <td class="py-3 px-4 text-center">
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold ${needsJust ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-100 text-emerald-800'}">
+                ${vCount} Válida(s) | CV ${(sm.cv_percent || 0).toFixed(1)}%
+              </span>
+              <span class="block text-[10px] text-slate-500 mt-0.5">${rep.adopted_parameter || ''}</span>
+            </td>
+            <td class="py-3 px-4 text-right font-mono font-bold text-slate-800">R$ ${unitPrice.toFixed(2)}</td>
+            <td class="py-3 px-4 text-right font-mono font-black text-emerald-700">R$ ${totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td class="py-3 px-4 text-center">
+              <div class="flex flex-wrap items-center justify-center gap-1">
+                <button onclick="inspectBatchItem(${idx}, true)" class="bg-slate-800 hover:bg-slate-700 text-white font-bold px-2 py-1 rounded text-[10px]" title="Inspecionar Gráficos e Cotações">
+                  🔍 Ver Painel
+                </button>
+                <a href="/api/v1/prices/export-docx/${code}?${queryParams}" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-2 py-1 rounded text-[10px]" title="Baixar Relatório Individual em Word (.DOCX)">
+                  📝 Word
+                </a>
+                <a href="/api/v1/prices/export-pdf/${code}?${queryParams}" class="bg-rose-600 hover:bg-rose-500 text-white font-bold px-2 py-1 rounded text-[10px]" title="Baixar Relatório Individual em PDF">
+                  📄 PDF
+                </a>
+                <a href="/api/v1/prices/export-xlsx/${code}?${queryParams}" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-2 py-1 rounded text-[10px]" title="Baixar Mapa Comparativo Individual (.XLSX)">
+                  📊 Excel
+                </a>
+                ${needsJust ? `
+                  <a href="/api/v1/prices/export-justificativa-docx/${code}?${queryParams}" class="bg-amber-600 hover:bg-amber-500 text-white font-bold px-2 py-1 rounded text-[10px]" title="Baixar Justificativa Circunstanciada (Art. 6º §5º IN 65)">
+                    ⚠️ Justif. Word
+                  </a>
+                ` : ''}
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function inspectBatchItem(idx, scrollToDetail = true) {
+      const res = batchResearchResults[idx];
+      if (!res || !res.report) return;
+      activePriceReport = res.report;
+      activeItemType = res.type || "MATERIAL";
+      activeQuantity = res.qty || 1;
+
+      document.getElementById("priceEmptyState").classList.add("hidden");
+      const detailSec = document.getElementById("priceResultSection");
+      detailSec.classList.remove("hidden");
+      renderPriceReport(res.report, activeQuantity, activeItemType);
+      if (scrollToDetail) {
+        detailSec.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+
+    async function downloadBatchZip() {
+      if (!batchResearchResults || batchResearchResults.length === 0) {
+        alert("Processe o lote primeiro para gerar o pacote ZIP com todos os relatórios individuais.");
+        return;
+      }
+      try {
+        const resp = await fetch("/api/v1/prices/export-batch-zip", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: batchResearchResults })
+        });
+        if (!resp.ok) {
+          alert("Erro ao gerar pacote ZIP do lote.");
+          return;
+        }
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "Pacote_Relatorios_Lote_IN65.zip";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        alert("Falha ao baixar ZIP: " + e.message);
+      }
+    }
+
+    async function downloadBatchExcel() {
+      if (!batchResearchResults || batchResearchResults.length === 0) {
+        alert("Processe o lote primeiro para exportar a planilha consolidada.");
+        return;
+      }
+      try {
+        const resp = await fetch("/api/v1/prices/export-batch-xlsx", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: batchResearchResults })
+        });
+        if (!resp.ok) {
+          alert("Erro ao gerar Excel consolidado do lote.");
+          return;
+        }
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "Mapa_Comparativo_Consolidado_Lote_IN65.xlsx";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        alert("Falha ao baixar Excel consolidado: " + e.message);
       }
     }
 
