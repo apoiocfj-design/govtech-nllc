@@ -38,6 +38,8 @@ from report_generators import (
     build_in65_pdf_bytes,
     build_in65_justificativa_docx_bytes,
     build_in65_justificativa_pdf_bytes,
+    build_consolidated_in65_excel_bytes,
+    build_batch_zip_bytes,
 )
 
 price_controller = PriceResearchController()
@@ -554,6 +556,152 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"status": "SUCCESS", "parsed_items": items})
             except Exception as exc:
                 self._send_json(400, {"error": str(exc)})
+            return
+
+        # 0.01 Pesquisa Automatizada de Preços em Lote (Múltiplos CATMAT/CATSER)
+        if parsed.path == "/api/v1/prices/batch-research":
+            try:
+                data = json.loads(raw_body)
+                items_in = data.get("items", [])
+                months_back = int(data.get("months_back", 12))
+                uf = data.get("uf") or None
+
+                results = []
+                total_lote = 0.0
+
+                for idx, it in enumerate(items_in, start=1):
+                    code_raw = it.get("code")
+                    catalog_code = int(code_raw) if str(code_raw).isdigit() else 475109
+                    unit = str(it.get("unit", "UN")).strip().upper() or "UN"
+                    item_type = str(it.get("type", "MATERIAL")).strip().upper()
+                    qty = int(it.get("qty", 1) or 1)
+
+                    res = price_controller.execute_in65_research(
+                        catalog_code=catalog_code,
+                        target_supply_unit=unit,
+                        item_type=item_type,
+                        months_back=months_back,
+                        uf=uf,
+                    )
+                    rep = res.get("report") or {}
+                    unit_est = float(rep.get("final_estimated_unit_price", 0.0))
+                    total_est = qty * unit_est
+                    total_lote += total_est
+
+                    results.append({
+                        "item_index": idx,
+                        "code": catalog_code,
+                        "type": item_type,
+                        "unit": unit,
+                        "qty": qty,
+                        "unit_price": unit_est,
+                        "total_price": total_est,
+                        "report": rep,
+                    })
+
+                self._send_json(200, {
+                    "status": "SUCCESS",
+                    "total_items": len(results),
+                    "total_lote": total_lote,
+                    "results": results,
+                })
+            except Exception as exc:
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        # 0.02 Exportar Pacote ZIP Completo do Lote (.ZIP com relatórios Word, PDF e Excel de todos os itens)
+        if parsed.path == "/api/v1/prices/export-batch-zip":
+            try:
+                data = json.loads(raw_body)
+                items_in = data.get("items", [])
+                om_name = str(data.get("om_name", "CAPITANIA FLUVIAL DE JUAZEIRO"))
+                ordenador = str(data.get("ordenador", "ORDENADOR DE DESPESAS"))
+                elaborador = str(data.get("elaborador", "ENCARREGADO DO SETOR DE OBTENÇÃO"))
+                months_back = int(data.get("months_back", 12))
+                uf = data.get("uf") or None
+
+                items_results = []
+                for idx, it in enumerate(items_in, start=1):
+                    rep = it.get("report")
+                    qty = int(it.get("qty", 1) or 1)
+                    if not rep:
+                        code_raw = it.get("code")
+                        catalog_code = int(code_raw) if str(code_raw).isdigit() else 475109
+                        unit = str(it.get("unit", "UN")).strip().upper() or "UN"
+                        item_type = str(it.get("type", "MATERIAL")).strip().upper()
+                        res = price_controller.execute_in65_research(
+                            catalog_code=catalog_code,
+                            target_supply_unit=unit,
+                            item_type=item_type,
+                            months_back=months_back,
+                            uf=uf,
+                        )
+                        rep = res.get("report") or {}
+
+                    items_results.append({
+                        "item_index": idx,
+                        "code": rep.get("catmat_catser_code", it.get("code")),
+                        "type": it.get("type", "MATERIAL"),
+                        "unit": it.get("unit", rep.get("target_supply_unit", "UN")),
+                        "qty": qty,
+                        "report": rep,
+                    })
+
+                zip_bytes = build_batch_zip_bytes(
+                    items_results,
+                    om_name=om_name,
+                    ordenador_nome=ordenador,
+                    elaborador_nome=elaborador,
+                )
+                self._send_binary(zip_bytes, "application/zip", "Pacote_Relatorios_Lote_IN65.zip")
+            except Exception as exc:
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        # 0.03 Exportar Planilha Consolidada do Lote (.XLSX com todas as abas)
+        if parsed.path == "/api/v1/prices/export-batch-xlsx":
+            try:
+                data = json.loads(raw_body)
+                items_in = data.get("items", [])
+                om_name = str(data.get("om_name", "MARINHA DO BRASIL - CAPITANIA FLUVIAL DE JUAZEIRO"))
+                months_back = int(data.get("months_back", 12))
+                uf = data.get("uf") or None
+
+                items_results = []
+                for idx, it in enumerate(items_in, start=1):
+                    rep = it.get("report")
+                    qty = int(it.get("qty", 1) or 1)
+                    if not rep:
+                        code_raw = it.get("code")
+                        catalog_code = int(code_raw) if str(code_raw).isdigit() else 475109
+                        unit = str(it.get("unit", "UN")).strip().upper() or "UN"
+                        item_type = str(it.get("type", "MATERIAL")).strip().upper()
+                        res = price_controller.execute_in65_research(
+                            catalog_code=catalog_code,
+                            target_supply_unit=unit,
+                            item_type=item_type,
+                            months_back=months_back,
+                            uf=uf,
+                        )
+                        rep = res.get("report") or {}
+
+                    items_results.append({
+                        "item_index": idx,
+                        "code": rep.get("catmat_catser_code", it.get("code")),
+                        "type": it.get("type", "MATERIAL"),
+                        "unit": it.get("unit", rep.get("target_supply_unit", "UN")),
+                        "qty": qty,
+                        "report": rep,
+                    })
+
+                xlsx_bytes = build_consolidated_in65_excel_bytes(items_results, uasg_name=om_name)
+                self._send_binary(
+                    xlsx_bytes,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "Mapa_Comparativo_Consolidado_Lote_IN65.xlsx",
+                )
+            except Exception as exc:
+                self._send_json(500, {"error": str(exc)})
             return
 
         # 0.1 Gerador Dinâmico de Minutas (DFD ou TR) Customizado para o Item Pesquisado

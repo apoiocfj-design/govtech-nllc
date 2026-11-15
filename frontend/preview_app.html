@@ -184,9 +184,12 @@
           <input id="inputQty" type="number" value="1" min="1" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold" />
         </div>
 
-        <div class="md:col-span-2">
-          <button id="btnSearchGov" onclick="runLivePriceSearch()" class="w-full bg-slate-900 hover:bg-slate-800 text-emerald-400 font-extrabold py-2.5 px-4 rounded-xl text-xs shadow transition">
-            🚀 Pesquisar Agora
+        <div class="md:col-span-2 flex flex-col gap-1.5">
+          <button id="btnSearchGov" onclick="runLivePriceSearch()" class="w-full bg-slate-900 hover:bg-slate-800 text-emerald-400 font-extrabold py-2 px-3 rounded-xl text-xs shadow transition">
+            🚀 Pesquisar Direto
+          </button>
+          <button onclick="addCurrentInputToBatch()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-1.5 px-3 rounded-xl text-[11px] shadow transition flex items-center justify-center gap-1">
+            <span>➕</span> Incluir no Lote
           </button>
         </div>
       </div>
@@ -197,6 +200,57 @@
     </div>
 
     <!-- ESTADO INICIAL QUANDO NENHUMA PESQUISA FOI FEITA AINDA -->
+    
+      <!-- CESTA DE ITENS DO LOTE PARA PESQUISAS AUTOMATIZADAS -->
+      <div id="batchTraySection" class="mt-5 bg-slate-900 text-white rounded-2xl p-5 border border-slate-800 space-y-4">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          <div class="flex items-center gap-2.5">
+            <span class="text-2xl">📦</span>
+            <div>
+              <h3 class="text-xs font-black uppercase text-amber-300 tracking-wider">
+                Lote de Itens para Pesquisa Automatizada (<span id="batchCountBadge">0</span> itens incluídos)
+              </h3>
+              <p class="text-[11px] text-slate-400">
+                Selecione múltiplos CATMATs/CATSERs (ex: pneu, direção, bolsa, caneta). Cada item terá sua pesquisa e relatórios individualizados.
+              </p>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button onclick="togglePasteBatchModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-3 py-1.5 rounded-xl text-xs transition flex items-center gap-1">
+              <span>📋</span> Colar Lista em Lote
+            </button>
+            <button onclick="clearBatchTray()" class="bg-slate-800 hover:bg-rose-900 text-slate-300 hover:text-rose-200 font-bold px-3 py-1.5 rounded-xl text-xs transition">
+              🗑️ Limpar Lote
+            </button>
+            <button id="btnProcessBatch" onclick="processBatchResearch()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-4 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5">
+              <span>🚀</span> Processar Pesquisas do Lote
+            </button>
+          </div>
+        </div>
+
+        <div id="batchEmptyMessage" class="py-6 text-center text-slate-400 text-xs italic">
+          Nenhum item incluído no lote ainda. Pesquise no catálogo acima e clique em "➕ Incluir no Lote" ou cole sua lista no botão acima.
+        </div>
+
+        <div id="batchTableContainer" class="hidden overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-200 border-collapse">
+            <thead>
+              <tr class="border-b border-slate-800 text-[10px] uppercase text-slate-400 font-bold">
+                <th class="py-2.5 px-3">Item</th>
+                <th class="py-2.5 px-3">Tipo & Código</th>
+                <th class="py-2.5 px-3">Descrição do Objeto</th>
+                <th class="py-2.5 px-3 text-center">Unidade</th>
+                <th class="py-2.5 px-3 text-center">Quantidade</th>
+                <th class="py-2.5 px-3 text-center">Ação</th>
+              </tr>
+            </thead>
+            <tbody id="batchTrayBody" class="divide-y divide-slate-800 font-mono text-xs">
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+
     <div id="priceEmptyState" class="bg-white p-8 rounded-2xl border border-dashed border-slate-300 text-center space-y-2">
       <div class="text-3xl">🔎</div>
       <h3 class="text-sm font-extrabold text-slate-800">Pronto para pesquisar — digite no buscador acima</h3>
@@ -206,6 +260,60 @@
     </div>
 
     <!-- RESULTADO DA PESQUISA COM AÇÕES CONTEXTUAIS EMBUTIDAS -->
+    
+    <!-- PAINEL CONSOLIDADO DE RESULTADOS DO LOTE -->
+    <div id="batchResultsSection" class="hidden space-y-6">
+      <div class="bg-slate-900 text-white p-6 rounded-2xl shadow space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <span class="text-xs font-bold uppercase text-emerald-400 tracking-wider">Painel Oficial do Lote de Pesquisas (IN SEGES/ME nº 65/2021)</span>
+            <h3 class="text-lg font-bold mt-1 text-white">Relatórios Individuais por Item e Consolidação Geral</h3>
+            <p class="text-xs text-slate-400 mt-1">Total de <span id="batchResCount" class="font-bold text-amber-300">0</span> itens pesquisados com cálculos estatísticos e relatórios individualizados.</p>
+          </div>
+          <div class="text-right">
+            <span class="text-xs uppercase text-slate-400 block font-bold">Valor Total Homologável do Lote</span>
+            <span id="batchGrandTotal" class="text-2xl font-black text-amber-300">R$ 0,00</span>
+          </div>
+        </div>
+
+        <!-- BOTÕES MESTRES DO LOTE -->
+        <div class="pt-3 border-t border-slate-800 flex flex-wrap items-center gap-2.5">
+          <button onclick="downloadBatchZip()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-black px-4 py-2.5 rounded-xl text-xs shadow transition flex items-center gap-1.5">
+            <span>📦</span> Baixar Pacote Completo (.ZIP com Relatórios Word e PDF de todos os itens)
+          </button>
+          <button onclick="downloadBatchExcel()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-4 py-2.5 rounded-xl text-xs shadow transition flex items-center gap-1.5">
+            <span>📊</span> Baixar Planilha Consolidada (.XLSX com todas as abas)
+          </button>
+        </div>
+      </div>
+
+      <!-- TABELA DE RESULTADOS DO LOTE COM AÇÕES INDIVIDUAIS -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="px-6 py-4 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
+          <span class="font-bold text-xs uppercase text-slate-700">Itens Pesquisados • Relatórios e Documentos Individuais</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase text-[10px]">
+                <th class="py-3 px-3">Item</th>
+                <th class="py-3 px-3">Código</th>
+                <th class="py-3 px-3">Descrição do Objeto</th>
+                <th class="py-3 px-3 text-center">Qtd / Unid.</th>
+                <th class="py-3 px-3 text-right">Preço Unit.</th>
+                <th class="py-3 px-3 text-right">Total Item</th>
+                <th class="py-3 px-3">Saneamento IN 65</th>
+                <th class="py-3 px-3 text-center">Ações Individuais</th>
+              </tr>
+            </thead>
+            <tbody id="batchResultsTableBody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+
     <div id="priceResultSection" class="space-y-6 hidden">
       <!-- CABEÇALHO DO RESULTADO + BARRA DE AÇÕES DIRETAS (SUBSTITUINDO A ANTIGA ABA DE DOWNLOADS) -->
       <div class="bg-slate-900 text-white p-6 rounded-2xl shadow space-y-4">
@@ -821,6 +929,26 @@
     </div>
   </div>
 
+  
+  <!-- MODAL: COLAR LISTA DE CÓDIGOS EM LOTE -->
+  <div id="pasteBatchModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm p-4 flex items-center justify-center no-print">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-6 space-y-4 border border-slate-200">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-black text-slate-900 uppercase">📋 Inserir Lista de Códigos CATMAT / CATSER em Lote</h3>
+        <button onclick="togglePasteBatchModal()" class="text-slate-400 hover:text-slate-800 font-bold">✕</button>
+      </div>
+      <p class="text-xs text-slate-600 leading-relaxed">
+        Cole os códigos dos materiais ou serviços desejados (separados por vírgula, espaço ou um por linha). Exemplo:<br/>
+        <code class="bg-slate-100 px-2 py-0.5 rounded font-mono text-[11px] block mt-1">250829, 366698, 475109</code>
+      </p>
+      <textarea id="pasteBatchTextarea" rows="5" class="w-full border border-slate-300 rounded-xl p-3 text-xs font-mono" placeholder="250829&#10;366698&#10;475109"></textarea>
+      <div class="flex justify-end gap-2">
+        <button onclick="togglePasteBatchModal()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-4 py-2 rounded-xl text-xs">Cancelar</button>
+        <button onclick="addPastedCodesToBatch()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-4 py-2 rounded-xl text-xs shadow">➕ Incluir Todos no Lote</button>
+      </div>
+    </div>
+  </div>
+
   <div id="shareInfoModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm p-4 flex items-center justify-center no-print">
     <div class="bg-white rounded-3xl shadow-2xl max-w-xl w-full p-6 space-y-5 border border-slate-200">
       <div class="flex items-center justify-between">
@@ -973,12 +1101,20 @@
                 <p class="text-xs text-slate-700 leading-snug">${item.descricao}</p>
                 <span class="text-[10px] text-slate-400 block">Grupo: ${item.nome_grupo || '—'} | Classe: ${item.nome_classe || '—'}</span>
               </div>
-              <button
-                onclick="selectCatalogItem('${item.item_type}', ${item.codigo})"
-                class="shrink-0 bg-slate-900 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 font-extrabold px-3.5 py-2 rounded-xl text-xs transition shadow-sm"
-              >
-                Usar Cód. ${item.codigo} e Pesquisar ↗
-              </button>
+              <div class="flex items-center gap-1.5 shrink-0">
+                <button
+                  onclick="addItemToBatchTray('${item.item_type}', ${item.codigo}, `${item.descricao}`, '${item.unidade || 'UN'}')"
+                  class="bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold px-3 py-1.5 rounded-xl text-xs transition shadow-sm flex items-center gap-1"
+                >
+                  <span>➕</span> Incluir no Lote
+                </button>
+                <button
+                  onclick="selectCatalogItem('${item.item_type}', ${item.codigo}, 1, '${item.unidade || ''}')"
+                  class="bg-slate-900 hover:bg-slate-800 text-amber-300 font-bold px-3 py-1.5 rounded-xl text-xs transition shadow-sm"
+                >
+                  Pesquisar Direto ↗
+                </button>
+              </div>
             </div>
           `;
         }).join("");

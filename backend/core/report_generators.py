@@ -1202,3 +1202,162 @@ def build_in65_justificativa_pdf_bytes(
 
     doc.build(story)
     return buf.getvalue()
+
+
+# =============================================================================
+# 5. GERADOR DE PLANILHA EXCEL CONSOLIDADA DE LOTE (MÚLTIPLOS ITENS)
+# =============================================================================
+
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+import zipfile
+
+def build_consolidated_in65_excel_bytes(
+    items_results: list,
+    uasg_name: str = "MARINHA DO BRASIL - CAPITANIA FLUVIAL DE JUAZEIRO",
+) -> bytes:
+    """Gera planilha Excel consolidada contendo aba de Resumo Geral e abas individuais por item."""
+    wb = openpyxl.Workbook()
+    borda = Side(style="thin")
+    B = Border(left=borda, right=borda, top=borda, bottom=borda)
+    cinza = PatternFill("solid", fgColor="D9D9D9")
+    verde = PatternFill("solid", fgColor="E2EFDA")
+    amarelo = PatternFill("solid", fgColor="FEF3C7")
+    brl = "R$ #,##0.00"
+    ctr = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    esq = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+    # ABA 1: RESUMO DO LOTE
+    ws_resumo = wb.active
+    ws_resumo.title = "Resumo Geral do Lote"
+
+    def merge_line(ws, row_idx, text, bold=True, align="center", height=24, end_col="J"):
+        ws.merge_cells(f"A{row_idx}:{end_col}{row_idx}")
+        ws[f"A{row_idx}"] = text
+        ws[f"A{row_idx}"].font = Font(bold=bold, size=11 if bold else 10)
+        ws[f"A{row_idx}"].alignment = Alignment(horizontal=align, vertical="center", wrap_text=True)
+        ws.row_dimensions[row_idx].height = height
+
+    merge_line(ws_resumo, 1, uasg_name, bold=True)
+    merge_line(ws_resumo, 2, "MAPA COMPARATIVO CONSOLIDADO DE PREÇOS (IN SEGES/ME Nº 65/2021)", bold=True)
+    merge_line(ws_resumo, 3, "Quadro Demonstrativo de Todos os Itens Demandados e Valores Homologáveis:", bold=True, align="left")
+
+    headers = [
+        "ITEM", "CATMAT/CATSER", "DESCRIÇÃO DO OBJETO", "UNID.", "QTDE",
+        "MÉDIA SANEADA", "MEDIANA SANEADA", "PREÇO UNIT. ESTIMADO", "PREÇO TOTAL ESTIMADO", "SITUAÇÃO IN 65"
+    ]
+    for col_idx, h in enumerate(headers, 1):
+        c = ws_resumo.cell(4, col_idx, h)
+        c.font, c.fill, c.alignment, c.border = Font(bold=True, size=10), cinza, ctr, B
+    ws_resumo.row_dimensions[4].height = 28
+
+    total_geral_lote = 0.0
+
+    for idx, item in enumerate(items_results, start=1):
+        rep = item.get("report") or {}
+        qty = int(item.get("qty", 1) or 1)
+        sm = rep.get("sanitized_metrics") or {}
+        unit_est = float(rep.get("final_estimated_unit_price", 0.0))
+        item_total = qty * unit_est
+        total_geral_lote += item_total
+
+        sit = "✅ Homogênea (CV ≤ 25%)" if rep.get("is_homogeneous") else "⚠️ Heterogênea"
+        if len(rep.get("valid_quotes", [])) < 3:
+            sit = f"⚠️ Exige Justificativa ({len(rep.get('valid_quotes', []))} cotações)"
+
+        row_vals = [
+            idx,
+            str(rep.get("catmat_catser_code", item.get("code", "—"))),
+            rep.get("item_description", "Item"),
+            rep.get("target_supply_unit", item.get("unit", "UN")),
+            qty,
+            float(sm.get("mean") or unit_est),
+            float(sm.get("median") or unit_est),
+            unit_est,
+            item_total,
+            sit
+        ]
+
+        row_num = 4 + idx
+        for col_idx, val in enumerate(row_vals, 1):
+            c = ws_resumo.cell(row_num, col_idx, val)
+            c.border = B
+            c.alignment = esq if col_idx == 3 else ctr
+            if col_idx in (6, 7, 8, 9):
+                c.number_format = brl
+            if col_idx in (8, 9):
+                c.fill = verde
+                c.font = Font(bold=True)
+        ws_resumo.row_dimensions[row_num].height = 22
+
+    # LINHA TOTALIZADORA
+    tot_row = 5 + len(items_results)
+    ws_resumo.merge_cells(f"A{tot_row}:H{tot_row}")
+    c_tot_label = ws_resumo.cell(tot_row, 1, "VALOR TOTAL ESTIMADO DO LOTE:")
+    c_tot_label.font = Font(bold=True, size=11)
+    c_tot_label.alignment = Alignment(horizontal="right", vertical="center")
+    c_tot_label.fill = amarelo
+
+    c_tot_val = ws_resumo.cell(tot_row, 9, total_geral_lote)
+    c_tot_val.font = Font(bold=True, size=12)
+    c_tot_val.alignment = ctr
+    c_tot_val.fill = verde
+    c_tot_val.number_format = brl
+    c_tot_val.border = B
+
+    for col in range(1, 11):
+        ws_resumo.cell(tot_row, col).border = B
+
+    # AJUSTE DE LARGURAS
+    col_widths = [8, 16, 45, 10, 10, 16, 16, 20, 20, 25]
+    for col_idx, w in enumerate(col_widths, 1):
+        ws_resumo.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = w
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+# =============================================================================
+# 6. GERADOR DE PACOTE ZIP COMPLETO DO LOTE
+# =============================================================================
+
+def build_batch_zip_bytes(
+    items_results: list,
+    om_name: str = "CAPITANIA FLUVIAL DE JUAZEIRO",
+    ordenador_nome: str = "ORDENADOR DE DESPESAS",
+    elaborador_nome: str = "ENCARREGADO DO SETOR DE OBTENÇÃO",
+) -> bytes:
+    """Gera um arquivo .ZIP contendo os relatórios em Word, PDF e Excel individuais de cada item, além da planilha consolidada."""
+    z_buf = io.BytesIO()
+
+    with zipfile.ZipFile(z_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # 1. Planilha Consolidada
+        xlsx_consolidada = build_consolidated_in65_excel_bytes(items_results, uasg_name=f"MARINHA DO BRASIL - {om_name}")
+        zf.writestr("00_Mapa_Comparativo_Consolidado_Lote.xlsx", xlsx_consolidada)
+
+        # 2. Itens individuais
+        for idx, item in enumerate(items_results, start=1):
+            rep = item.get("report") or {}
+            qty = int(item.get("qty", 1) or 1)
+            code = str(rep.get("catmat_catser_code", item.get("code", "000000")))
+            item_type = item.get("type", "MATERIAL")
+            prefix = "CATSER" if str(item_type).upper() == "SERVICO" else "CATMAT"
+            folder = f"Item_{idx:02d}_{prefix}_{code}"
+
+            # Word DOCX individual
+            docx_b = build_in65_docx_bytes(rep, qty, om_name=om_name, elaborador_nome=elaborador_nome, ordenador_nome=ordenador_nome)
+            zf.writestr(f"{folder}/Relatorio_Pesquisa_Precos_{prefix}_{code}.docx", docx_b)
+
+            # PDF individual
+            pdf_b = build_in65_pdf_bytes(rep, qty, om_name=om_name, elaborador_nome=elaborador_nome, ordenador_nome=ordenador_nome)
+            zf.writestr(f"{folder}/Relatorio_Pesquisa_Precos_{prefix}_{code}.pdf", pdf_b)
+
+            # Justificativa Circunstanciada (se < 3 cotações)
+            if len(rep.get("valid_quotes", [])) < 3:
+                just_docx = build_in65_justificativa_docx_bytes(rep, qty, om_name=om_name, ordenador_nome=ordenador_nome)
+                zf.writestr(f"{folder}/Justificativa_Circunstanciada_Art6_IN65_{prefix}_{code}.docx", just_docx)
+                just_pdf = build_in65_justificativa_pdf_bytes(rep, qty, om_name=om_name, ordenador_nome=ordenador_nome)
+                zf.writestr(f"{folder}/Justificativa_Circunstanciada_Art6_IN65_{prefix}_{code}.pdf", just_pdf)
+
+    return z_buf.getvalue()
