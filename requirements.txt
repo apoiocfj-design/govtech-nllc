@@ -1,0 +1,4 @@
+# Dependências do Sistema GovTech NLLC (Lei 14.133/2021 & IN 65/2021)
+requests>=2.31.0
+openpyxl>=3.1.2
+pdfplumber>=0.10.0

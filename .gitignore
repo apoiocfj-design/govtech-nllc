@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+
+# Arquivos descompactados maiores que 100MB (mantemos database/cnbs_catalog.db.gz que tem apenas 38MB)
+database/cnbs_catalog.db
+database/catmat.csv
+database/catmat.csv.gz
+
+# Temporários
+_tmp*
+*.log
+.system_generated/
+.user_uploaded/

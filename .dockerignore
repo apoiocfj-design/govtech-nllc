@@ -1,0 +1,14 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.system_generated
+.user_uploaded
+*.bat
+*.md
+database/cnbs_catalog.db
+database/catmat.csv
+database/catmat.csv.gz

@@ -1,0 +1,1252 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GovTech NLLC • Sistema Unificado de Compras Públicas & Auditoria</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+      #printReportSheet, #printReportSheet * {
+        visibility: visible;
+      }
+      #printReportSheet {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0;
+        padding: 10mm;
+        box-shadow: none !important;
+        border: none !important;
+        background: white !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-900 font-sans min-h-screen flex flex-col">
+
+  <!-- ===================================================================== -->
+  <!-- BARRA SUPERIOR DO APLICATIVO (MENU UNIFICADO + LINK COMPARTILHÁVEL)    -->
+  <!-- ===================================================================== -->
+  <header class="bg-slate-950 text-white px-6 py-3.5 shadow-lg border-b border-slate-800 sticky top-0 z-40 no-print">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-amber-400 text-slate-950 font-black flex items-center justify-center text-xl shadow">⚓</div>
+        <div>
+          <span class="font-black tracking-tight text-base block">SISTEMA GOVTECH • LEI 14.133/2021 & IN 65/2021</span>
+          <div class="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+            <span id="catalogHeaderStats" class="text-emerald-400 font-semibold">
+              CNBS: 250.757 Materiais (CATMAT) + 3.025 Serviços (CATSER)
+            </span>
+            <span class="text-slate-600">•</span>
+            <div class="flex items-center gap-1.5 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+              <span class="text-slate-400 text-[11px]">Link Compartilhável na Rede:</span>
+              <span id="headerLanUrl" class="text-amber-300 font-mono font-bold text-[11px]">http://192.168.1.5:8080</span>
+              <button onclick="copyShareableLink()" title="Copiar link" class="hover:text-white text-slate-400 text-[11px] font-bold">📋</button>
+              <button onclick="openShareModal()" title="Instruções para acesso de qualquer pessoa" class="text-sky-400 hover:text-sky-300 text-[11px] underline ml-1">Como compartilhar ↗</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ABAS DO APP (SEM ABA ESTÁTICA DE DOWNLOADS) -->
+      <div class="flex flex-wrap items-center gap-1 bg-slate-900 p-1.5 rounded-xl border border-slate-800">
+        <button id="tabBtnPrices" onclick="openTab('PRICES')" class="px-3.5 py-2 rounded-lg text-xs font-extrabold bg-emerald-400 text-slate-950 shadow transition">
+          🔍 1. Pesquisa de Preços (IN 65)
+        </button>
+        <button id="tabBtnRAG" onclick="openTab('RAG')" class="px-3.5 py-2 rounded-lg text-xs font-extrabold text-slate-300 hover:text-white transition">
+          ⚖️ 2. Minutas & Auditoria RAG (Editor Online)
+        </button>
+        <button id="tabBtnLinks" onclick="openTab('LINKS')" class="px-3.5 py-2 rounded-lg text-xs font-extrabold text-slate-300 hover:text-white transition">
+          🏛️ 3. Consulta Detalhada & Certidões (Gov.br)
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===================================================================== -->
+  <!-- ABA 1: PARSER DE PALAVRAS-CHAVE CNBS + PESQUISA DE PREÇOS IN 65/2021  -->
+  <!-- ===================================================================== -->
+  <main id="viewPrices" class="max-w-7xl w-full mx-auto p-6 space-y-6 flex-1 no-print">
+
+    <!-- CAIXA 1: PARSER DE PALAVRAS-CHAVE (SEM NADA PRÉ-CARREGADO) -->
+    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-5">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-extrabold text-slate-900">
+            Pesquisa Automática de Preços no Compras.gov.br (Sem Login)
+          </h2>
+          <p class="text-xs text-slate-500 mt-0.5">
+            Localize qualquer material ou serviço nas <strong>planilhas oficiais do CNBS (CATMAT e CATSER)</strong> por palavras-chave ou informe o código direto.
+          </p>
+        </div>
+        <button onclick="toggleDemandParser()" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 font-extrabold px-3.5 py-2 rounded-xl text-xs transition">
+          📋 Colar Lista de Itens do DFD/TR (Parser em Lote)
+        </button>
+      </div>
+
+      <!-- PARSER DE PALAVRAS-CHAVE CATMAT & CATSER -->
+      <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+          <div class="md:col-span-7">
+            <label class="block text-xs font-bold text-slate-700 mb-1">
+              Parser de Palavras-Chave (Busca em tempo real na base CNBS):
+            </label>
+            <input
+              id="keywordInput"
+              type="text"
+              placeholder="Digite o nome do item (ex: bocal etilometro, ar condicionado, extintor co2, luva, notebook...)"
+              onkeydown="if(event.key==='Enter') searchCatalogKeywords()"
+              oninput="debouncedCatalogSearch()"
+              class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </div>
+
+          <div class="md:col-span-3">
+            <label class="block text-xs font-bold text-slate-700 mb-1">Filtrar Catálogo:</label>
+            <select id="catalogTypeFilter" onchange="searchCatalogKeywords()" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-bold bg-white">
+              <option value="ALL">Todos (CATMAT + CATSER)</option>
+              <option value="MATERIAL">Apenas Material (CATMAT)</option>
+              <option value="SERVICO">Apenas Serviço (CATSER)</option>
+            </select>
+          </div>
+
+          <div class="md:col-span-2">
+            <button onclick="searchCatalogKeywords()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold py-2.5 px-4 rounded-xl text-xs shadow transition">
+              🔎 Buscar Catálogo
+            </button>
+          </div>
+        </div>
+
+        <!-- LISTA DE RESULTADOS DO PARSER CNBS -->
+        <div id="catalogResultsBox" class="hidden pt-2">
+          <div class="flex items-center justify-between mb-2">
+            <span id="catalogParsedTokens" class="text-[11px] font-bold text-slate-600"></span>
+            <button onclick="document.getElementById('catalogResultsBox').classList.add('hidden')" class="text-[11px] text-slate-500 hover:text-slate-800 font-bold">
+              ✕ Fechar lista do catálogo
+            </button>
+          </div>
+          <div id="catalogResultsList" class="max-h-64 overflow-y-auto divide-y divide-slate-200 bg-white rounded-xl border border-slate-200 shadow-inner"></div>
+        </div>
+      </div>
+
+      <!-- PARSER EM LOTE DE TEXTO DO DFD / TR (OCULTO POR PADRÃO) -->
+      <div id="demandBatchBox" class="hidden bg-indigo-50/70 p-4 rounded-xl border border-indigo-200 space-y-3">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-extrabold text-indigo-950 uppercase">
+            📋 Parser de Demanda em Lote (Extraia Códigos CATMAT/CATSER de Texto Livre)
+          </span>
+          <button onclick="toggleDemandParser()" class="text-xs text-indigo-700 font-bold">✕ Fechar</button>
+        </div>
+        <textarea
+          id="demandRawText"
+          rows="3"
+          placeholder="Cole aqui as linhas da sua demanda (uma por linha). Exemplo:&#10;10 UN - Extintor de incêndio CO2 6kg&#10;1 SERV - Manutenção preventiva de ar condicionado"
+          class="w-full border border-indigo-200 rounded-xl p-3 text-xs font-mono bg-white"
+        ></textarea>
+        <div class="flex justify-end">
+          <button onclick="runBatchDemandParser()" class="bg-indigo-700 hover:bg-indigo-600 text-white font-extrabold px-4 py-2 rounded-xl text-xs shadow">
+            ⚙️ Converter Linhas em Códigos CATMAT / CATSER
+          </button>
+        </div>
+        <div id="demandBatchResults" class="space-y-2"></div>
+      </div>
+
+      <!-- PARÂMETROS DIRETOS PARA CONSULTAR PREÇOS NA API DO GOVERNO -->
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-end pt-1">
+        <div class="md:col-span-3">
+          <label class="block text-xs font-bold text-slate-700 mb-1">Tipo do Item:</label>
+          <select id="inputItemType" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold bg-white">
+            <option value="MATERIAL">📦 Material (CATMAT)</option>
+            <option value="SERVICO">🛠️ Serviço (CATSER)</option>
+          </select>
+        </div>
+
+        <div class="md:col-span-3">
+          <label class="block text-xs font-bold text-slate-700 mb-1">Código CATMAT / CATSER:</label>
+          <input id="inputCatmat" type="number" placeholder="Ex: 475109 ou 2771" value="" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold" />
+        </div>
+
+        <div class="md:col-span-2">
+          <label class="block text-xs font-bold text-slate-700 mb-1">Unidade (Opcional):</label>
+          <input id="inputUnit" type="text" placeholder="Ex: UN, PAR (ou vazio)" value="" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold uppercase" />
+        </div>
+
+        <div class="md:col-span-2">
+          <label class="block text-xs font-bold text-slate-700 mb-1">Quantidade:</label>
+          <input id="inputQty" type="number" value="1" min="1" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold" />
+        </div>
+
+        <div class="md:col-span-2">
+          <button id="btnSearchGov" onclick="runLivePriceSearch()" class="w-full bg-slate-900 hover:bg-slate-800 text-emerald-400 font-extrabold py-2.5 px-4 rounded-xl text-xs shadow transition">
+            🚀 Pesquisar Agora
+          </button>
+        </div>
+      </div>
+
+      <div id="priceLoadingBar" class="hidden mt-4 bg-amber-50 border border-amber-300 text-amber-900 px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-2">
+        <span>⏳ Consultando ao vivo a API de Dados Abertos do Compras.gov.br e aplicando o saneamento estatístico de outliers da IN 65/2021... Aguarde alguns segundos.</span>
+      </div>
+    </div>
+
+    <!-- ESTADO INICIAL QUANDO NENHUMA PESQUISA FOI FEITA AINDA -->
+    <div id="priceEmptyState" class="bg-white p-8 rounded-2xl border border-dashed border-slate-300 text-center space-y-2">
+      <div class="text-3xl">🔎</div>
+      <h3 class="text-sm font-extrabold text-slate-800">Pronto para pesquisar — digite no buscador acima</h3>
+      <p class="text-xs text-slate-500 max-w-xl mx-auto">
+        Pesquise por qualquer palavra-chave nas bases oficiais <code>catmat.csv</code> e <code>catser.csv</code>, selecione o item desejado e o sistema calcula o preço da IN 65/2021, permitindo baixar o <strong>Excel Oficial</strong>, emitir o <strong>Relatório Formal da Marinha (PDF)</strong> ou gerar a <strong>Minuta de DFD / TR</strong> para edição online imediata.
+      </p>
+    </div>
+
+    <!-- RESULTADO DA PESQUISA COM AÇÕES CONTEXTUAIS EMBUTIDAS -->
+    <div id="priceResultSection" class="space-y-6 hidden">
+      <!-- CABEÇALHO DO RESULTADO + BARRA DE AÇÕES DIRETAS (SUBSTITUINDO A ANTIGA ABA DE DOWNLOADS) -->
+      <div class="bg-slate-900 text-white p-6 rounded-2xl shadow space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <span class="text-xs font-bold uppercase text-emerald-400 tracking-wider">Resultado Oficial Saneado (Art. 6º IN SEGES/ME nº 65/2021)</span>
+            <h3 id="resItemTitle" class="text-lg font-bold mt-1 text-white">—</h3>
+          </div>
+          <div class="text-right">
+            <span class="text-xs uppercase text-slate-400 block font-bold">Valor Total Homologável</span>
+            <span id="resHeaderTotal" class="text-2xl font-black text-amber-300">R$ 0,00</span>
+          </div>
+        </div>
+
+        <!-- BARRA DE AÇÕES DIRETAS (EXCEL, PDF OFICIAL DA MARINHA, GERAR DFD E TR ONLINE) -->
+        <div class="pt-3 border-t border-slate-800 flex flex-wrap items-center gap-2.5">
+          <button onclick="downloadLiveExcel()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-4 py-2.5 rounded-xl text-xs shadow transition flex items-center gap-1.5">
+            <span>📊</span> Baixar Mapa Comparativo (.XLSX)
+          </button>
+          <button onclick="openFormalReportModal()" class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black px-4 py-2.5 rounded-xl text-xs shadow transition flex items-center gap-1.5">
+            <span>🖨️</span> Emitir Relatório Oficial (PDF A4 / Fatura Marinha)
+          </button>
+          <button onclick="generateArtifactDraft('DFD')" class="bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 font-extrabold px-3.5 py-2.5 rounded-xl text-xs transition flex items-center gap-1.5">
+            <span>📝</span> Gerar DFD com este Preço (Editar Online)
+          </button>
+          <button onclick="generateArtifactDraft('TR')" class="bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700 font-extrabold px-3.5 py-2.5 rounded-xl text-xs transition flex items-center gap-1.5">
+            <span>📋</span> Gerar TR com este Preço (Editar Online)
+          </button>
+        </div>
+      </div>
+
+      <!-- CARTÕES DE RESUMO ESTATÍSTICO -->
+      <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <span class="text-xs font-bold uppercase text-slate-500">Coeficiente Variação (CV)</span>
+          <div class="mt-2 flex items-baseline gap-2">
+            <span id="resCV" class="text-2xl font-black text-emerald-600">—</span>
+            <span id="resRawCV" class="text-xs text-slate-400 line-through">—</span>
+          </div>
+          <span id="resHomogBadge" class="mt-2 inline-block text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800">
+            —
+          </span>
+        </div>
+
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <span class="text-xs font-bold uppercase text-slate-500">Média Saneada</span>
+          <div id="resMean" class="mt-2 text-2xl font-black text-slate-900">—</div>
+          <span id="resStd" class="text-xs text-slate-500 mt-1 block">—</span>
+        </div>
+
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <span class="text-xs font-bold uppercase text-slate-500">Mediana Saneada</span>
+          <div id="resMedian" class="mt-2 text-2xl font-black text-slate-900">—</div>
+          <span id="resMinMax" class="text-xs text-slate-500 mt-1 block">—</span>
+        </div>
+
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <span class="text-xs font-bold uppercase text-slate-500">Amostras Auditadas</span>
+          <div id="resValidCount" class="mt-2 text-2xl font-black text-slate-900">—</div>
+          <span id="resPurgedCount" class="text-xs text-rose-600 font-bold mt-1 block">—</span>
+        </div>
+
+        <div class="bg-slate-900 text-white p-5 rounded-xl shadow">
+          <span id="resAdoptedParam" class="text-xs font-bold uppercase text-amber-400">Preço Unitário Estimado</span>
+          <div id="resTotalValue" class="mt-1 text-2xl font-black text-white">—</div>
+          <span id="resUnitPriceNote" class="text-xs text-emerald-400 font-bold mt-1 block">—</span>
+        </div>
+      </div>
+
+      <!-- JUSTIFICATIVA AUTOMÁTICA -->
+      <div class="bg-amber-50 border border-amber-300 rounded-xl p-4 text-xs text-slate-800 leading-relaxed">
+        <strong class="uppercase text-amber-950 block mb-1">Justificativa Automática p/ Anexar ao Processo Administrativo (Art. 6º IN 65/2021):</strong>
+        <span id="resJustification">—</span>
+      </div>
+
+      <!-- TABELA DE COTAÇÕES COM LINKS CLICÁVEIS -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="px-6 py-4 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
+          <span class="font-bold text-xs uppercase text-slate-700">Trilha de Auditoria das Cotações Oficiais (Com Link Direto para a Compra)</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase">
+                <th class="py-3 px-4">UASG / Órgão Comprador</th>
+                <th class="py-3 px-4">Nº Compra</th>
+                <th class="py-3 px-4">Fornecedor Vencedor & CNPJ</th>
+                <th class="py-3 px-4">Data</th>
+                <th class="py-3 px-4 text-right">Preço Unit.</th>
+                <th class="py-3 px-4">Situação na Auditoria</th>
+                <th class="py-3 px-4 text-center">Link Oficial</th>
+              </tr>
+            </thead>
+            <tbody id="quotesTableBody" class="divide-y divide-slate-200"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===================================================================== -->
+  <!-- ABA 2: REVISOR E EDITOR DE DOCUMENTOS COM DESTAQUE AMARELO            -->
+  <!-- ===================================================================== -->
+  <main id="viewRAG" class="max-w-7xl w-full mx-auto p-6 space-y-6 flex-1 hidden no-print">
+    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <h2 id="ragViewDocTitle" class="text-lg font-extrabold text-slate-900">Auditor e Editor Jurídico de Minutas (Lei 14.133/2021 & AGU)</h2>
+        <p class="text-xs text-slate-500 mt-0.5">
+          Edite as cláusulas abaixo diretamente no navegador, aplique as recomendações oficiais da AGU com 1 clique e exporte em Word (.DOCX) com todas as alterações grifadas em amarelo.
+        </p>
+      </div>
+      <div class="flex flex-wrap items-center gap-3">
+        <input id="fileInputRAG" type="file" accept=".pdf,.docx,.txt" onchange="handleUploadFile()" class="text-xs file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-200 file:text-slate-900 hover:file:bg-slate-300" />
+        <button onclick="applyAllAGUFixes()" class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black px-4 py-2.5 rounded-xl text-xs shadow transition">
+          ⚡ Aplicar Todas as Correções da AGU (Marcar em Amarelo)
+        </button>
+        <button onclick="downloadHighlightedWord()" class="bg-slate-900 hover:bg-slate-800 text-amber-300 font-black px-4 py-2.5 rounded-xl text-xs shadow transition">
+          📥 Baixar Word (.DOCX) Marcado em Amarelo
+        </button>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <section class="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="bg-slate-100 px-5 py-3 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-700">
+          <span>MINUTA DO DOCUMENTO (EDITE DIRETAMENTE O TEXTO ABAIXO)</span>
+          <span id="ragScoreBadge" class="bg-emerald-600 text-white px-2.5 py-0.5 rounded font-black">Conformidade: 100%</span>
+        </div>
+        <div id="docClauseContainer" class="p-6 space-y-4 font-serif text-sm leading-relaxed max-h-[68vh] overflow-y-auto"></div>
+      </section>
+
+      <aside class="lg:col-span-5 space-y-4 max-h-[73vh] overflow-y-auto pr-1" id="findingsContainer"></aside>
+    </div>
+  </main>
+
+  <!-- ===================================================================== -->
+  <!-- ABA 3: CENTRAL DE CONSULTA DETALHADA E CERTIDÕES (DISTRIBUIÇÃO VISUAL)-->
+  <!-- ===================================================================== -->
+  <main id="viewLinks" class="max-w-7xl w-full mx-auto p-6 space-y-6 flex-1 hidden no-print">
+    <!-- 1. PAINEL RÁPIDO DO FORNECEDOR: CHECKLIST FISCAL E TRABALHISTA (ART. 68 DA LEI 14.133/2021) -->
+    <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-2xl shadow-md border border-slate-800 space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <span class="text-[11px] font-black uppercase tracking-wider text-amber-400">Verificação Prévia de Habilitação do Fornecedor (Art. 68 da Lei 14.133/2021)</span>
+          <h2 class="text-base font-extrabold text-white mt-0.5">Emissão Rápida de Certidões por CNPJ da Empresa</h2>
+          <p class="text-xs text-slate-300">
+            Digite ou cole o CNPJ do fornecedor vencedor ou cotado para abrir diretamente a emissão de todas as certidões de regularidade fiscal, social e trabalhista.
+          </p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+        <div class="md:col-span-5">
+          <input
+            id="supplierCnpjInput"
+            type="text"
+            placeholder="CNPJ do Fornecedor (ex: 14.580.995/0001-11 ou números)"
+            oninput="formatAndPropagateCnpj()"
+            class="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-4 py-2.5 text-xs font-mono font-bold placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-400"
+          />
+        </div>
+        <div class="md:col-span-7 flex flex-wrap items-center gap-2">
+          <a id="btnCnpjRfb" href="https://servicos.receita.fazenda.gov.br/Servicos/certidao/CNDConjuntaInter/InformaNICertidao.asp?tipo=2" target="_blank" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold px-3 py-2 rounded-xl text-xs transition">
+            🏛️ RFB / PGFN ↗
+          </a>
+          <a id="btnCnpjTst" href="https://www.tst.jus.br/certidao" target="_blank" class="bg-sky-400 hover:bg-sky-300 text-slate-950 font-extrabold px-3 py-2 rounded-xl text-xs transition">
+            ⚖️ CNDT (Trabalhista) ↗
+          </a>
+          <a id="btnCnpjFgts" href="https://consulta-crf.caixa.gov.br/consultacrf/pages/consultaEmpregador.jsf" target="_blank" class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold px-3 py-2 rounded-xl text-xs transition">
+            🏦 CRF (FGTS) ↗
+          </a>
+          <a id="btnCnpjSicaf" href="https://www3.comprasnet.gov.br/sicaf-web/public/pages/consultas/consultarCRC.jsf" target="_blank" class="bg-purple-400 hover:bg-purple-300 text-slate-950 font-extrabold px-3 py-2 rounded-xl text-xs transition">
+            📜 SICAF CRC ↗
+          </a>
+          <a href="https://www3.comprasnet.gov.br/sicaf-web/public/pages/consultas/consultarRestricaoContratarAdministracaoPublica.jsf" target="_blank" class="bg-rose-500 hover:bg-rose-400 text-white font-extrabold px-3 py-2 rounded-xl text-xs transition">
+            🚫 Restrição SICAF/TCU ↗
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. CATÁLOGO COMPLETO DE CONSULTAS E LINKS (DISTRIBUIÇÃO VISUAL COM BUSCA) -->
+    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-6">
+      <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4">
+        <div>
+          <span class="text-[11px] font-black uppercase text-indigo-600">Fonte Oficial: Compras.gov.br / Consulta Detalhada</span>
+          <h3 class="text-base font-extrabold text-slate-900 mt-0.5">Sistemas Estruturantes, Catálogos e Consultas Governamentais</h3>
+        </div>
+        <div class="w-full md:w-72">
+          <input
+            id="searchLinksFilter"
+            type="text"
+            placeholder="Filtrar links por palavra (ex: ata, sicaf, ncm, edital)..."
+            oninput="filterLinksCards()"
+            class="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium"
+          />
+        </div>
+      </div>
+
+      <div id="consultaDetalhadaContainer" class="space-y-6"></div>
+    </div>
+  </main>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL DE RELATÓRIO EXECUTIVO OFICIAL (MODELO MARINHA DO BRASIL / PDF) -->
+  <!-- ===================================================================== -->
+  <div id="formalReportModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm overflow-y-auto p-4 md:p-8 flex items-center justify-center no-print">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-5xl w-full border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
+      <!-- BARRA DE FERRAMENTAS DO RELATÓRIO -->
+      <div class="bg-slate-900 text-white px-6 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800">
+        <div class="flex items-center gap-2">
+          <span class="text-lg">🖨️</span>
+          <div>
+            <h3 class="font-extrabold text-sm text-white">Visualização de Impressão Oficial (A4 Formal / Padrão Marinha do Brasil)</h3>
+            <p class="text-[11px] text-slate-400">Calibrado com os modelos da Corveta Caboclo e Anexo III da IN 65/2021.</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="printFormalReport()" class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black px-4 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5">
+            <span>🖨️</span> Imprimir / Salvar em PDF (A4)
+          </button>
+          <button onclick="closeFormalReportModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-3 py-2 rounded-xl text-xs transition">
+            ✕ Fechar
+          </button>
+        </div>
+      </div>
+
+      <!-- FOLHA A4 OFICIAL (RENDERIZADA DENTRO DO MODAL E VISÍVEL NO PRINT) -->
+      <div class="p-6 md:p-10 overflow-y-auto flex-1 bg-slate-100 flex justify-center">
+        <div id="printReportSheet" class="bg-white p-8 md:p-12 shadow border border-slate-300 w-full max-w-[210mm] text-slate-950 font-serif text-[13px] leading-normal space-y-6">
+
+          <!-- CABEÇALHO OFICIAL (BRASÃO + MARINHA DO BRASIL) -->
+          <div class="text-center space-y-1 border-b pb-4">
+            <div class="flex justify-center mb-1">
+              <!-- Brasão Oficial Vetorial SVG -->
+              <svg class="w-12 h-12 text-slate-900" viewBox="0 0 100 100" fill="currentColor">
+                <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" stroke-width="3"/>
+                <circle cx="50" cy="50" r="37" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3,3"/>
+                <path d="M50 15 L50 85 M25 50 L75 50 M32 32 L68 68 M32 68 L68 32" stroke="currentColor" stroke-width="1.5"/>
+                <circle cx="50" cy="50" r="10" fill="currentColor"/>
+              </svg>
+            </div>
+            <h1 class="text-base font-black tracking-wider uppercase">MARINHA DO BRASIL</h1>
+            <input
+              id="reportOrgName"
+              type="text"
+              value="CAPITANIA FLUVIAL DE JUAZEIRO"
+              class="w-full text-center text-xs font-bold uppercase border-b border-transparent hover:border-slate-400 focus:border-slate-900 focus:outline-none bg-transparent"
+              title="Clique para editar o nome da sua Organização Militar ou Órgão"
+            />
+            <h2 class="text-sm font-bold uppercase mt-2">MAPA COMPARATIVO DE PREÇOS</h2>
+            <p class="text-[10px] text-slate-600 max-w-xl mx-auto italic leading-tight">
+              (Conforme Instrução Normativa SEGES/ME nº 65/2021, que dispõe sobre os procedimentos administrativos para a realização de pesquisa de preços para a aquisição de bens e contratação de serviços em geral na Administração Pública Federal)
+            </p>
+          </div>
+
+          <!-- 1. SÉRIE DE PREÇOS COLETADOS (TABELA TÉCNICA OFICIAL) -->
+          <div class="space-y-2">
+            <h3 class="text-xs font-black uppercase text-slate-900">1. Série de preços coletados:</h3>
+            <div class="overflow-x-auto">
+              <table class="w-full border-collapse border border-slate-900 text-[11px]">
+                <thead>
+                  <tr class="bg-slate-100 text-center font-bold">
+                    <th class="border border-slate-900 p-1.5 w-8">ITEM</th>
+                    <th class="border border-slate-900 p-1.5 text-left">DESCRIÇÃO DETALHADA DO OBJETO</th>
+                    <th class="border border-slate-900 p-1.5 w-16">CATMAT / CATSER</th>
+                    <th class="border border-slate-900 p-1.5 w-10">UF</th>
+                    <th class="border border-slate-900 p-1.5 w-12">QTDE</th>
+                    <th class="border border-slate-900 p-1.5 w-12">UNID.</th>
+                    <th class="border border-slate-900 p-1.5 w-20">PREÇO 1</th>
+                    <th class="border border-slate-900 p-1.5 w-20">PREÇO 2</th>
+                    <th class="border border-slate-900 p-1.5 w-20">PREÇO 3</th>
+                    <th class="border border-slate-900 p-1.5 w-24 bg-emerald-50">PREÇO UNIT. ESTIMADO</th>
+                    <th class="border border-slate-900 p-1.5 w-24 bg-emerald-50">PREÇO TOTAL ESTIMADO</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="border border-slate-900 p-1.5 text-center font-bold">1</td>
+                    <td id="sheetItemDesc" class="border border-slate-900 p-1.5 text-left leading-tight">—</td>
+                    <td id="sheetItemCode" class="border border-slate-900 p-1.5 text-center font-mono font-bold">—</td>
+                    <td id="sheetItemUF" class="border border-slate-900 p-1.5 text-center">BR</td>
+                    <td id="sheetItemQty" class="border border-slate-900 p-1.5 text-center font-bold">1</td>
+                    <td id="sheetItemUnit" class="border border-slate-900 p-1.5 text-center font-bold">UN</td>
+                    <td id="sheetP1" class="border border-slate-900 p-1.5 text-right font-mono">R$ 0,00</td>
+                    <td id="sheetP2" class="border border-slate-900 p-1.5 text-right font-mono">R$ 0,00</td>
+                    <td id="sheetP3" class="border border-slate-900 p-1.5 text-right font-mono">R$ 0,00</td>
+                    <td id="sheetUnitEst" class="border border-slate-900 p-1.5 text-right font-mono font-black bg-emerald-50 text-slate-950">R$ 0,00</td>
+                    <td id="sheetTotalEst" class="border border-slate-900 p-1.5 text-right font-mono font-black bg-emerald-50 text-slate-950">R$ 0,00</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="text-right text-[11px] font-bold">
+              Total Geral Estimado: <span id="sheetGrandTotal" class="text-slate-950">R$ 0,00</span>
+            </div>
+          </div>
+
+          <!-- 2. CARACTERIZAÇÃO DAS FONTES CONSULTADAS -->
+          <div class="space-y-2 text-[11px]">
+            <h3 class="text-xs font-black uppercase text-slate-900">2. Caracterização das fontes consultadas (Art. 5º da IN 65/2021):</h3>
+            <p class="text-slate-800 leading-relaxed">
+              <strong>2.1. Inciso I e II – Painel de Preços e Contratações Similares da Administração Pública:</strong><br />
+              As cotações foram extraídas diretamente dos sistemas governamentais Compras.gov.br e Portal Nacional de Contratações Públicas (PNCP), observando intervalo temporal inferior a 1 (um) ano:
+            </p>
+            <div id="sheetSourcesList" class="space-y-1.5 pl-3 border-l-2 border-slate-300"></div>
+          </div>
+
+          <!-- 3. MÉTODO MATEMÁTICO APLICADO -->
+          <div class="space-y-1 text-[11px]">
+            <h3 class="text-xs font-black uppercase text-slate-900">3. Método matemático aplicado para a definição do valor estimado:</h3>
+            <p id="sheetMathText" class="text-slate-800 leading-relaxed">
+              O método utilizado foi a <strong>mediana</strong> da série de preços saneada, após exclusão fundamentada de valores inexequíveis e excessivamente elevados. Coeficiente de Variação Saneado: <strong>0%</strong> (Série Homogênea, CV ≤ 25%).
+            </p>
+          </div>
+
+          <!-- 4. JUSTIFICATIVA METODOLÓGICA -->
+          <div class="space-y-1 text-[11px]">
+            <h3 class="text-xs font-black uppercase text-slate-900">4. Justificativa para a metodologia utilizada (Art. 6º da IN 65/2021):</h3>
+            <p id="sheetLegalText" class="text-slate-800 leading-relaxed text-justify">
+              Adotou-se o saneamento estatístico por desvio padrão para evitar que cotações discrepantes distorçam a estimativa da despesa pública, atendendo ao princípio da vantajosidade e economicidade.
+            </p>
+          </div>
+
+          <!-- 5. BLOCO FORMAL DE ASSINATURAS -->
+          <div class="pt-6 border-t border-slate-300 space-y-8 text-[11px]">
+            <div class="text-right">
+              <span id="sheetCityDate">Juazeiro, BA, na data da assinatura digital.</span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-8 text-center pt-4">
+              <div class="space-y-1">
+                <div class="border-t border-slate-900 w-3/4 mx-auto pt-1"></div>
+                <input id="sig1Nome" type="text" value="ENCARREGADO DO SETOR DE OBTENÇÃO" class="w-full text-center font-bold uppercase text-[11px] bg-transparent focus:outline-none" />
+                <span class="block text-[10px] text-slate-600">Elaborador da Pesquisa de Preços</span>
+              </div>
+              <div class="space-y-1">
+                <div class="border-t border-slate-900 w-3/4 mx-auto pt-1"></div>
+                <input id="sig2Nome" type="text" value="ORDENADOR DE DESPESAS" class="w-full text-center font-bold uppercase text-[11px] bg-transparent focus:outline-none" />
+                <span class="block text-[10px] text-slate-600">Ratificador da Pesquisa de Preços</span>
+              </div>
+            </div>
+
+            <div class="text-center text-[9px] text-slate-500 pt-4">
+              Legislação Vigente: Lei nº 14.133/2021 e Instrução Normativa SEGES/ME nº 65/2021. Documento emitido eletronicamente com trilha auditável no PNCP.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL INFORMATIVO: COMO COMPARTILHAR NA INTERNET COM QUALQUER PESSOA  -->
+  <!-- ===================================================================== -->
+  <div id="shareInfoModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm p-4 flex items-center justify-center no-print">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-xl w-full p-6 space-y-5 border border-slate-200">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-extrabold text-slate-900">🌐 Como Disponibilizar o Sistema para Qualquer Pessoa</h3>
+        <button onclick="closeShareModal()" class="text-slate-400 hover:text-slate-800 font-bold">✕</button>
+      </div>
+
+      <div class="space-y-4 text-xs text-slate-700 leading-relaxed">
+        <div class="bg-emerald-50 border border-emerald-300 p-4 rounded-xl">
+          <strong class="text-emerald-950 block text-xs mb-1">1. Na Mesma Rede Wi-Fi / Intranet da OM (Imediato):</strong>
+          Qualquer pessoa no mesmo Wi-Fi ou cabo de rede pode abrir no celular ou computador agora mesmo pelo link:
+          <div class="mt-1.5 flex items-center gap-2">
+            <span id="modalLanUrl" class="font-mono font-bold bg-white px-2.5 py-1 rounded border border-emerald-400 text-emerald-900 text-xs">http://192.168.1.5:8080</span>
+            <button onclick="copyShareableLink()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1 rounded text-[11px]">Copiar</button>
+          </div>
+        </div>
+
+        <div class="bg-indigo-50 border border-indigo-300 p-4 rounded-xl space-y-1">
+          <strong class="text-indigo-950 block text-xs mb-1">2. Link Público Seguro na Internet (Cloudflare Tunnel - Grátis):</strong>
+          Para gerar um link <code>https://...</code> acessível de qualquer lugar do Brasil sem abrir portas no roteador, basta abrir o terminal e rodar:
+          <pre class="bg-slate-900 text-emerald-400 p-2.5 rounded-lg text-[11px] font-mono mt-1 select-all">npx cloudflared tunnel --url http://localhost:8080</pre>
+          Ele fornecerá uma URL pública como <code>https://sua-sessao.trycloudflare.com</code>.
+        </div>
+
+        <div class="bg-slate-50 border border-slate-300 p-4 rounded-xl space-y-1">
+          <strong class="text-slate-900 block text-xs mb-1">3. Hospedagem Permanente em Nuvem:</strong>
+          O aplicativo é leve e independente. Pode ser publicado em 1 clique em serviços de nuvem gratuitos (Render, Railway, Google Cloud Run ou GovCloud).
+        </div>
+      </div>
+
+      <div class="flex justify-end">
+        <button onclick="closeShareModal()" class="bg-slate-900 hover:bg-slate-800 text-white font-bold px-4 py-2 rounded-xl text-xs">
+          Entendi
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- SCRIPTS PRINCIPAIS                                                    -->
+  <!-- ===================================================================== -->
+  <script>
+    let activePriceReport = null;
+    let activeItemType = "MATERIAL";
+    let activeQuantity = 1;
+
+    // =========================================================================
+    // NAVEGAÇÃO ENTRE ABAS DO APLICATIVO
+    // =========================================================================
+    function openTab(tab) {
+      document.getElementById("viewPrices").classList.toggle("hidden", tab !== "PRICES");
+      document.getElementById("viewRAG").classList.toggle("hidden", tab !== "RAG");
+      document.getElementById("viewLinks").classList.toggle("hidden", tab !== "LINKS");
+
+      const baseCls = "px-3.5 py-2 rounded-lg text-xs font-extrabold text-slate-300 hover:text-white transition";
+      document.getElementById("tabBtnPrices").className = tab === "PRICES"
+        ? "px-3.5 py-2 rounded-lg text-xs font-extrabold bg-emerald-400 text-slate-950 shadow transition"
+        : baseCls;
+      document.getElementById("tabBtnRAG").className = tab === "RAG"
+        ? "px-3.5 py-2 rounded-lg text-xs font-extrabold bg-amber-400 text-slate-950 shadow transition"
+        : baseCls;
+      document.getElementById("tabBtnLinks").className = tab === "LINKS"
+        ? "px-3.5 py-2 rounded-lg text-xs font-extrabold bg-indigo-400 text-slate-950 shadow transition"
+        : baseCls;
+    }
+
+    // =========================================================================
+    // INFORMAÇÕES DE REDE E COMPARTILHAMENTO
+    // =========================================================================
+    async function loadNetworkInfo() {
+      try {
+        const resp = await fetch("/api/v1/network-info");
+        const data = await resp.json();
+        if (data.lan_url) {
+          document.getElementById("headerLanUrl").textContent = data.lan_url;
+          document.getElementById("modalLanUrl").textContent = data.lan_url;
+        }
+      } catch (e) {
+        console.warn("Network info lookup failed", e);
+      }
+    }
+
+    function copyShareableLink() {
+      const url = document.getElementById("headerLanUrl").textContent.trim();
+      navigator.clipboard.writeText(url).then(() => {
+        alert("Link copiado para a área de transferência:\n" + url + "\n\nEnvie este link para qualquer pessoa conectada ao mesmo Wi-Fi para acessar o app!");
+      }).catch(() => {
+        prompt("Copie o link abaixo:", url);
+      });
+    }
+
+    function openShareModal() {
+      document.getElementById("shareInfoModal").classList.remove("hidden");
+    }
+    function closeShareModal() {
+      document.getElementById("shareInfoModal").classList.add("hidden");
+    }
+
+    // =========================================================================
+    // PARSER INTELIGENTE DE PALAVRAS-CHAVE (CATMAT + CATSER DO CNBS)
+    // =========================================================================
+    let searchTimeout = null;
+    function debouncedCatalogSearch() {
+      clearTimeout(searchTimeout);
+      const q = document.getElementById("keywordInput").value.trim();
+      if (q.length < 2) {
+        document.getElementById("catalogResultsBox").classList.add("hidden");
+        return;
+      }
+      searchTimeout = setTimeout(searchCatalogKeywords, 260);
+    }
+
+    async function searchCatalogKeywords() {
+      const q = document.getElementById("keywordInput").value.trim();
+      const itemType = document.getElementById("catalogTypeFilter").value;
+      const box = document.getElementById("catalogResultsBox");
+      const list = document.getElementById("catalogResultsList");
+      const tokSpan = document.getElementById("catalogParsedTokens");
+
+      if (!q) {
+        box.classList.add("hidden");
+        return;
+      }
+
+      box.classList.remove("hidden");
+      tokSpan.textContent = "⏳ Analisando palavras-chave na base oficial CATMAT/CATSER...";
+
+      try {
+        const resp = await fetch(`/api/v1/catalog/search?q=${encodeURIComponent(q)}&type=${encodeURIComponent(itemType)}&limit=30`);
+        const data = await resp.json();
+        const tokens = (data.tokens_parsed || []).join(" + ");
+        tokSpan.innerHTML = `Palavras-chave extraídas pelo Parser: <span class="font-mono bg-indigo-100 text-indigo-900 px-1.5 py-0.5 rounded">${tokens || q}</span> • <strong>${data.total_found}</strong> itens encontrados`;
+
+        if (!data.results || data.results.length === 0) {
+          list.innerHTML = `<div class="p-4 text-xs text-slate-500">Nenhum item encontrado com esses termos. Tente palavras mais simples (ex: "luva", "ar condicionado", "notebook").</div>`;
+          return;
+        }
+
+        list.innerHTML = data.results.map(item => {
+          const isServ = item.item_type === "SERVICO";
+          const badgeCls = isServ ? "bg-purple-100 text-purple-900 border-purple-300" : "bg-sky-100 text-sky-900 border-sky-300";
+          const labelType = isServ ? "CATSER (SERVIÇO)" : "CATMAT (MATERIAL)";
+          return `
+            <div class="p-3 hover:bg-emerald-50/70 transition flex flex-wrap md:flex-nowrap items-center justify-between gap-3">
+              <div class="space-y-0.5">
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] font-black px-2 py-0.5 rounded border ${badgeCls}">${labelType} • Cód. ${item.codigo}</span>
+                  <span class="text-xs font-extrabold text-slate-800">${item.nome_pdm_ou_classe || item.nome_classe || ''}</span>
+                </div>
+                <p class="text-xs text-slate-700 leading-snug">${item.descricao}</p>
+                <span class="text-[10px] text-slate-400 block">Grupo: ${item.nome_grupo || '—'} | Classe: ${item.nome_classe || '—'}</span>
+              </div>
+              <button
+                onclick="selectCatalogItem('${item.item_type}', ${item.codigo})"
+                class="shrink-0 bg-slate-900 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 font-extrabold px-3.5 py-2 rounded-xl text-xs transition shadow-sm"
+              >
+                Usar Cód. ${item.codigo} e Pesquisar ↗
+              </button>
+            </div>
+          `;
+        }).join("");
+      } catch (err) {
+        tokSpan.textContent = "Erro ao consultar catálogo local: " + err.message;
+      }
+    }
+
+    function selectCatalogItem(itemType, codigo, suggestedQty, suggestedUnit) {
+      document.getElementById("inputItemType").value = itemType;
+      document.getElementById("inputCatmat").value = codigo;
+      if (suggestedUnit) {
+        document.getElementById("inputUnit").value = suggestedUnit;
+      } else {
+        document.getElementById("inputUnit").value = "";
+      }
+      if (suggestedQty) {
+        document.getElementById("inputQty").value = suggestedQty;
+      }
+      runLivePriceSearch();
+    }
+
+    function toggleDemandParser() {
+      document.getElementById("demandBatchBox").classList.toggle("hidden");
+    }
+
+    async function runBatchDemandParser() {
+      const text = document.getElementById("demandRawText").value.trim();
+      const out = document.getElementById("demandBatchResults");
+      if (!text) return;
+      out.innerHTML = `<div class="text-xs font-bold text-indigo-900">⏳ Extraindo itens e convertendo para códigos CATMAT / CATSER...</div>`;
+      try {
+        const resp = await fetch("/api/v1/catalog/parse-demand", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text })
+        });
+        const data = await resp.json();
+        const items = data.parsed_items || [];
+        out.innerHTML = items.map(row => {
+          const topMatches = (row.matches || []).slice(0, 3);
+          return `
+            <div class="bg-white p-3 rounded-xl border border-indigo-200 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-extrabold text-slate-900">Linha ${row.line_number}: "${row.original_text}"</span>
+                <span class="text-[11px] font-mono bg-slate-100 px-2 py-0.5 rounded">Qtd sugerida: ${row.suggested_quantity} ${row.suggested_unit}</span>
+              </div>
+              <div class="grid grid-cols-1 gap-1.5">
+                ${topMatches.map(m => `
+                  <div class="flex items-center justify-between bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-xs">
+                    <span>
+                      <strong>[${m.item_type} ${m.codigo}]</strong> ${m.descricao.slice(0, 110)}
+                    </span>
+                    <button
+                      onclick="selectCatalogItem('${m.item_type}', ${m.codigo}, ${row.suggested_quantity}, '')"
+                      class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-2.5 py-1 rounded text-[11px] shrink-0 ml-2"
+                    >
+                      Pesquisar Preço ↗
+                    </button>
+                  </div>
+                `).join("") || '<span class="text-xs text-slate-400">Nenhuma correspondência direta.</span>'}
+              </div>
+            </div>
+          `;
+        }).join("");
+      } catch (e) {
+        out.innerHTML = `<div class="text-xs text-rose-600">Erro: ${e.message}</div>`;
+      }
+    }
+
+    // =========================================================================
+    // FUNÇÃO 1: PESQUISA DE PREÇOS AO VIVO NA API DO GOVERNO (CATMAT E CATSER)
+    // =========================================================================
+    async function runLivePriceSearch() {
+      const code = document.getElementById("inputCatmat").value.trim();
+      const itemType = document.getElementById("inputItemType").value || "MATERIAL";
+      const unit = document.getElementById("inputUnit").value.trim().toUpperCase();
+      const qty = parseFloat(document.getElementById("inputQty").value) || 1;
+      const loading = document.getElementById("priceLoadingBar");
+
+      if (!code) {
+        alert("Digite uma palavra-chave no Parser acima e escolha um item, ou informe um código CATMAT/CATSER numérico.");
+        return;
+      }
+
+      loading.classList.remove("hidden");
+      try {
+        const resp = await fetch(`/api/v1/prices/in65/${code}?item_type=${encodeURIComponent(itemType)}&supply_unit=${encodeURIComponent(unit)}&months_back=12`);
+        const data = await resp.json();
+        loading.classList.add("hidden");
+
+        if (!resp.ok || data.status !== "SUCCESS") {
+          alert(data.message || data.error || "Nenhuma cotação recente encontrada na API de Dados Abertos para este código/unidade.");
+          return;
+        }
+
+        activePriceReport = data.report;
+        activeItemType = itemType;
+        activeQuantity = qty;
+
+        document.getElementById("priceEmptyState").classList.add("hidden");
+        document.getElementById("priceResultSection").classList.remove("hidden");
+        renderPriceReport(data.report, qty, itemType);
+      } catch (err) {
+        loading.classList.add("hidden");
+        alert("Erro ao conectar ao servidor local: " + err.message);
+      }
+    }
+
+    function renderPriceReport(rep, qty, itemType) {
+      const prefix = itemType === "SERVICO" ? "CATSER" : "CATMAT";
+      document.getElementById("resItemTitle").textContent = `${prefix} ${rep.catmat_catser_code} — ${rep.item_description}`;
+      const sm = rep.sanitized_metrics;
+      const rm = rep.raw_metrics;
+      document.getElementById("resCV").textContent = (sm.cv_percent || 0).toFixed(2) + "%";
+      document.getElementById("resRawCV").textContent = `Bruto: ${(rm.cv_percent || 0).toFixed(1)}%`;
+      document.getElementById("resHomogBadge").textContent = rep.is_homogeneous
+        ? "Série Homogênea (≤ 25%)"
+        : "Série Heterogênea (> 25%)";
+      document.getElementById("resMean").textContent = `R$ ${(sm.mean || 0).toFixed(2)}`;
+      document.getElementById("resStd").textContent = `Desvio Padrão: R$ ${(sm.std_deviation || 0).toFixed(2)}`;
+      document.getElementById("resMedian").textContent = `R$ ${(sm.median || 0).toFixed(2)}`;
+      document.getElementById("resMinMax").textContent = `Menor: R$ ${(sm.min_price || 0).toFixed(2)} | Maior: R$ ${(sm.max_price || 0).toFixed(2)}`;
+      document.getElementById("resValidCount").textContent = `${sm.sample_size} Válidas`;
+      document.getElementById("resPurgedCount").textContent = `${rep.purged_quotes.length} Outliers Excluídos`;
+
+      const unitPrice = rep.final_estimated_unit_price;
+      const total = qty * unitPrice;
+      document.getElementById("resAdoptedParam").textContent = `Preço Unitário (${rep.adopted_parameter})`;
+      document.getElementById("resTotalValue").textContent = `R$ ${unitPrice.toFixed(2)}`;
+      document.getElementById("resHeaderTotal").textContent = `R$ ${total.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      document.getElementById("resUnitPriceNote").textContent = `Total: ${qty} ${rep.target_supply_unit || 'UN'} = R$ ${total.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      document.getElementById("resJustification").textContent = rep.legal_methodology_justification;
+
+      const allQuotes = [...rep.valid_quotes, ...rep.purged_quotes];
+      const tbody = document.getElementById("quotesTableBody");
+      tbody.innerHTML = allQuotes.map(q => `
+        <tr class="${q.is_outlier ? 'bg-rose-50/60' : 'hover:bg-slate-50'}">
+          <td class="py-3 px-4">
+            <strong class="block text-slate-900">UASG ${q.buyer_uasg} (${q.buyer_uf})</strong>
+            <span class="text-slate-600">${q.buyer_org_name}</span>
+          </td>
+          <td class="py-3 px-4 font-mono font-bold">${q.purchase_number_year}</td>
+          <td class="py-3 px-4">
+            <strong class="block text-slate-800">${q.supplier_name}</strong>
+            <span class="font-mono text-slate-500">CNPJ: ${q.supplier_cnpj}</span>
+          </td>
+          <td class="py-3 px-4">${q.purchase_date}</td>
+          <td class="py-3 px-4 text-right font-mono font-black ${q.is_outlier ? 'text-rose-700' : 'text-slate-900'}">
+            R$ ${Number(q.unit_price).toFixed(2)}
+          </td>
+          <td class="py-3 px-4 max-w-xs">
+            <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold ${q.is_outlier ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'}">
+              ${q.purge_status}
+            </span>
+            <p class="text-[11px] text-slate-600 mt-0.5">${q.purge_justification || ''}</p>
+          </td>
+          <td class="py-3 px-4 text-center">
+            <a href="${q.pncp_or_compras_uri}" target="_blank" class="bg-slate-900 hover:bg-slate-700 text-amber-300 font-bold px-3 py-1.5 rounded-lg inline-block">
+              Abrir Compra ↗
+            </a>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    function downloadLiveExcel() {
+      const code = document.getElementById("inputCatmat").value.trim();
+      if (!code) return;
+      const itemType = document.getElementById("inputItemType").value || "MATERIAL";
+      const unit = document.getElementById("inputUnit").value.trim().toUpperCase();
+      const qty = document.getElementById("inputQty").value.trim() || "1";
+      window.location.href = `/api/v1/prices/export-xlsx/${code}?item_type=${encodeURIComponent(itemType)}&supply_unit=${encodeURIComponent(unit)}&qty=${encodeURIComponent(qty)}`;
+    }
+
+    // =========================================================================
+    // MODAL DE RELATÓRIO EXECUTIVO OFICIAL (MODELO MARINHA DO BRASIL / PDF)
+    // =========================================================================
+    function openFormalReportModal() {
+      if (!activePriceReport) {
+        alert("Realize uma pesquisa de preços antes de gerar o relatório oficial.");
+        return;
+      }
+      populateFormalReportSheet(activePriceReport, activeQuantity, activeItemType);
+      document.getElementById("formalReportModal").classList.remove("hidden");
+    }
+
+    function closeFormalReportModal() {
+      document.getElementById("formalReportModal").classList.add("hidden");
+    }
+
+    function populateFormalReportSheet(rep, qty, itemType) {
+      document.getElementById("sheetItemDesc").textContent = rep.item_description;
+      document.getElementById("sheetItemCode").textContent = `${itemType === 'SERVICO' ? 'CATSER' : 'CATMAT'} ${rep.catmat_catser_code}`;
+      document.getElementById("sheetItemQty").textContent = qty;
+      document.getElementById("sheetItemUnit").textContent = rep.target_supply_unit || "UN";
+
+      const validQuotes = rep.valid_quotes || [];
+      const p1 = validQuotes[0] ? `R$ ${Number(validQuotes[0].unit_price).toFixed(2)}` : "—";
+      const p2 = validQuotes[1] ? `R$ ${Number(validQuotes[1].unit_price).toFixed(2)}` : "—";
+      const p3 = validQuotes[2] ? `R$ ${Number(validQuotes[2].unit_price).toFixed(2)}` : "—";
+      document.getElementById("sheetP1").textContent = p1;
+      document.getElementById("sheetP2").textContent = p2;
+      document.getElementById("sheetP3").textContent = p3;
+
+      const unitEst = Number(rep.final_estimated_unit_price || 0);
+      const totalEst = qty * unitEst;
+      const strUnit = `R$ ${unitEst.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      const strTotal = `R$ ${totalEst.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+      document.getElementById("sheetUnitEst").textContent = strUnit;
+      document.getElementById("sheetTotalEst").textContent = strTotal;
+      document.getElementById("sheetGrandTotal").textContent = strTotal;
+
+      const sm = rep.sanitized_metrics;
+      document.getElementById("sheetMathText").innerHTML = `
+        O método utilizado foi a <strong>${rep.adopted_parameter.toLowerCase()}</strong> da série de preços saneada,
+        em virtude do comportamento e distribuição dos valores nas contratações públicas similares.
+        Coeficiente de Variação Saneado: <strong>${(sm.cv_percent || 0).toFixed(2)}%</strong>
+        (${rep.is_homogeneous ? "Série Homogênea, CV ≤ 25%" : "Série Heterogênea"}), Desvio Padrão: <strong>R$ ${(sm.std_deviation || 0).toFixed(2)}</strong>.
+        Total de cotações válidas: ${sm.sample_size} | Outliers expurgados: ${rep.purged_quotes.length}.
+      `;
+      document.getElementById("sheetLegalText").textContent = rep.legal_methodology_justification;
+
+      const sourcesList = document.getElementById("sheetSourcesList");
+      sourcesList.innerHTML = validQuotes.slice(0, 5).map((q, idx) => `
+        <div class="flex items-baseline justify-between text-[10px]">
+          <span>
+            <strong>Preço ${idx + 1}:</strong> ${q.supplier_name} (CNPJ: ${q.supplier_cnpj}) • UASG ${q.buyer_uasg} (${q.buyer_uf}) • Compra nº ${q.purchase_number_year}
+          </span>
+          <span class="font-mono font-bold text-slate-900 shrink-0 ml-2">
+            R$ ${Number(q.unit_price).toFixed(2)}
+          </span>
+        </div>
+      `).join("");
+
+      const today = new Date();
+      const meses = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+      document.getElementById("sheetCityDate").textContent = `Juazeiro, BA, ${today.getDate()} de ${meses[today.getMonth()]} de ${today.getFullYear()}.`;
+    }
+
+    function printFormalReport() {
+      window.print();
+    }
+
+    // =========================================================================
+    // GERAR MINUTA DINÂMICA (DFD OU TR) E CARREGAR NO EDITOR ONLINE
+    // =========================================================================
+    async function generateArtifactDraft(type) {
+      if (!activePriceReport) {
+        alert("Realize uma pesquisa de preços antes de gerar a minuta.");
+        return;
+      }
+      const org = document.getElementById("reportOrgName") ? document.getElementById("reportOrgName").value : "MARINHA DO BRASIL - CAPITANIA FLUVIAL DE JUAZEIRO";
+      try {
+        const resp = await fetch("/api/v1/artifacts/generate-draft", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            artifact_type: type,
+            item_description: activePriceReport.item_description,
+            catalog_code: activePriceReport.catmat_catser_code,
+            item_type: activeItemType,
+            unit: activePriceReport.target_supply_unit || "UN",
+            qty: activeQuantity,
+            unit_price: activePriceReport.final_estimated_unit_price,
+            org_name: org
+          })
+        });
+        const data = await resp.json();
+        if (data.status === "SUCCESS") {
+          state.clauses = data.clauses;
+          state.findings = [];
+          document.getElementById("ragViewDocTitle").textContent = data.title;
+          renderRAG();
+          openTab("RAG");
+          alert(`Minuta de ${type} gerada com sucesso com base na sua pesquisa de preços!\n\nVocê já pode revisar, editar online ou baixar o arquivo Word (.docx) marcado em amarelo.`);
+        }
+      } catch (e) {
+        alert("Erro ao gerar minuta: " + e.message);
+      }
+    }
+
+    // =========================================================================
+    // FUNÇÃO 2: AUDITORIA RAG E DOWNLOAD DE WORD MARCADO EM AMARELO
+    // =========================================================================
+    const state = {
+      clauses: [
+        { num: "1.1", title: "CONDIÇÕES GERAIS DA CONTRATAÇÃO", text: "1.1. A presente contratação tem por objeto a aquisição de materiais e equipamentos mediante Dispensa Eletrônica nos termos da Lei nº 14.133/2021.", modified: false },
+        { num: "1.5", title: "CONDIÇÕES GERAIS DA CONTRATAÇÃO (VIGÊNCIA)", text: "1.5. O prazo de vigência da contratação é de 12 (doze) meses contados da emissão da Nota de Empenho , na forma do artigo 105 da Lei n° 14.133, de 2021.", modified: false },
+        { num: "3.2.12", title: "PARTICIPAÇÃO NA DISPENSA (COOPERATIVAS)", text: "3.2.12. Não poderão participar desta dispensa de licitação: sociedades cooperativas.", modified: false },
+        { num: "9.7", title: "HABILITAÇÃO JURÍDICA", text: "9.7. sociedade empresária, sociedade limitada unipessoal – SLU ou sociedade identificada como empresa individual de responsabilidade limitada - EIRELI: inscrição do ato constitutivo...", modified: false }
+      ],
+      findings: [
+        {
+          id: "F1", type: "VULNERABILIDADE_JURIDICA", clause: "1.5", title: "Vigência Incompatível com Entrega Imediata",
+          explanation: "Fixação de 12 meses para compra de entrega imediata em remessa única. A AGU exige que o prazo corresponda apenas ao ciclo de entrega, recebimento e liquidação.",
+          legal: "Art. 6º, X e Art. 105 da Lei 14.133/2021; IN SEGES 81/2022.",
+          aguText: "1.5. O prazo de vigência da contratação é de 60 (sessenta) dias contados da emissão e recebimento da Nota de Empenho, na forma do artigo 105 da Lei nº 14.133, de 2021, compatível com a entrega imediata em remessa única, recebimento provisório e definitivo e liquidação.",
+          resolved: false
+        },
+        {
+          id: "F2", type: "VULNERABILIDADE_JURIDICA", clause: "3.2.12", title: "Restrição Ilegal a Sociedades Cooperativas (TCU)",
+          explanation: "Proibição sumária de cooperativas sem justificativa técnica fere o Art. 16 da Lei 14.133/2021 e a jurisprudência do TCU.",
+          legal: "Art. 16 da Lei nº 14.133/2021; Acórdãos TCU 2.054/2018 e 1.636/2021-Plenário.",
+          aguText: "3.2.12. Será permitida a participação de cooperativas, desde que apresentem demonstrativo de atuação em regime cooperado, com repartição de receitas e despesas entre os cooperados e atendam ao art. 16 da Lei nº 14.133, de 2021.",
+          resolved: false
+        },
+        {
+          id: "F3", type: "VULNERABILIDADE_JURIDICA", clause: "9.7", title: "Menção Anacrônica à Figura Extinta 'EIRELI'",
+          explanation: "A figura jurídica EIRELI foi extinta pelo art. 41 da Lei Federal nº 14.195/2021 e transformada em SLU.",
+          legal: "Art. 66 da Lei 14.133/2021 c/c Art. 41 da Lei 14.195/2021.",
+          aguText: "9.7. Sociedade empresária, sociedade limitada unipessoal – SLU: inscrição do ato constitutivo, estatuto ou contrato social no Registro Público de Empresas Mercantis, a cargo da Junta Comercial da respectiva sede.",
+          resolved: false
+        },
+        {
+          id: "F4", type: "OMISSAO_OBRIGATORIA", clause: "2.3", title: "Ausência de Declaração de Não Fracionamento de Despesa",
+          explanation: "Cláusula obrigatória ausente: toda dispensa por valor (Art. 75, II) exige certidão de que o somatório no exercício não supera o limite do ramo de atividade/PDM.",
+          legal: "Art. 75, § 1º, I e II da Lei nº 14.133/2021; IN SEGES/ME nº 67/2021, Art. 4º, § 2º.",
+          aguText: "2.3. Declara-se, para fins do art. 75, § 1º da Lei nº 14.133/2021, que o valor estimado desta contratação direta foi somado às demais despesas realizadas pela UASG no exercício financeiro com objetos de mesma natureza, não ultrapassando o limite legal de R$ 65.492,11 (Decreto nº 11.871/2023).",
+          resolved: false
+        }
+      ]
+    };
+
+    function renderRAG() {
+      const docEl = document.getElementById("docClauseContainer");
+      const findEl = document.getElementById("findingsContainer");
+      const scoreEl = document.getElementById("ragScoreBadge");
+
+      const pendingCount = state.findings.filter(f => !f.resolved).length;
+      const score = Math.max(0, 100 - pendingCount * 13);
+      scoreEl.textContent = `Conformidade: ${score}%`;
+      scoreEl.className = score === 100
+        ? "bg-emerald-600 text-white px-2.5 py-0.5 rounded font-black"
+        : "bg-rose-600 text-white px-2.5 py-0.5 rounded font-black";
+
+      docEl.innerHTML = state.clauses.map((c, idx) => {
+        const f = state.findings.find(x => x.clause === c.num && !x.resolved);
+        const cls = c.modified
+          ? "bg-yellow-200 border-amber-500 text-slate-950 font-medium shadow-sm"
+          : f
+          ? "bg-rose-50 border-rose-300"
+          : "bg-slate-50 border-slate-200";
+        const badge = c.modified
+          ? `<span class="bg-amber-500 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded font-sans">EDITADO / AGU (GRIFO AMARELO)</span>`
+          : f
+          ? `<span class="bg-rose-600 text-white text-[10px] font-black px-2 py-0.5 rounded font-sans">VULNERABILIDADE</span>`
+          : `<span class="text-emerald-700 text-[10px] font-bold font-sans">✓ CONFORME</span>`;
+
+        return `
+          <div class="p-4 rounded-xl border ${cls} space-y-2">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs font-bold uppercase text-slate-500 font-sans">Cláusula ${c.num} • ${c.title}</span>
+              ${badge}
+            </div>
+            <textarea
+              rows="3"
+              oninput="state.clauses[${idx}].text = this.value; state.clauses[${idx}].modified = true;"
+              class="w-full bg-transparent border-0 p-0 focus:outline-none focus:ring-1 focus:ring-amber-500 text-slate-900 font-serif text-sm leading-relaxed resize-y"
+            >${c.text}</textarea>
+          </div>
+        `;
+      }).join("");
+
+      findEl.innerHTML = state.findings.length === 0
+        ? `<div class="bg-white p-5 rounded-2xl border border-slate-200 text-center text-xs text-slate-500">Nenhuma inconformidade pendente. Documento 100% alinhado aos modelos oficiais da AGU.</div>`
+        : state.findings.map(f => `
+          <div class="bg-white p-5 rounded-2xl border ${f.resolved ? 'border-emerald-300 opacity-75' : 'border-slate-200'} shadow-sm">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-[10px] font-black px-2 py-0.5 rounded uppercase ${f.type === 'VULNERABILIDADE_JURIDICA' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-900'}">${f.type}</span>
+              <span class="text-xs font-mono text-slate-500">Item ${f.clause}</span>
+            </div>
+            <h3 class="font-bold text-sm text-slate-900">${f.title}</h3>
+            <p class="text-xs text-slate-600 mt-1">${f.explanation}</p>
+            <div class="bg-yellow-100 border border-amber-400 p-3 rounded-lg mt-2 text-xs text-slate-900 font-medium">
+              <strong class="block text-[10px] uppercase text-amber-900">Sugestão Oficial da AGU:</strong>
+              "${f.aguText}"
+            </div>
+            <div class="mt-3 flex justify-end">
+              ${f.resolved
+                ? `<span class="text-xs font-bold text-emerald-700">✓ Aplicado em Amarelo</span>`
+                : `<button onclick="applyFinding('${f.id}')" class="bg-slate-900 hover:bg-slate-800 text-amber-300 font-bold text-xs px-4 py-2 rounded-lg transition">Substituir em Amarelo</button>`
+              }
+            </div>
+          </div>
+        `).join("");
+    }
+
+    function applyFinding(id) {
+      const f = state.findings.find(x => x.id === id);
+      if (!f) return;
+      f.resolved = true;
+      const existing = state.clauses.find(c => c.num === f.clause);
+      if (existing) {
+        existing.text = f.aguText;
+        existing.modified = true;
+      } else {
+        state.clauses.push({ num: f.clause, title: f.title, text: f.aguText, modified: true });
+        state.clauses.sort((a, b) => a.num.localeCompare(b.num, undefined, { numeric: true }));
+      }
+      renderRAG();
+    }
+
+    function applyAllAGUFixes() {
+      state.findings.forEach(f => { if (!f.resolved) applyFinding(f.id); });
+    }
+
+    async function handleUploadFile() {
+      const fileInput = document.getElementById("fileInputRAG");
+      if (!fileInput.files.length) return;
+      const file = fileInput.files[0];
+      const reader = new FileReader();
+      reader.onload = async function() {
+        const b64 = reader.result.split(",")[1];
+        const resp = await fetch("/api/v1/rag/audit-upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename: file.name, file_base64: b64, artifact_type: "TR" })
+        });
+        const data = await resp.json();
+        if (data.clauses) {
+          state.clauses = data.clauses;
+          state.findings = (data.findings || []).map((x, idx) => ({
+            id: "UF_" + idx,
+            type: x.finding_type,
+            clause: x.clause_reference,
+            title: x.section_title,
+            explanation: x.explanation,
+            legal: x.legal_foundation,
+            aguText: x.agu_standard_clause,
+            resolved: false
+          }));
+          renderRAG();
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    async function downloadHighlightedWord() {
+      const title = document.getElementById("ragViewDocTitle").textContent || "DOCUMENTO AUDITADO (LEI 14.133/2021)";
+      const resp = await fetch("/api/v1/rag/export-docx", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title,
+          clauses: state.clauses
+        })
+      });
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${title.replace(/[^a-zA-Z0-9_-]/g, "_")}_Marcado_Amarelo.docx`;
+      a.click();
+    }
+
+    // =========================================================================
+    // FUNÇÃO 3: CONSULTA DETALHADA, CERTIDÕES E CHECKLIST POR CNPJ
+    // =========================================================================
+    let allCatalogLinksCategories = [];
+
+    async function loadConsultaDetalhadaLinks() {
+      try {
+        const resp = await fetch("/api/v1/consulta-detalhada/links");
+        const data = await resp.json();
+        allCatalogLinksCategories = data.categorias || [];
+        renderLinksCards(allCatalogLinksCategories);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function renderLinksCards(categories) {
+      const container = document.getElementById("consultaDetalhadaContainer");
+      container.innerHTML = categories.map(cat => `
+        <div class="space-y-3">
+          <div class="flex items-center gap-2 border-l-4 border-indigo-600 pl-3">
+            <h4 class="text-sm font-black uppercase text-slate-800">${cat.categoria}</h4>
+            <span class="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded">${cat.itens.length} serviços</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            ${cat.itens.map(it => `
+              <a href="${it.url}" target="_blank" class="p-4 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-300 transition flex flex-col justify-between gap-3 shadow-sm hover:shadow">
+                <div>
+                  <h5 class="font-extrabold text-xs text-slate-900">${it.titulo}</h5>
+                  <p class="text-[11px] text-slate-600 mt-1 leading-relaxed">${it.descricao}</p>
+                </div>
+                <span class="text-[11px] font-bold text-indigo-700 self-end">Acessar Serviço Oficial ↗</span>
+              </a>
+            `).join("")}
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function filterLinksCards() {
+      const q = document.getElementById("searchLinksFilter").value.toLowerCase().trim();
+      if (!q) {
+        renderLinksCards(allCatalogLinksCategories);
+        return;
+      }
+      const filtered = allCatalogLinksCategories.map(cat => {
+        const matchedItems = cat.itens.filter(it =>
+          it.titulo.toLowerCase().includes(q) ||
+          it.descricao.toLowerCase().includes(q)
+        );
+        return { ...cat, itens: matchedItems };
+      }).filter(cat => cat.itens.length > 0);
+      renderLinksCards(filtered);
+    }
+
+    function formatAndPropagateCnpj() {
+      let v = document.getElementById("supplierCnpjInput").value.replace(/\D/g, "");
+      if (v.length > 14) v = v.slice(0, 14);
+
+      // Atualiza links com o CNPJ digitado se suportado
+      if (v.length === 14) {
+        document.getElementById("btnCnpjRfb").href = `https://servicos.receita.fazenda.gov.br/Servicos/certidao/CNDConjuntaInter/InformaNICertidao.asp?tipo=2&NI=${v}`;
+      } else {
+        document.getElementById("btnCnpjRfb").href = `https://servicos.receita.fazenda.gov.br/Servicos/certidao/CNDConjuntaInter/InformaNICertidao.asp?tipo=2`;
+      }
+    }
+
+    // Inicialização
+    loadNetworkInfo();
+    renderRAG();
+    loadConsultaDetalhadaLinks();
+  </script>
+</body>
+</html>

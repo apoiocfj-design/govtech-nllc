@@ -1,0 +1,18 @@
+{
+  "hosting": {
+    "public": "frontend",
+    "ignore": [
+      "firebase.json",
+      "**/.*"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "run": {
+          "serviceId": "govtech-nllc",
+          "region": "southamerica-east1"
+        }
+      }
+    ]
+  }
+}
