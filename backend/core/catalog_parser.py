@@ -342,7 +342,7 @@ class CNBSCatalogEngine:
         limit: int,
         tokens: List[str],
     ) -> List[Dict[str, Any]]:
-        sql = """
+        base_sql = """
             SELECT
                 c.item_type,
                 c.codigo,
@@ -359,15 +359,30 @@ class CNBSCatalogEngine:
         """
         params: List[Any] = [fts_expr]
         if item_type_upper in ("MATERIAL", "SERVICO"):
-            sql += " AND c.item_type = ?"
+            base_sql += " AND c.item_type = ?"
             params.append(item_type_upper)
 
-        sql += " ORDER BY rank_score LIMIT ?"
-        params.append(limit * 4)
-
+        rows: List[Dict[str, Any]] = []
         try:
-            cur.execute(sql, params)
+            # 1º Passo: Busca códigos modernos na faixa de alta liquidez do Compras.gov.br (450000..625000) e CATSER
+            modern_sql = (
+                base_sql
+                + " AND (c.item_type = 'SERVICO' OR (c.codigo >= 450000 AND c.codigo <= 625000))"
+                + " ORDER BY c.codigo DESC LIMIT ?"
+            )
+            cur.execute(modern_sql, [*params, max(limit * 8, 160)])
             rows = [dict(r) for r in cur.fetchall()]
+
+            if len(rows) < limit:
+                seen = {(r["item_type"], r["codigo"]) for r in rows}
+                fallback_sql = base_sql + " ORDER BY rank_score LIMIT ?"
+                cur.execute(fallback_sql, [*params, max(limit * 6, 120)])
+                for r in cur.fetchall():
+                    d = dict(r)
+                    k = (d["item_type"], d["codigo"])
+                    if k not in seen:
+                        rows.append(d)
+                        seen.add(k)
         except sqlite3.OperationalError:
             return []
 
@@ -382,6 +397,8 @@ class CNBSCatalogEngine:
         def score_row(item: Dict[str, Any]) -> tuple:
             pdm_norm = strip_accents(item.get("nome_pdm_ou_classe", ""))
             desc_norm = strip_accents(item.get("descricao", ""))
+            code_num = int(item.get("codigo") or 0)
+            is_prime_modern = 1 if (item.get("item_type") == "SERVICO" or 450000 <= code_num <= 622000) else 0
             matched_tokens = sum(1 for t in tokens if token_matches_text(t, desc_norm) or token_matches_text(t, pdm_norm))
             pdm_starts_first = 1 if pdm_norm.startswith(first_tok) else 0
             desc_starts_first = 1 if desc_norm.startswith(first_tok) else 0
@@ -389,10 +406,10 @@ class CNBSCatalogEngine:
             first_is_main_noun = 1 if (pdm_words and pdm_words[0] == first_tok) else 0
             return (
                 -matched_tokens,
+                -is_prime_modern,
                 -first_is_main_noun,
                 -pdm_starts_first,
                 -desc_starts_first,
-                len(pdm_norm),
                 item.get("rank_score", 0.0),
             )
 

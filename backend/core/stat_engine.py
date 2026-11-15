@@ -176,6 +176,21 @@ class IN65StatisticalEngine:
             upper_bound_std=round_currency(hi_std),
         )
 
+    @staticmethod
+    def _normalize_unit(u: str) -> str:
+        raw = (u or "").strip().upper()
+        if raw in ("UN", "UND", "UNID", "UNIDADE", "UNIDADES", "PÇ", "PC", "PEÇA", "PECA"):
+            return "UN"
+        if raw in ("PAR", "PARES", "PR"):
+            return "PAR"
+        if raw in ("CX", "CAIXA"):
+            return "CX"
+        if raw in ("PCT", "PACOTE"):
+            return "PCT"
+        if raw in ("SERV", "SERVIÇO", "SERVICO", "SV", ""):
+            return raw or "UN"
+        return raw
+
     def process_quotes(
         self,
         catmat_code: int,
@@ -183,8 +198,41 @@ class IN65StatisticalEngine:
         target_unit: str,
         quotes: List[RawQuoteInput],
     ) -> IN65ResearchReport:
+        from collections import Counter
+
         valid_list: List[AuditedQuoteOutput] = []
         purged_list: List[AuditedQuoteOutput] = []
+
+        positive_quotes = [q for q in quotes if q.unit_price is not None and q.unit_price > 0]
+        if not positive_quotes:
+            raise ValueError("Nenhuma cotação com valor unitário positivo encontrada nos últimos 12 meses.")
+
+        req_unit = (target_unit or "").strip().upper()
+        req_norm = self._normalize_unit(req_unit) if req_unit else ""
+
+        # Verifica se há cotações compatíveis com a unidade solicitada; se não houver (ou se vazia),
+        # adota automaticamente a unidade de fornecimento predominante na amostra oficial do Compras.gov.br.
+        matching_req = [
+            q for q in positive_quotes
+            if req_norm and (
+                q.supply_unit.strip().upper() == req_unit
+                or self._normalize_unit(q.supply_unit) == req_norm
+            )
+        ]
+        if matching_req:
+            effective_target_unit = matching_req[0].supply_unit.strip().upper() or req_unit
+            effective_norm = self._normalize_unit(effective_target_unit)
+        else:
+            unit_counts = Counter(self._normalize_unit(q.supply_unit) for q in positive_quotes)
+            effective_norm = unit_counts.most_common(1)[0][0]
+            # Preserva a sigla original mais frequente daquele grupo
+            raw_for_norm = [
+                q.supply_unit.strip().upper()
+                for q in positive_quotes
+                if self._normalize_unit(q.supply_unit) == effective_norm and q.supply_unit.strip()
+            ]
+            effective_target_unit = Counter(raw_for_norm).most_common(1)[0][0] if raw_for_norm else (req_unit or "UN")
+        target_unit = effective_target_unit
 
         # 1. Separar cotações com Unidade de Fornecimento divergente ou preço inválido (<= 0)
         same_unit_quotes: List[RawQuoteInput] = []
@@ -198,7 +246,10 @@ class IN65StatisticalEngine:
                         purge_justification="Valor unitário nulo ou menor/igual a zero.",
                     )
                 )
-            elif q.supply_unit.strip().upper() != target_unit.strip().upper():
+            elif (
+                q.supply_unit.strip().upper() != target_unit.strip().upper()
+                and self._normalize_unit(q.supply_unit) != effective_norm
+            ):
                 purged_list.append(
                     AuditedQuoteOutput(
                         **asdict(q),

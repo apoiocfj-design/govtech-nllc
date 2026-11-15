@@ -351,7 +351,7 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 self._send_json(400, {"error": "Informe um código CATMAT/CATSER numérico."})
                 return
             catalog_code = int(code_str)
-            supply_unit = qs.get("supply_unit", ["UN"])[0]
+            supply_unit = qs.get("supply_unit", [""])[0]
             item_type = qs.get("item_type", ["MATERIAL"])[0]
             months_back = int(qs.get("months_back", ["12"])[0])
             uf = qs.get("uf", [None])[0] or None
@@ -373,9 +373,9 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
         if path.startswith("/api/v1/prices/export-xlsx/"):
             code_str = path.rstrip("/").split("/")[-1]
             catalog_code = int(code_str) if code_str.isdigit() else 475109
-            supply_unit = qs.get("supply_unit", ["UN"])[0]
+            supply_unit = qs.get("supply_unit", [""])[0]
             item_type = qs.get("item_type", ["MATERIAL"])[0]
-            quantity = int(qs.get("qty", ["1"])[0])
+            quantity = int(float(qs.get("qty", qs.get("quantity", ["1"]))[0]))
             months_back = int(qs.get("months_back", ["12"])[0])
             uf = qs.get("uf", [None])[0] or None
 
@@ -405,9 +405,9 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
         if path.startswith("/api/v1/prices/export-docx/"):
             code_str = path.rstrip("/").split("/")[-1]
             catalog_code = int(code_str) if code_str.isdigit() else 475109
-            supply_unit = qs.get("supply_unit", ["UN"])[0]
+            supply_unit = qs.get("supply_unit", [""])[0]
             item_type = qs.get("item_type", ["MATERIAL"])[0]
-            quantity = int(qs.get("qty", ["1"])[0])
+            quantity = int(float(qs.get("qty", qs.get("quantity", ["1"]))[0]))
             months_back = int(qs.get("months_back", ["12"])[0])
             uf = qs.get("uf", [None])[0] or None
             elaborador = qs.get("elaborador", ["ENCARREGADO DO SETOR DE OBTENÇÃO"])[0]
@@ -446,9 +446,9 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
         if path.startswith("/api/v1/prices/export-pdf/"):
             code_str = path.rstrip("/").split("/")[-1]
             catalog_code = int(code_str) if code_str.isdigit() else 475109
-            supply_unit = qs.get("supply_unit", ["UN"])[0]
+            supply_unit = qs.get("supply_unit", [""])[0]
             item_type = qs.get("item_type", ["MATERIAL"])[0]
-            quantity = int(qs.get("qty", ["1"])[0])
+            quantity = int(float(qs.get("qty", qs.get("quantity", ["1"]))[0]))
             months_back = int(qs.get("months_back", ["12"])[0])
             uf = qs.get("uf", [None])[0] or None
             elaborador = qs.get("elaborador", ["ENCARREGADO DO SETOR DE OBTENÇÃO"])[0]
@@ -487,9 +487,9 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
         if path.startswith("/api/v1/prices/export-justificativa-docx/"):
             code_str = path.rstrip("/").split("/")[-1]
             catalog_code = int(code_str) if code_str.isdigit() else 475109
-            supply_unit = qs.get("supply_unit", ["UN"])[0]
+            supply_unit = qs.get("supply_unit", [""])[0]
             item_type = qs.get("item_type", ["MATERIAL"])[0]
-            quantity = int(qs.get("qty", ["1"])[0])
+            quantity = int(float(qs.get("qty", qs.get("quantity", ["1"]))[0]))
             months_back = int(qs.get("months_back", ["12"])[0])
             uf = qs.get("uf", [None])[0] or None
             ordenador = qs.get("ordenador", ["ORDENADOR DE DESPESAS"])[0]
@@ -526,9 +526,9 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
         if path.startswith("/api/v1/prices/export-justificativa-pdf/"):
             code_str = path.rstrip("/").split("/")[-1]
             catalog_code = int(code_str) if code_str.isdigit() else 475109
-            supply_unit = qs.get("supply_unit", ["UN"])[0]
+            supply_unit = qs.get("supply_unit", [""])[0]
             item_type = qs.get("item_type", ["MATERIAL"])[0]
-            quantity = int(qs.get("qty", ["1"])[0])
+            quantity = int(float(qs.get("qty", qs.get("quantity", ["1"]))[0]))
             months_back = int(qs.get("months_back", ["12"])[0])
             uf = qs.get("uf", [None])[0] or None
             ordenador = qs.get("ordenador", ["ORDENADOR DE DESPESAS"])[0]
@@ -579,6 +579,18 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 self._send_json(400, {"error": str(exc)})
             return
 
+        # 0.005 Verificação Rápida em Paralelo de Demanda (Últimos 12 Meses) no Compras.gov.br
+        if parsed.path == "/api/v1/catalog/check-demand":
+            try:
+                data = json.loads(raw_body)
+                items_in = data.get("items", [])
+                months_back = int(data.get("months_back", 12))
+                demand_map = price_controller.check_12m_demand_batch(items_in, months_back=months_back)
+                self._send_json(200, {"status": "SUCCESS", "demand": demand_map})
+            except Exception as exc:
+                self._send_json(500, {"error": str(exc)})
+            return
+
         # 0.01 Pesquisa Automatizada de Preços em Lote (Múltiplos CATMAT/CATSER)
         if parsed.path == "/api/v1/prices/batch-research":
             try:
@@ -593,9 +605,10 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 for idx, it in enumerate(items_in, start=1):
                     code_raw = it.get("code")
                     catalog_code = int(code_raw) if str(code_raw).isdigit() else 475109
-                    unit = str(it.get("unit", "UN")).strip().upper() or "UN"
+                    unit = str(it.get("unit", "")).strip().upper()
                     item_type = str(it.get("type", "MATERIAL")).strip().upper()
                     qty = int(it.get("qty", 1) or 1)
+                    desc_fallback = str(it.get("description") or "").strip()
 
                     res = price_controller.execute_in65_research(
                         catalog_code=catalog_code,
@@ -604,17 +617,41 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                         months_back=months_back,
                         uf=uf,
                     )
-                    rep = res.get("report") or {}
-                    unit_est = float(rep.get("final_estimated_unit_price", 0.0))
-                    total_est = qty * unit_est
-                    total_lote += total_est
+                    rep = res.get("report")
+                    has_data = bool(res.get("status") == "SUCCESS" and rep and rep.get("sanitized_metrics"))
+
+                    if has_data:
+                        unit_est = float(rep.get("final_estimated_unit_price", 0.0))
+                        total_est = qty * unit_est
+                        total_lote += total_est
+                        resolved_unit = rep.get("target_supply_unit") or unit or "UN"
+                    else:
+                        unit_est = 0.0
+                        total_est = 0.0
+                        resolved_unit = unit or "UN"
+                        if not desc_fallback:
+                            cat_hit = catalog_engine.search(str(catalog_code), item_type=item_type, limit=1)
+                            hit_rows = cat_hit.get("results") or []
+                            desc_fallback = hit_rows[0].get("descricao") if hit_rows else f"Item {catalog_code}"
+                        rep = {
+                            "catmat_catser_code": catalog_code,
+                            "item_description": desc_fallback,
+                            "target_supply_unit": resolved_unit,
+                            "valid_quotes": [],
+                            "purged_quotes": [],
+                            "sanitized_metrics": None,
+                            "raw_metrics": None,
+                        }
 
                     results.append({
                         "item_index": idx,
                         "code": catalog_code,
                         "type": item_type,
-                        "unit": unit,
+                        "unit": resolved_unit,
                         "qty": qty,
+                        "has_data": has_data,
+                        "status": res.get("status", "NO_DATA"),
+                        "message": res.get("message", "Sem demanda nos últimos 12m (Não converge)"),
                         "unit_price": unit_est,
                         "total_price": total_est,
                         "report": rep,
@@ -645,10 +682,10 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 for idx, it in enumerate(items_in, start=1):
                     rep = it.get("report")
                     qty = int(it.get("qty", 1) or 1)
-                    if not rep:
+                    if not rep or not rep.get("sanitized_metrics"):
                         code_raw = it.get("code")
                         catalog_code = int(code_raw) if str(code_raw).isdigit() else 475109
-                        unit = str(it.get("unit", "UN")).strip().upper() or "UN"
+                        unit = str(it.get("unit", "")).strip().upper()
                         item_type = str(it.get("type", "MATERIAL")).strip().upper()
                         res = price_controller.execute_in65_research(
                             catalog_code=catalog_code,
@@ -659,6 +696,9 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                         )
                         rep = res.get("report") or {}
 
+                    if not rep or not rep.get("sanitized_metrics"):
+                        continue
+
                     items_results.append({
                         "item_index": idx,
                         "code": rep.get("catmat_catser_code", it.get("code")),
@@ -667,6 +707,10 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                         "qty": qty,
                         "report": rep,
                     })
+
+                if not items_results:
+                    self._send_json(404, {"error": "Nenhum item do lote possui cotações válidas para exportação."})
+                    return
 
                 zip_bytes = build_batch_zip_bytes(
                     items_results,
@@ -692,10 +736,10 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 for idx, it in enumerate(items_in, start=1):
                     rep = it.get("report")
                     qty = int(it.get("qty", 1) or 1)
-                    if not rep:
+                    if not rep or not rep.get("sanitized_metrics"):
                         code_raw = it.get("code")
                         catalog_code = int(code_raw) if str(code_raw).isdigit() else 475109
-                        unit = str(it.get("unit", "UN")).strip().upper() or "UN"
+                        unit = str(it.get("unit", "")).strip().upper()
                         item_type = str(it.get("type", "MATERIAL")).strip().upper()
                         res = price_controller.execute_in65_research(
                             catalog_code=catalog_code,
@@ -705,6 +749,9 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                             uf=uf,
                         )
                         rep = res.get("report") or {}
+
+                    if not rep or not rep.get("sanitized_metrics"):
+                        continue
 
                     items_results.append({
                         "item_index": idx,

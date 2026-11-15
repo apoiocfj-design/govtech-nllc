@@ -276,6 +276,101 @@ class PriceResearchController:
     def __init__(self):
         self.api_client = GovProcurementAPIClient()
         self.stat_engine = IN65StatisticalEngine(cv_threshold_percent=25.0, std_dev_multiplier=1.0)
+        self._demand_cache: Dict[str, Dict[str, Any]] = {}
+
+    def check_single_demand(self, catalog_code: int, item_type: str = "MATERIAL", months_back: int = 12) -> Dict[str, Any]:
+        """Verifica rapidamente na API Compras.gov.br se o CATMAT/CATSER teve compras nos últimos 12 meses."""
+        import statistics
+        from collections import Counter
+
+        itype = (item_type or "MATERIAL").strip().upper()
+        key = f"{itype}:{catalog_code}"
+        if key in self._demand_cache:
+            return self._demand_cache[key]
+
+        is_material = itype == "MATERIAL"
+        endpoint = (
+            "/modulo-pesquisa-preco/1_consultarMaterial"
+            if is_material
+            else "/modulo-pesquisa-preco/3_consultarServico"
+        )
+        url = f"{self.api_client.COMPRAS_GOV_BASE_URL}{endpoint}"
+        end_date = date.today()
+        start_date = end_date - timedelta(days=30 * months_back)
+
+        params: Dict[str, Any] = {
+            "pagina": 1,
+            "tamanhoPagina": 15,
+            "dataCompraInicio": start_date.isoformat(),
+            "dataCompraFim": end_date.isoformat(),
+        }
+        if is_material:
+            params["tipo"] = "codigoItemCatalogo"
+            params["codigo"] = str(catalog_code)
+        else:
+            params["codigoItemCatalogo"] = int(catalog_code)
+
+        try:
+            resp = self.api_client.session.get(url, params=params, timeout=7)
+            if resp.status_code == 200:
+                payload = resp.json()
+                rows = payload.get("resultado") or []
+                total_reg = int(payload.get("totalRegistros") or len(rows))
+                pos_prices = [float(r.get("precoUnitario") or 0) for r in rows if float(r.get("precoUnitario") or 0) > 0]
+                units = [str(r.get("siglaUnidadeFornecimento") or "").strip().upper() for r in rows if r.get("siglaUnidadeFornecimento")]
+                pred_unit = Counter(units).most_common(1)[0][0] if units else "UN"
+                med_price = round(statistics.median(pos_prices), 2) if pos_prices else None
+                res_obj = {
+                    "key": key,
+                    "code": int(catalog_code),
+                    "item_type": itype,
+                    "has_demand": total_reg > 0 and len(pos_prices) > 0,
+                    "total_quotes_12m": total_reg if pos_prices else 0,
+                    "predominant_unit": pred_unit,
+                    "sample_median": med_price,
+                }
+            else:
+                res_obj = {
+                    "key": key,
+                    "code": int(catalog_code),
+                    "item_type": itype,
+                    "has_demand": False,
+                    "total_quotes_12m": 0,
+                    "predominant_unit": "UN",
+                    "sample_median": None,
+                }
+        except Exception:
+            res_obj = {
+                "key": key,
+                "code": int(catalog_code),
+                "item_type": itype,
+                "has_demand": False,
+                "total_quotes_12m": 0,
+                "predominant_unit": "UN",
+                "sample_median": None,
+            }
+
+        self._demand_cache[key] = res_obj
+        return res_obj
+
+    def check_12m_demand_batch(self, items: List[Dict[str, Any]], months_back: int = 12) -> Dict[str, Dict[str, Any]]:
+        """Executa verificação paralela de demanda (últimos 12 meses) para uma lista de códigos CATMAT/CATSER."""
+        import concurrent.futures
+
+        def _worker(it: Dict[str, Any]) -> Dict[str, Any]:
+            c = int(it.get("code") or it.get("codigo") or 0)
+            t = str(it.get("type") or it.get("item_type") or "MATERIAL").strip().upper()
+            return self.check_single_demand(c, t, months_back=months_back)
+
+        out: Dict[str, Dict[str, Any]] = {}
+        valid_items = [it for it in items if str(it.get("code") or it.get("codigo") or "").isdigit()]
+        if not valid_items:
+            return out
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            for r in executor.map(_worker, valid_items[:30]):
+                out[r["key"]] = r
+        return out
 
     def execute_in65_research(
         self,
@@ -304,15 +399,22 @@ class PriceResearchController:
             return {
                 "status": "NO_DATA",
                 "catmat_catser_code": catalog_code,
-                "message": "Nenhuma compra pública homologada encontrada para os filtros informados nos últimos 12 meses.",
+                "message": "Sem compras homologadas nos últimos 12 meses — pesquisa sem convergência.",
             }
 
-        report: IN65ResearchReport = self.stat_engine.process_quotes(
-            catmat_code=catalog_code,
-            item_description=description,
-            target_unit=target_supply_unit,
-            quotes=raw_quotes,
-        )
+        try:
+            report: IN65ResearchReport = self.stat_engine.process_quotes(
+                catmat_code=catalog_code,
+                item_description=description,
+                target_unit=target_supply_unit,
+                quotes=raw_quotes,
+            )
+        except ValueError as exc:
+            return {
+                "status": "NO_DATA",
+                "catmat_catser_code": catalog_code,
+                "message": str(exc),
+            }
 
         return {
             "status": "SUCCESS",
