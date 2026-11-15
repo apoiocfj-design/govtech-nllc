@@ -688,3 +688,517 @@ def build_in65_pdf_bytes(
 
     doc.build(story)
     return buf.getvalue()
+
+
+# =============================================================================
+# 3. GERADOR DO DESPACHO DE JUSTIFICATIVA CIRCUNSTANCIADA (WORD .DOCX)
+#    (Art. 6º, § 5º da Instrução Normativa SEGES/ME nº 65/2021)
+# =============================================================================
+
+def build_in65_justificativa_docx_bytes(
+    report: Dict[str, Any],
+    quantity: int,
+    om_name: str = "CAPITANIA FLUVIAL DE JUAZEIRO",
+    ordenador_nome: str = "ORDENADOR DE DESPESAS",
+    motivo_custom: str = None,
+) -> bytes:
+    """Gera em Word (.docx) o Despacho Formal de Justificativa Circunstanciada (Art. 6º, § 5º da IN 65/2021)."""
+    doc = docx.Document()
+
+    for section in doc.sections:
+        section.top_margin = Inches(0.8)
+        section.bottom_margin = Inches(0.8)
+        section.left_margin = Inches(0.8)
+        section.right_margin = Inches(0.8)
+
+    # CABEÇALHO OFICIAL COM BRASÃO
+    if os.path.exists(BRASAO_PATH):
+        p_img = doc.add_paragraph()
+        p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_img.paragraph_format.space_after = Pt(4)
+        run_img = p_img.add_run()
+        run_img.add_picture(BRASAO_PATH, width=Inches(1.05))
+
+    p_head = doc.add_paragraph()
+    p_head.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_head.paragraph_format.line_spacing = 1.05
+    p_head.paragraph_format.space_after = Pt(12)
+
+    lines = [
+        ("REPÚBLICA FEDERATIVA DO BRASIL", 10.5, True),
+        ("MINISTÉRIO DA DEFESA", 10, True),
+        ("COMANDO DA MARINHA", 10, True),
+        (om_name.upper(), 9.5, False),
+        ("GABINETE DO ORDENADOR DE DESPESAS", 9, False),
+    ]
+    for text, sz, bold in lines:
+        r = p_head.add_run(f"{text}\n")
+        r.font.name = "Calibri"
+        r.font.size = Pt(sz)
+        r.font.bold = bold
+        r.font.color.rgb = RGBColor(15, 23, 42)
+
+    # TÍTULO FORMAL DO DESPACHO
+    p_title = doc.add_paragraph()
+    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_title.paragraph_format.space_before = Pt(4)
+    p_title.paragraph_format.space_after = Pt(4)
+    r_tit = p_title.add_run("DESPACHO DE JUSTIFICATIVA CIRCUNSTANCIADA DA AUTORIDADE COMPETENTE\n")
+    r_tit.font.name = "Calibri"
+    r_tit.font.size = Pt(11.5)
+    r_tit.font.bold = True
+    r_tit.font.color.rgb = RGBColor(15, 23, 42)
+
+    r_sub = p_title.add_run(
+        "Excepcionalidade do Art. 6º, § 5º da Instrução Normativa SEGES/ME nº 65/2021 c/c Art. 23 da Lei nº 14.133/2021\n"
+        "(Fixação de preço estimado com base em menos de três cotações válidas)"
+    )
+    r_sub.font.name = "Calibri"
+    r_sub.font.size = Pt(9.5)
+    r_sub.font.italic = True
+    r_sub.font.color.rgb = RGBColor(71, 85, 105)
+
+    doc.add_paragraph().paragraph_format.space_after = Pt(4)
+
+    item_code = report.get("catmat_catser_code", "—")
+    item_desc = report.get("item_description", "—")
+    unit_str = report.get("target_supply_unit", "UN")
+    unit_price = float(report.get("final_estimated_unit_price", 0.0))
+    total_price = quantity * unit_price
+    valid_quotes = report.get("valid_quotes", [])
+    n_quotes = len(valid_quotes)
+
+    # 1. DO OBJETO DEMANDADO
+    p_s1 = doc.add_paragraph()
+    p_s1.paragraph_format.space_before = Pt(8)
+    p_s1.paragraph_format.space_after = Pt(4)
+    p_s1.add_run("1. IDENTIFICAÇÃO DO OBJETO E VALOR ESTIMADO").font.bold = True
+
+    t_item = doc.add_table(rows=4, cols=2)
+    t_item.alignment = WD_TABLE_ALIGNMENT.CENTER
+    t_data = [
+        ("Código do Item (CATMAT/CATSER):", f"{item_code}"),
+        ("Descrição Detalhada do Objeto:", f"{item_desc}"),
+        ("Quantidade Solicitada & Unidade:", f"{quantity} {unit_str}"),
+        ("Preço Unitário / Valor Total Estimado:", f"{_format_brl(unit_price)} un. | Total: {_format_brl(total_price)}"),
+    ]
+    for r_idx, (k, v) in enumerate(t_data):
+        row = t_item.rows[r_idx]
+        c0, c1 = row.cells[0], row.cells[1]
+        c0.width, c1.width = Inches(2.4), Inches(4.5)
+        set_cell_margins(c0, 60, 60, 100, 100)
+        set_cell_margins(c1, 60, 60, 100, 100)
+        set_cell_background(c0, "F1F5F9")
+        set_cell_background(c1, "FFFFFF" if r_idx < 3 else "FEF3C7")
+        p0 = c0.paragraphs[0]
+        p0.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        r0 = p0.add_run(k)
+        r0.font.bold = True
+        r0.font.size = Pt(9)
+        p1 = c1.paragraphs[0]
+        p1.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        r1 = p1.add_run(v)
+        r1.font.bold = (r_idx == 3)
+        r1.font.size = Pt(9.5)
+
+    # 2. DAS COTAÇÕES VÁLIDAS OBTIDAS
+    p_s2 = doc.add_paragraph()
+    p_s2.paragraph_format.space_before = Pt(12)
+    p_s2.paragraph_format.space_after = Pt(4)
+    p_s2.add_run(f"2. COTAÇÕES VÁLIDAS IDENTIFICADAS ({n_quotes} cotação(ões) obtida(s))").font.bold = True
+
+    t_quotes = doc.add_table(rows=1 + max(1, n_quotes), cols=5)
+    t_quotes.alignment = WD_TABLE_ALIGNMENT.CENTER
+    q_widths = (Inches(0.6), Inches(1.5), Inches(1.3), Inches(2.2), Inches(1.3))
+    q_headers = ["Nº", "UASG / Órgão", "Compra nº", "Fornecedor Vencedor & CNPJ", "Preço Unit."]
+    for c_idx, h in enumerate(q_headers):
+        cell = t_quotes.rows[0].cells[c_idx]
+        cell.width = q_widths[c_idx]
+        set_cell_background(cell, "1E293B")
+        set_cell_margins(cell, 60, 60, 60, 60)
+        p = cell.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        r = p.add_run(h)
+        r.font.bold = True
+        r.font.size = Pt(8.5)
+        r.font.color.rgb = RGBColor(255, 255, 255)
+
+    for idx, q in enumerate(valid_quotes):
+        row = t_quotes.rows[1 + idx]
+        vals = [
+            f"{idx + 1:02d}",
+            f"{q.get('buyer_uasg', '')} - {q.get('buyer_uf', '')}\n{q.get('buyer_org_name', '')[:25]}",
+            f"{q.get('purchase_number_year', '')}\n({q.get('purchase_date', '')})",
+            f"{q.get('supplier_name', '')[:35]}\nCNPJ: {q.get('supplier_cnpj', '')}",
+            _format_brl(float(q.get("unit_price", 0.0))),
+        ]
+        for c_idx, val in enumerate(vals):
+            cell = row.cells[c_idx]
+            cell.width = q_widths[c_idx]
+            set_cell_background(cell, "FFFFFF" if idx % 2 == 0 else "F8FAFC")
+            set_cell_margins(cell, 60, 60, 60, 60)
+            p = cell.paragraphs[0]
+            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if c_idx == 4 else (WD_ALIGN_PARAGRAPH.CENTER if c_idx in (0, 2) else WD_ALIGN_PARAGRAPH.LEFT)
+            r = p.add_run(val)
+            r.font.size = Pt(8)
+            if c_idx == 4:
+                r.font.bold = True
+
+    # 3. DA MOTIVAÇÃO E FUNDAMENTAÇÃO CIRCUNSTANCIADA
+    p_s3 = doc.add_paragraph()
+    p_s3.paragraph_format.space_before = Pt(12)
+    p_s3.paragraph_format.space_after = Pt(4)
+    p_s3.add_run("3. DA MOTIVAÇÃO E FUNDAMENTAÇÃO CIRCUNSTANCIADA").font.bold = True
+
+    just_paragraphs = [
+        ("I. Da Abrangência da Pesquisa Pública:",
+         "A pesquisa de preços foi conduzida de forma ampla e irrestrita nos bancos de dados oficiais do Governo Federal (Compras.gov.br e Portal Nacional de Contratações Públicas - PNCP), alcançando contratações executadas por órgãos e entidades da Administração Pública em âmbito nacional no período regulamentar de até 1 (um) ano."),
+        ("II. Da Escassez de Registros Similares no Mercado Público:",
+         f"Não obstante a busca exaustiva efetuada, constatou-se a disponibilidade de apenas {n_quotes} cotação(ões) válida(s) apta(s) a compor a cesta de preços para o item especificado, em virtude da sazonalidade, especificidade do objeto demandado ou ausência de contratações análogas recentes por outros entes públicos."),
+        ("III. Da Razoabilidade e Economicidade dos Preços Obtidos:",
+         f"Os valores apurados ({_format_brl(unit_price)} un.) foram submetidos à análise crítica de exequibilidade e compatibilidade mercadológica, não se vislumbrando qualquer indício de sobrepreço ou distorção econômica, atendendo rigorosamente aos princípios da economicidade, eficiência e vantajosidade insculpidos no Art. 5º da Lei nº 14.133/2021."),
+        ("IV. Da Necessidade Inadiável do Atendimento:",
+         "A paralisação ou dilação excessiva do procedimento de obtenção acarretaria grave prejuízo à continuidade das atividades finalísticas e ao regular funcionamento operacional desta Organização Militar, justificando-se a excepcionalidade."),
+    ]
+    for tit, corpo in just_paragraphs:
+        p_j = doc.add_paragraph()
+        p_j.paragraph_format.line_spacing = 1.15
+        p_j.paragraph_format.space_after = Pt(4)
+        p_j.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        r_tit_j = p_j.add_run(f"{tit} ")
+        r_tit_j.font.bold = True
+        r_tit_j.font.size = Pt(9)
+        r_corpo = p_j.add_run(corpo)
+        r_corpo.font.size = Pt(9)
+
+    # 4. DECISÃO DA AUTORIDADE COMPETENTE
+    p_s4 = doc.add_paragraph()
+    p_s4.paragraph_format.space_before = Pt(10)
+    p_s4.paragraph_format.space_after = Pt(4)
+    p_s4.add_run("4. DECISÃO DA AUTORIDADE COMPETENTE").font.bold = True
+
+    p_dec = doc.add_paragraph()
+    p_dec.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    p_dec.paragraph_format.line_spacing = 1.15
+    p_dec.paragraph_format.space_after = Pt(12)
+    r_dec = p_dec.add_run(
+        f"Diante dos elementos técnicos e fáticos coligidos e com esteio no permissivo do Art. 6º, § 5º da Instrução Normativa SEGES/ME nº 65/2021, "
+        f"AUTORIZO e RATIFICO, em caráter excepcional e devidamente circunstanciado, a adoção do preço estimado com base na(s) {n_quotes} cotação(ões) "
+        f"válida(s) identificada(s), fixando o valor de referência em {_format_brl(unit_price)} por unidade (total: {_format_brl(total_price)}), "
+        f"determinando o regular prosseguimento da instrução processual."
+    )
+    r_dec.font.bold = True
+    r_dec.font.size = Pt(9)
+
+    # FECHAMENTO E ASSINATURA
+    today = datetime.now()
+    mes_nome = _get_mes_extenso(today.month)
+    data_str = f"Juazeiro, BA, {today.day} de {mes_nome} de {today.year}."
+
+    p_dt = doc.add_paragraph()
+    p_dt.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    p_dt.paragraph_format.space_before = Pt(14)
+    p_dt.paragraph_format.space_after = Pt(28)
+    r_dt = p_dt.add_run(data_str)
+    r_dt.font.size = Pt(9.5)
+
+    p_sig = doc.add_paragraph()
+    p_sig.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_sig.add_run("____________________________________________________\n").font.size = Pt(9)
+    r_sig1 = p_sig.add_run(f"{ordenador_nome}\n")
+    r_sig1.font.bold = True
+    r_sig1.font.size = Pt(9.5)
+    r_sig2 = p_sig.add_run("Ordenador de Despesas / Autoridade Competente\n")
+    r_sig2.font.size = Pt(8.5)
+    r_sig2.font.color.rgb = RGBColor(100, 116, 139)
+    r_sig3 = p_sig.add_run(om_name.upper())
+    r_sig3.font.size = Pt(8)
+    r_sig3.font.color.rgb = RGBColor(100, 116, 139)
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+# =============================================================================
+# 4. GERADOR DO DESPACHO DE JUSTIFICATIVA CIRCUNSTANCIADA (PDF A4 OFICIAL)
+# =============================================================================
+
+def build_in65_justificativa_pdf_bytes(
+    report: Dict[str, Any],
+    quantity: int,
+    om_name: str = "CAPITANIA FLUVIAL DE JUAZEIRO",
+    ordenador_nome: str = "ORDENADOR DE DESPESAS",
+    motivo_custom: str = None,
+) -> bytes:
+    """Gera em PDF A4 formal o Despacho de Justificativa Circunstanciada (Art. 6º, § 5º da IN 65/2021)."""
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=1.5 * cm,
+        rightMargin=1.5 * cm,
+        topMargin=1.2 * cm,
+        bottomMargin=1.2 * cm,
+    )
+
+    styles = getSampleStyleSheet()
+
+    st_header_main = ParagraphStyle(
+        "JustHeaderMain",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=10,
+        leading=12,
+        alignment=1,
+        textColor=colors.HexColor("#0f172a"),
+    )
+
+    st_header_sub = ParagraphStyle(
+        "JustHeaderSub",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=8.5,
+        leading=11,
+        alignment=1,
+        textColor=colors.HexColor("#334155"),
+    )
+
+    st_doc_title = ParagraphStyle(
+        "JustDocTitle",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=11,
+        leading=13,
+        alignment=1,
+        textColor=colors.HexColor("#0f172a"),
+    )
+
+    st_doc_sub = ParagraphStyle(
+        "JustDocSub",
+        parent=styles["Normal"],
+        fontName="Helvetica-Oblique",
+        fontSize=8,
+        leading=10,
+        alignment=1,
+        textColor=colors.HexColor("#64748b"),
+    )
+
+    st_sec_title = ParagraphStyle(
+        "JustSecTitle",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor("#0f172a"),
+    )
+
+    st_cell_hdr = ParagraphStyle(
+        "JustCellHdr",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=7.5,
+        leading=9,
+        textColor=colors.white,
+        alignment=1,
+    )
+
+    st_cell_txt = ParagraphStyle(
+        "JustCellTxt",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=7.5,
+        leading=9,
+        textColor=colors.HexColor("#1e293b"),
+    )
+
+    st_cell_txt_center = ParagraphStyle(
+        "JustCellTxtCenter",
+        parent=st_cell_txt,
+        alignment=1,
+    )
+
+    st_cell_bold = ParagraphStyle(
+        "JustCellBold",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=7.5,
+        leading=9,
+        textColor=colors.HexColor("#0f172a"),
+    )
+
+    st_cell_bold_right = ParagraphStyle(
+        "JustCellBoldRight",
+        parent=st_cell_bold,
+        alignment=2,
+    )
+
+    st_body = ParagraphStyle(
+        "JustBody",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=8,
+        leading=11,
+        alignment=4,
+        textColor=colors.HexColor("#1e293b"),
+    )
+
+    st_sig_title = ParagraphStyle(
+        "JustSigTitle",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=8.5,
+        leading=11,
+        alignment=1,
+    )
+
+    st_sig_sub = ParagraphStyle(
+        "JustSigSub",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=7.5,
+        leading=9,
+        alignment=1,
+        textColor=colors.HexColor("#64748b"),
+    )
+
+    story = []
+
+    # 1. BRASÃO
+    if os.path.exists(BRASAO_PATH):
+        story.append(RLImage(BRASAO_PATH, width=2.4 * cm, height=2.4 * cm))
+        story.append(Spacer(1, 1.5 * mm))
+
+    # 2. CABEÇALHO MILITAR
+    story.append(Paragraph("REPÚBLICA FEDERATIVA DO BRASIL", st_header_main))
+    story.append(Paragraph("MINISTÉRIO DA DEFESA • COMANDO DA MARINHA", st_header_main))
+    story.append(Paragraph(f"{om_name.upper()} • GABINETE DO ORDENADOR DE DESPESAS", st_header_sub))
+    story.append(Spacer(1, 3 * mm))
+
+    story.append(Paragraph("DESPACHO DE JUSTIFICATIVA CIRCUNSTANCIADA DA AUTORIDADE COMPETENTE", st_doc_title))
+    story.append(
+        Paragraph(
+            "Excepcionalidade do Art. 6º, § 5º da Instrução Normativa SEGES/ME nº 65/2021 c/c Art. 23 da Lei nº 14.133/2021",
+            st_doc_sub,
+        )
+    )
+    story.append(Spacer(1, 2.5 * mm))
+    story.append(HRFlowable(width="100%", thickness=0.75, color=colors.HexColor("#cbd5e1"), spaceBefore=0, spaceAfter=4))
+
+    item_code = report.get("catmat_catser_code", "—")
+    item_desc = report.get("item_description", "—")
+    unit_str = report.get("target_supply_unit", "UN")
+    unit_price = float(report.get("final_estimated_unit_price", 0.0))
+    total_price = quantity * unit_price
+    valid_quotes = report.get("valid_quotes", [])
+    n_quotes = len(valid_quotes)
+
+    # SEÇÃO 1: OBJETO
+    story.append(Paragraph("1. IDENTIFICAÇÃO DO OBJETO E VALOR ESTIMADO", st_sec_title))
+    story.append(Spacer(1, 1 * mm))
+
+    item_table_data = [
+        [Paragraph("Código do Catálogo:", st_cell_bold_right), Paragraph(str(item_code), st_cell_txt)],
+        [Paragraph("Descrição do Objeto:", st_cell_bold_right), Paragraph(item_desc, st_cell_txt)],
+        [Paragraph("Quantidade Solicitada:", st_cell_bold_right), Paragraph(f"{quantity} {unit_str}", st_cell_txt)],
+        [Paragraph("Preço Unit. Estimado:", st_cell_bold_right), Paragraph(_format_brl(unit_price), st_cell_bold)],
+        [Paragraph("Valor Total Estimado:", st_cell_bold_right), Paragraph(f"<b>{_format_brl(total_price)}</b>", st_cell_bold)],
+    ]
+    t_item = Table(item_table_data, colWidths=[5 * cm, 13 * cm])
+    t_item.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f1f5f9")),
+        ("BACKGROUND", (1, 4), (1, 4), colors.HexColor("#fef3c7")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+        ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+    ]))
+    story.append(t_item)
+    story.append(Spacer(1, 2.5 * mm))
+
+    # SEÇÃO 2: COTAÇÕES
+    story.append(Paragraph(f"2. COTAÇÕES VÁLIDAS IDENTIFICADAS ({n_quotes} cotação(ões) obtida(s))", st_sec_title))
+    story.append(Spacer(1, 1 * mm))
+
+    quotes_data = [
+        [
+            Paragraph("Nº", st_cell_hdr),
+            Paragraph("Órgão / UASG / UF", st_cell_hdr),
+            Paragraph("Nº Compra / Data", st_cell_hdr),
+            Paragraph("Fornecedor Vencedor & CNPJ", st_cell_hdr),
+            Paragraph("Preço Unit.", st_cell_hdr),
+        ]
+    ]
+    for idx, q in enumerate(valid_quotes):
+        quotes_data.append([
+            Paragraph(f"{idx+1:02d}", st_cell_txt_center),
+            Paragraph(f"UASG {q.get('buyer_uasg', '')} ({q.get('buyer_uf', '')})<br/>{q.get('buyer_org_name', '')[:25]}", st_cell_txt),
+            Paragraph(f"{q.get('purchase_number_year', '')}<br/>{q.get('purchase_date', '')}", st_cell_txt_center),
+            Paragraph(f"{q.get('supplier_name', '')[:35]}<br/>CNPJ: {q.get('supplier_cnpj', '')}", st_cell_txt),
+            Paragraph(_format_brl(float(q.get("unit_price", 0.0))), st_cell_bold_right),
+        ])
+
+    t_quotes = Table(quotes_data, colWidths=[1 * cm, 4.5 * cm, 3.2 * cm, 6.5 * cm, 2.8 * cm])
+    t_quotes.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+    ]))
+    story.append(t_quotes)
+    story.append(Spacer(1, 2.5 * mm))
+
+    # SEÇÃO 3: MOTIVAÇÃO
+    story.append(Paragraph("3. MOTIVAÇÃO E FUNDAMENTAÇÃO CIRCUNSTANCIADA", st_sec_title))
+    story.append(Spacer(1, 1 * mm))
+
+    motivos = [
+        "<b>I. Da Abrangência da Pesquisa:</b> A pesquisa de preços foi conduzida de forma ampla e irrestrita nos bancos de dados oficiais do Governo Federal (Compras.gov.br e PNCP), abrangendo todo o território nacional no período regulamentar de até 1 ano.",
+        f"<b>II. Da Escassez de Registros Similares:</b> Constatou-se a disponibilidade de apenas {n_quotes} cotação(ões) válida(s) apta(s) a compor a cesta de preços para o item especificado, em virtude da sazonalidade, especificidade técnica ou ausência de compras análogas recentes por outros entes.",
+        f"<b>III. Da Vantajosidade e Razoabilidade:</b> Os valores apurados ({_format_brl(unit_price)} un.) foram submetidos à análise crítica de exequibilidade e compatibilidade mercadológica, inexistindo indícios de sobrepreço, resguardando a economicidade e vantajosidade (Art. 5º da Lei 14.133/2021).",
+        "<b>IV. Da Necessidade Inadiável:</b> A paralisação do procedimento acarretaria prejuízo ou desabastecimento das atividades finalísticas e operacionais desta Organização Militar.",
+    ]
+    for m_txt in motivos:
+        story.append(Paragraph(m_txt, st_body))
+        story.append(Spacer(1, 1 * mm))
+
+    story.append(Spacer(1, 1.5 * mm))
+
+    # SEÇÃO 4: DECISÃO
+    story.append(Paragraph("4. DECISÃO DA AUTORIDADE COMPETENTE", st_sec_title))
+    story.append(Spacer(1, 1 * mm))
+    dec_txt = (
+        f"Diante do exposto e com fundamento no Art. 6º, § 5º da Instrução Normativa SEGES/ME nº 65/2021, "
+        f"<b>AUTORIZO e RATIFICO</b>, em caráter excepcional e devidamente circunstanciado, a adoção do preço estimado "
+        f"com base na(s) {n_quotes} cotação(ões) obtida(s), fixando o valor de referência em <b>{_format_brl(unit_price)}</b> "
+        f"por unidade (valor total: <b>{_format_brl(total_price)}</b>), determinando o prosseguimento regular da instrução processual."
+    )
+    story.append(Paragraph(dec_txt, st_body))
+    story.append(Spacer(1, 4 * mm))
+
+    # ASSINATURA
+    today = datetime.now()
+    mes_nome = _get_mes_extenso(today.month)
+    data_str = f"Juazeiro, BA, {today.day} de {mes_nome} de {today.year}."
+
+    sig_data = [
+        [Paragraph(f"<i>{data_str}</i>", st_sig_sub)],
+        [Spacer(1, 6 * mm)],
+        [Paragraph("____________________________________________________", st_sig_title)],
+        [Paragraph(f"<b>{ordenador_nome}</b>", st_sig_title)],
+        [Paragraph("Ordenador de Despesas / Autoridade Competente", st_sig_sub)],
+        [Paragraph(om_name.upper(), st_sig_sub)],
+    ]
+    t_sig = Table(sig_data, colWidths=[18 * cm])
+    t_sig.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+        ("TOPPADDING", (0, 0), (-1, -1), 1),
+    ]))
+    story.append(KeepTogether(t_sig))
+
+    doc.build(story)
+    return buf.getvalue()

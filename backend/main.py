@@ -33,7 +33,12 @@ if CORE_DIR not in sys.path:
 from gov_api_client import PriceResearchController
 from rag_pipeline import AGUClauseChunker, RAGLegalAuditor, OpenXMLDocxReader
 from catalog_parser import CNBSCatalogEngine, CONSULTA_DETALHADA_LINKS
-from report_generators import build_in65_docx_bytes, build_in65_pdf_bytes
+from report_generators import (
+    build_in65_docx_bytes,
+    build_in65_pdf_bytes,
+    build_in65_justificativa_docx_bytes,
+    build_in65_justificativa_pdf_bytes,
+)
 
 price_controller = PriceResearchController()
 rag_auditor = RAGLegalAuditor(similarity_threshold=0.45)
@@ -450,6 +455,84 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                     pdf_bytes,
                     "application/pdf",
                     f"Relatorio_Pesquisa_Precos_{prefix}_{catalog_code}.pdf",
+                )
+            except Exception as exc:
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        # 8. Exportar Despacho de Justificativa Circunstanciada em Word (.DOCX) (Art. 6º, § 5º da IN 65/2021)
+        if path.startswith("/api/v1/prices/export-justificativa-docx/"):
+            code_str = path.rstrip("/").split("/")[-1]
+            catalog_code = int(code_str) if code_str.isdigit() else 475109
+            supply_unit = qs.get("supply_unit", ["UN"])[0]
+            item_type = qs.get("item_type", ["MATERIAL"])[0]
+            quantity = int(qs.get("qty", ["1"])[0])
+            months_back = int(qs.get("months_back", ["12"])[0])
+            uf = qs.get("uf", [None])[0] or None
+            ordenador = qs.get("ordenador", ["ORDENADOR DE DESPESAS"])[0]
+            om_name = qs.get("om_name", ["CAPITANIA FLUVIAL DE JUAZEIRO"])[0]
+
+            try:
+                res = price_controller.execute_in65_research(
+                    catalog_code=catalog_code,
+                    target_supply_unit=supply_unit,
+                    item_type=item_type,
+                    months_back=months_back,
+                    uf=uf,
+                )
+                if res.get("status") != "SUCCESS":
+                    self._send_json(404, res)
+                    return
+                docx_bytes = build_in65_justificativa_docx_bytes(
+                    res["report"],
+                    quantity=quantity,
+                    om_name=om_name,
+                    ordenador_nome=ordenador,
+                )
+                prefix = "CATSER" if item_type.upper() == "SERVICO" else "CATMAT"
+                self._send_binary(
+                    docx_bytes,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    f"Justificativa_Circunstanciada_Art6_IN65_{prefix}_{catalog_code}.docx",
+                )
+            except Exception as exc:
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        # 9. Exportar Despacho de Justificativa Circunstanciada em PDF A4 Oficial (.PDF)
+        if path.startswith("/api/v1/prices/export-justificativa-pdf/"):
+            code_str = path.rstrip("/").split("/")[-1]
+            catalog_code = int(code_str) if code_str.isdigit() else 475109
+            supply_unit = qs.get("supply_unit", ["UN"])[0]
+            item_type = qs.get("item_type", ["MATERIAL"])[0]
+            quantity = int(qs.get("qty", ["1"])[0])
+            months_back = int(qs.get("months_back", ["12"])[0])
+            uf = qs.get("uf", [None])[0] or None
+            ordenador = qs.get("ordenador", ["ORDENADOR DE DESPESAS"])[0]
+            om_name = qs.get("om_name", ["CAPITANIA FLUVIAL DE JUAZEIRO"])[0]
+
+            try:
+                res = price_controller.execute_in65_research(
+                    catalog_code=catalog_code,
+                    target_supply_unit=supply_unit,
+                    item_type=item_type,
+                    months_back=months_back,
+                    uf=uf,
+                )
+                if res.get("status") != "SUCCESS":
+                    self._send_json(404, res)
+                    return
+                pdf_bytes = build_in65_justificativa_pdf_bytes(
+                    res["report"],
+                    quantity=quantity,
+                    om_name=om_name,
+                    ordenador_nome=ordenador,
+                )
+                prefix = "CATSER" if item_type.upper() == "SERVICO" else "CATMAT"
+                self._send_binary(
+                    pdf_bytes,
+                    "application/pdf",
+                    f"Justificativa_Circunstanciada_Art6_IN65_{prefix}_{catalog_code}.pdf",
                 )
             except Exception as exc:
                 self._send_json(500, {"error": str(exc)})

@@ -237,6 +237,38 @@
         </div>
       </div>
 
+      
+      <!-- ALERTA DE AUDITORIA: MENOS DE 3 COTAÇÕES (EXIGE JUSTIFICATIVA CIRCUNSTANCIADA DA AUTORIDADE) -->
+      <div id="justificativaCircunstanciadaCard" class="hidden bg-amber-500/10 border-2 border-amber-500 rounded-2xl p-5 space-y-3">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div class="flex items-start gap-3">
+            <span class="text-3xl">⚠️</span>
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="bg-amber-500 text-slate-950 font-black text-[10px] px-2 py-0.5 rounded uppercase">Art. 6º, § 5º da IN 65/2021</span>
+                <h4 class="text-sm font-extrabold text-amber-900 uppercase">
+                  Atenção Auditoria: Obtiveram-se apenas <span id="justQuoteCount">0</span> cotação(ões) válida(s)
+                </h4>
+              </div>
+              <p class="text-xs text-slate-700 mt-1 leading-relaxed">
+                A legislação exige <strong>Justificativa Circunstanciada da Autoridade Competente</strong> para fixar o preço de referência com base em menos de 3 preços. O sistema já gerou a minuta formal fundamentada para você baixar e assinar:
+              </p>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 shrink-0">
+            <button onclick="downloadLiveJustificativaWord()" class="bg-blue-600 hover:bg-blue-500 text-white font-black px-3.5 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5">
+              <span>📄</span> Baixar Justificativa em Word (.DOCX)
+            </button>
+            <button onclick="downloadLiveJustificativaPdf()" class="bg-rose-600 hover:bg-rose-500 text-white font-black px-3.5 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5">
+              <span>📥</span> Baixar Justificativa em PDF (.PDF)
+            </button>
+            <button onclick="openJustificativaModal()" class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black px-3.5 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5">
+              <span>👁️</span> Visualizar Despacho
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- CARTÕES DE RESUMO ESTATÍSTICO -->
       <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
@@ -561,6 +593,234 @@
   <!-- ===================================================================== -->
   <!-- MODAL INFORMATIVO: COMO COMPARTILHAR NA INTERNET COM QUALQUER PESSOA  -->
   <!-- ===================================================================== -->
+  
+  <!-- ===================================================================== -->
+  <!-- MODAL: DESPACHO DE JUSTIFICATIVA CIRCUNSTANCIADA (ART. 6º, § 5º IN 65) -->
+  <!-- ===================================================================== -->
+  <div id="justificativaModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm overflow-y-auto p-4 md:p-8 flex items-center justify-center no-print">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-4xl w-full border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
+      <!-- BARRA DE FERRAMENTAS -->
+      <div class="bg-slate-900 text-white px-6 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800">
+        <div class="flex items-center gap-2">
+          <span class="text-lg">⚖️</span>
+          <div>
+            <h3 class="font-extrabold text-sm text-white">Despacho de Justificativa Circunstanciada (Art. 6º, § 5º da IN 65/2021)</h3>
+            <p class="text-[11px] text-slate-400">Fixação de preço estimado com base em menos de três cotações válidas.</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="downloadLiveJustificativaWord()" class="bg-blue-600 hover:bg-blue-500 text-white font-black px-3.5 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5">
+            <span>📄</span> Baixar em Word (.DOCX)
+          </button>
+          <button onclick="downloadLiveJustificativaPdf()" class="bg-rose-600 hover:bg-rose-500 text-white font-black px-3.5 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5">
+            <span>📥</span> Baixar em PDF (.PDF)
+          </button>
+          <button onclick="window.print()" class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black px-3.5 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5">
+            <span>🖨️</span> Imprimir
+          </button>
+          <button onclick="closeJustificativaModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-3 py-2 rounded-xl text-xs transition">
+            ✕ Fechar
+          </button>
+        </div>
+      </div>
+
+      <!-- FOLHA A4 DA JUSTIFICATIVA -->
+      <div class="p-6 md:p-10 overflow-y-auto flex-1 bg-slate-100 flex justify-center">
+        <div class="bg-white p-8 md:p-12 shadow border border-slate-300 w-full max-w-[210mm] text-slate-950 font-serif text-[13px] leading-normal space-y-5">
+          <!-- CABEÇALHO -->
+          <div class="text-center space-y-1 border-b pb-4">
+            <div class="flex justify-center mb-1">
+              <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAdUAAAHVCAYAAACnuWH3AABa40lEQVR4nO3dB3icV5U//u95Z2RbdhynJ05xQigphATSSJPmvrKTEEoooSwlsMCy+bP0DsuyvwWWupRdQmeBDb0HQklIHL33le30CgkkpJLe47jItjRzz/853jvsIGRbZfp8P8+jx/JImnk1lvWd284BiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIioAaQRd0pERL0jy7IkTdNwzTXXFB577LFFqtqnqtuJyBwAiar2J0kyCmAMQAXAo5VKZczeTjzxxLL3Xpxzii7AUCUiohnx3s8PIVh47i8ihwDYA4D9uQjAPAA7ACgCsMDcZAELYA2AuwGsB3ATgD+p6u2VSuWWvr4+LZVKFr4di6FKRERTlmXZXBHZXkSOBnC4qg4C2BPAfjFT5sbw1K1kTIgfH40j19sA/FFErgkhXJgkyd2lUun+TvxnYagSEdE2ZVm2AMCOSZL8naraaPSZAPoBbFeHp09jHj0G4AF7OACXisgvAawrlUobOuWfiKFKRERblef5wQAGVPXFAI6OYVpo4NO2Ka6/niMiKwH8vFQq3dcJ/0wMVSIimnTzkarukCTJsQDeBWB/APs0+anSuP76OwD/HkK4dWhoqK2nhRmqRET0V7z3BVW1EemQiLwZwG5t8BRdD+CHAM5zzl2ONsVQJSKiv/De9wGwad4XAFgGYPs2enruA3AFgC85536DNsRQJSKi2kB9I4DTARwY107bzSiAewF8MITwIxEZS9O0bc64MlSJiMgC1Qo1/CuA1wLYGYAFrBmPx17uixuI7DjMujiC3Sken9l5G0doGmEtgPeHEL4rIqut+ATaAEOViKjHxUD9KIA3x129SQxQGxHmIvI7Vf0jgHssZJMk2aiqu6rqjnHz0gCAvQAcBWBOPKvaDFZA4sMiYsF67+DgoIV/SzFUiYh6WAzUjwN4a00mXGvnRFX1f5IkuX3JkiX33XfffXLsscf+zWjw/PPPL/b19S0QEdvMdLSIlFQ1BbB3rKrUaOtF5JMi8s1KpXJ3q0esDFUioh5VE6hvq7n5HABnAbjEOWcj02nJ83x3VbVAfaVVXAJwQhOmhm3E+u+VSuW/ReSRoaGhlgUrQ5WIqAdtIVC/A+BDInL3bGvwZlm2s4g8CcBL427iHRo8LWzB+s99fX1fOv74420duCUYqkREvRmoH4uBWs2Bs/r6+t4WQnhsYGCgLiO9PM/tvGsxjlpPBTDY4CM6Vqz/n5xz30WLMFSJiHrv2Mz/A/Dumh2+P7Y11ZlM907xMQsAjgdwIoAzAOzaiMeJ08y3AHhLq86x2g4vIiLqAd57GzX+E4DX1NTuXSkinxORhxr1uM4525VrNXy/EkfHVnpQGzRQtI45/5/3/gi0AEOViKgHxNHiCwG8AsAu8fe/dYQ5X1VvKJVKVsC+YZxzNqV89zHHHPM9EbFruCqeNa23+QCOBHBSlmW7o8kYqkREXc57byO4QwE8B8CTa6Z9bbr3Z865ho1SaznndN68edaI3McR84UAGlEgfzGAlwN4PJqMoUpE1OUqlYqdFy3V9EBFrIr0gyRJbm7FNTnnLrO1XVW1Izy3N+Ahniwi7/HeN3W0ylAlIupySZIcEzcm2bGWKquYdPPg4KD92RLOud+JyKct3AH8qQEPYaPz5+V53rQaxgxVIqIu5r3fT0ReF+vz1roJwNVxarhlnHM3Aviaqn4LwHV1vvslVkIxSZLt0CQMVSKiLnXJJZcURMS6zTw11uSdWN5vra1zosWcc7eKyLcBfD2WSKxnxj07hGDT3k3BUCUi6lKbNm1aqKp/D+CgCR8qA1gdu8+0BefcHar6Exu1Arimjnc9V1WP997bUZuGY6gSEXWhWM3oWACHTXIm1I7XbCoUChvQRtI0vQvAz+N51qvrdLe2SWtIRBiqREQ0MyJiQfq0eKxk4rqpfWyOiFQLQLQN55wVhjgnjljrNRW8WwjBzq0uQINxpEpE1IUqlcoB8VyqVVGayEJ2j0qlYv1Q247733KJ56jqN+q0eWmhiDxtC89FXTFUiYi60x6xcfhku3vttu1V1aoPtSXn3N0iYlPB3wNgO4RnQ+PxmkOGh4cbutuZoUpE1GVGRkbmWbPwSY7R1NpRVQ8YGRlpuyngCZuXfqiqZwP4M2bOgnSxiOw3NDTU0N3ODFUioi4jInZ8Zr+a6kmT2Q3AATvttFPLGnpPRZqmdtzmfwAsj7WKZ6rPpoCHh4cbOjpnqBIRdZkQgu10fcI2Ps1GqEc8/PDDTdkVW4cCEWcCuBLATHcsz1PVJ27jhcasMVSJiLrPdnFNdWvrh7Zp5wgRsc9re8452wn8IQC3zfAubNp3exFp6OYshioRURdZuXKlqKoF5VSmOfcKIZyWZdkidADn3CUi8g4A983gy+0Fxt5x2rthGKpERF2kXC4ncddvbfH8LbGp0CNUdSd0iEKhYM3OPwrgkRl8+dwkSRqaewxVIqIuEkKQaf5uT5MkeWme5w0/w1kPlUplPYDM+sACGJ3ml9sGrl3OO++8hh2rYagSEXWRYrFoG5DmTuNLLGCWATgmz/O2z4RSqWRro38AcJ61rrPXEdP48vmqusOcOXMYqkREtG3lstXK3zz1azVvp8JGqEfGOsETO9m0JedcEJFfxNHqdM6d2teVt9uucZ3g2v5VCRERTVtlmiO4hQDeqqrHdcpzXSqVyrFVnNUJnioboYa+vr6GFYBgqBIRdZEkSSwwHrUuNNP80l0BvCPP80PQIVTVvs8LAVgR/qmwFxqF0dFRTv8SEdGUgibMcNDUZ/VxVfV5WZa1fUEIk6apNVr/ZVxbnYoxAI/tueeeHKkSEdGUWGBsjI3Ip8vOcZ4mIkd479u22H6tJEmso823ATyEbdsYQnj4cY97HEOViKgXeO+ns3P3b6Rpauupt8Qp4Jl4alxf7YjR6sDAQDnuBp7KFPAjItLQxuxcUyUiahPe+5MBfMN7v3iWd7U2jlZnakhEPpFlWUcUhZg7d+4VAH61jdG5jU7vCCFMdf11RhiqRERtwHt/EoBvAngZgJd472e8mUZVH7MAmeYO4ImeJSIf8d63fQnD8fFxC8ybpjA6X8uRKhFRbwSqtTdbHI+JfM05N+N1v0KhcHcsPD+bXa52ZvU5Vms3z/Pt0cYGBwfLInIRgDu38mmPisiIiFhFpobhSJWIqH0C9VsA3u6cm9Uv/hBCRVVvjNPAs2rsraqnqeo/ZlnWuIoJdaCqa+LofEtTwHbE6BbnnK05NwxDlYioRSYE6i+TJPm3XXbZZTZBuJlzbpOIXArAgma2GXEAgBeJyCu89wvQpjZs2GC7f2/YQoUlmwZfKSLWPq6hGKpERK0PVFsP/G6lUrn/kEMOqddxD5sCvnaGR2tqWS3hwwG8NK71tmWw9vf32/O2eiu5dpOqrmv0dTBUiYhaG6gWBncmSXJJmqbT7bqyRap6O4CRWa6r1tYHthKGL7dzrO14hjWEYH1k7czqZFPnV6vq90ul0mx2RE8JQ5WIqHWBWq3yc2l/f78FQj1ZmK6Ko1WtU7AOADhdVV/UbiPWYrEoSZLMiyPrWhak1wB4uBnXwVAlImpdoFZ32RbXr19f1w00VgRCRP4IwN7qVevWShk6EXmVTQfned42waqqtjlr+0m689iU8I/SNL23GdfBUCUial2gIq557hpCqPt50FKp9EiSJF+KwVov1RHrq1T1le2yK7i/v98C357D8ZqbbSr4e6r6u2ZdB0OViKh1gWosDJYmSdKQ7jAhhDtV1aaB19c5WI8B8GoReX07nGPdsGGDddmxnrBza3b83ioiK5IkeaBZ18FQJSJqXaBWWZ3dD3rvn1Lvx3fO3SEiP7K6t3W+62LcFfxaVX2f994ao7dMCMGe310nTHXbMaVfl0ql2VSWmhaGKhFRawMVcXPNYQDe670/sN7XsXHjxmEAn6nzaLV63U+0ESuATw4PD++yatWqhvUq3ZIsy+aKyEsA1I72f54kydcGBgZqp4MbjqFKRNTaQK2y4vXOGoV7763gQt3MmTNHRcSC9eczaF4+lRzZDcBrkiT5erlcPnR4eLhp08FZlhXj83Z8zSj1YlX9TgjhQTQZQ5WIqPWBWjsNfLKqvjXLsifV63qGhoaCqt6gqr+uU0GIiSSOWk9V1TOTJDnFe78EDbZixQo7RrObiCyLLeuSWPP4N7aWOttyjzPBUCUiao9ArdpHRJ4F4G31DFbn3JiInA3gF3F9tVGNugcA/Iuqvtl7b2uujd7x+xwAr7O/ArDuPCuthrJzbipNy+uu6XPfRETdqg6BWuvOOLL8bJqmf0KdxKINnwTw+gZnwIOxWfpHrA6xqj5Sr2L2w8PDMjQ0pHme/52qfhHAjnFa26a43+Kcs7KPLcFQJSJqv0BtdLDa2dIvAHglGu/B+LzYCPK8EELZpqNnemcjIyOJiMyvVCrPBfC5uBZt7NjQPzjnrKh+yzBUiYjaM1AbGqzDw8M7J0nyeQB/h8YbjaPW8wH82NY9nXPTPjuaZVmfiBwoIrbu/H4A1WM8VobwFc6569FiDFUiovYN1IYF62WXXZaMjo7axqj/aFKwhriP53Jr0SYi37VOOnvssccf7r333oJzbotHX0ZGRvqTJJlbLpdfZD3JATwPwHZxw9VVdlbWOXcd2gBDlYiofoFa3VVrxzzaPlgvvPDCZO7cubuUy+VP20gvbl5qRi6UATwQd+paJ52bkyS5UlU3AFinqtZkwKZ5d7HSg6p6TDwyMxBHp1Yv2Xb2Xgzgzc65epZhnBWGKhHR7AP1rhgSNgobi0UI9otv0u5TwStWrFhYqVRs89IL46afiZ1eGjl61RiQ98fdu/fFEa3ECkn2/C4EUHv21T7nIgDvc87V7XmoB4YqEdHsAvU8K6ogIrn181TV8SRJdlXV0+JxD9cJwRp3Bb8dwAsAHBxHg62gNc/XZCNnK45/IYAznXM20m0rDFUiomnw3luhgW8D2MP+TJLkIyGEe5xza2s/L8uyHUSkBODvATy3E4I1z/N+VX0xgGcCeDaAdmtGfkHc6PQr51xTWrlNF0OViGiKsiyzkel/iohtmPnmnDlz3r7ddtutOfTQQyctpJDn+XaqelQ8E/rCTgjWLMtshPoUETkpjlwX1nR+aYWxuHvYwvSb1iO2VCpZj9S2xFAlIppe4LwUwC5Jkny5VCptswxelmXzReRpAN4I4CWdEKx5nheKxWLf+Pj4sriByV4Y7I/me8yWfOMU+zdtaj1N06YWyJ8uhioR0fQLuCNN0ynXz/Xez1fVQ0XkLZ0SrFV5nlupxINU1UoBWgedx8Xrb2R+3BffvgrgSjs245yrd73ihmCoEhFtRZ7n+9rO1FKptHE2T1SWZVab9rBODNaVK1cWKpXKzvZaQlWfHtdcd45v9fg+NE7zPhIL/v9SRFaJyPUhhIpzrlF1iuuOoUpEtAXe+xNF5L0AzgXwX6VSabxXg9V476s7go8EsG/cgLV77Km6KK69WpH7yXbu1v69HI/trIllDO8GsBzAjcViMatUKqOlUsnWUTsOQ5WIaMvHZs6yXb4i8kErDD/bUO2GYK2VZdnOqrowSRLb2LSrqj4hns3dMY5i+2J42nGddQBsh/SYqv5ZROxs7x1JklwTQlizYMGCm9avXy/1KrrfKgxVIqKtn0P9hoi8eSqbknoxWM3IyIjMmTNHNm3aZGvHEkKYnySJhW1FVS1Y+0Vkk4isLpfLBVXdWCgULGC1Hi9U2glDlYhoy4H6nSRJ3jg4OGi7UOuq24KV/heblBMRTR6ovxWRj4UQ/qqoQ72kaWp1bq9V1f8C8MM6Nw1vSKNz2jaGKhHR3wbq3ap6TgjhLufcjHt/bguDtfswVImo503SbeZBEfFpmtru1IZisHYXhioR9bRJAtV2n/5eRKxrSlMwWLsHQ5WIetYWGoxLPG/ZiJ6oW8Rg7Q4MVSLqSVsI1OrvxSepqjXDbioGa+djqBJRz9lKoFbtDeB07/0uTb40BmuHY6gSUU+ZQqAaC1Pr0PIs772V32vViPWzAC6r893zuE0DMVSJqGdMMVCrjgbwMgDOe289RZserLFl3KENuHsGa4MwVImoJ0wzUKsblk4E8A8ABrIsa2qweu9fDeBTVuKvQQ/BYG0AhioRdb0ZBGptsFplojMAHN+sYI2B+jkA29XcbFPCl7LyUntjqBJRV5tFoNYG63NE5PXNCNYtBKp1eHmbqr6ZJQ3bG0OViLpWHQK1qcG6lUB9s3PuK1aUgrWC2xtDlYi6Uh0DtSnBuo1A/Wa7n2P13s+r47V0LIYqEXWdBgRqQ4N1KoFa1YxgFZG3e+8PmMb1vxDAt7z39X6+Ow77qRJRV2lgoNayIPulqn4JwKo0Tdc2I1Cb2I/1LgDni8inSqXSHyf7hDzP7fFEVV8AwKamd4obur7mnKtn0HcUhioRdWug2i/2jQD6AIw34GjKrIN1poHapGC9F8AKAB91zl1b+4E8z4shhMUicjKATwLY0RqiA3ivc24MPYyhSkTdGKg3ArjDcgdAWVX7ReSlAJYAmN8OwTrbQG1SsD4G4HpV/YCq3lwoFDaEEIoishTA0wG8EsD2DNT/w1Alom4L1F8A+LaIXD5v3rx7RkdHw9jYWGHu3LmHisj7VPVYAHu2MljrFahNClZzX025RAvRA+Po1Lr5cIRag6FKRB3Ne281er8VA/UsVf1/AB6IG3omfq6FwZsAnALgca0I1noHahODNdRsbtV4/wzUCRiqRNSxvPdzANgu2H8E8M1KpfK2pUuXbnWk6L1/QtxQ8zwA9n7TgrVRgdrEYK3FQJ0EQ5WIOpr3fncAzwXwHefc6BS/Zn9VfZ2InAbgic0I1kYHapODlYG6BTynSkQdx3v/l6Bwzt0fj3FMKVDj19wK4Kuq+hMANzX6HGuzArUJ51gNA3UrOFIloo7ivS/FjTL/7ZyrzOa+siyzdVUbsb6wQSPWL4jI4+Oxk4YHahNGrAzUbWCoElGn7fL9ejxzerpz7tzZ3meDg/Xa+AJgXjMDdZJgtUL8fzfL3/kM1Cng9C8Rddqxmb2tKIGqXnfOOefMemCQpultNn3coKngp7YqUCdMBZ8J4EezmApmoE4RQ5WIOu0c6pX2fqFQePjUU0+ty3phA4O1llV3enezArU2WFX12hDC5wH8dAbBykCdBoYqEXVSoK6xKnmqetng4OCUNya1SbDeoKq3NKvRea2hoaFREblaRL4M4FfTCFYG6jQxVImok4rj3yUiZ6VpanVp667BwWprm29oRqPzyaRput5ejAD4LoBLpvAlDNQZYKgSUacEqhVq/1WSJHYcpmEavMba8EbnW+Ocs3Ozy220H0f9W8JAnSGGKhF1Svs2K5P3cLlctrXJhuryYH1YVc+253ILn8JAnQWGKhF1Sj/UAoAFImJ/Nlw3ByuA9XGkOnFtlYE6SwxVIuqUBuMWRrs3oC9qzwVrkiShpih+FQO1DhiqRNQJgWqKsbvMoc28rm4L1izLrMH4AIB9a25moNYJQ5WIOiFQq3a2SkpZltWzu0zPBGuWZSIi+4qINRhfEG9moNYRQ5WI2i1Qx+OfVtfXpilrWRCUROSkPM93a+Z1dkOwzp0719aj7fl+EQBrm8dArTPW/iWidgnUR21Hqohcoqr2fhCRQ1TVavPuP+FLrxSRD4UQ8jRNH2vmNTehCP82G53PlPfewvQrAHZkoDYGQ5WI2iFQV8Xzk+ckSXJHCGFN/P20j6ruJyJvB3A0gJ1qfm9dpKofKBQKVl3Jauo2TScGq/femrJ/g4HaWAxVImo67711bskA7AHgx7HX6A3OuYe28Pl7iMjbVPVkAE+pWbpaAeBfVPWqNE0ZrFuQZdkSAP8lIs8BYMX13+Ocs2IaVGdcUyWiVrg1Fnf/VpIk7wBw2ZYC1Tjn7lPVT1hj8Rik1bVW28X67wCelmVZbb/ShuuwNdb7AJytqm9ioDYWR6pE1BLe+2K5XO4LIWw86aSTplTgPcuyRQBOFZGXA1gWC0IgtoJ7P4CrOWLd4nNnR5JCmqYTN39RHTFUiaijeO8XquozROTvAZzcK8EqIqti7d4pyfPcruPOUqnU8LKO9H84/UtEHSUGy7mqan1JfxuP3pgBEflIt04Fi8hgnufbT+WLvPfPj5uS3pDneV8dr4e2gSNVIupIMThtxPrqHhmxnhuD8kLn3OqJnzA8PJxs2rSp0N/fb4FqfVN3EJH3APhMqVSqvvCgBmOoElHH6sFgtR3TP1TVn6dp+kDt+rSq2lneE0Xkw/HYzH9yU1LzMVSJqKP1YLBeC2AlgG+r6gZVLSZJMgjgSADPBWC7hVkpqUUYqkTU8XosWKut2+4HsCkG7T4A5gGw9VMGagsxVImoK/RgsE6Ggdpi3P1LRF0hBuZ5PbIreDIM1DbAUCWirtHDwcpAbRMMVSLqKj0YrAzUNsJQJaKu00PBykBtMwxVIupKPRCsDNQ2xFAloq7VzsEqIj8DcMsM74aB2qZ4pIaIpi3LMmssXiwWi2sqlcpYkiQ6ODi4uXB7nudJqVRqq04o7XjcJs/z/VX1DQBeAGC/aXwpA7WNMVSJaFq89xZKFkTjAO4GsAHAowD+DGCdiFjvzodUdSyEYH+OFovFglX/sZFiCAFDQ0PlZj/t7Ris3ns7u/quWAlptyl8CQO1zTFUiWjKvPcnAfgfADZSRc106nh836r7rI5/t5HrvQDWiMjDqnqXha7dFoPXgvURVV2tqhURWZckybiIVAYGBsbsTrMskzRNp9RrtYOD9eAYlsu2sSTHQO0ADFUimmmgbovW/J6pBq6FhoXWhlhi72EAo3Gka6E7FgP4DrtdVR8SEXvbmCTJI/Z1lUpFCoXChhCC2vtDQ0OVLgjWEoDvAdhzC5/CQO0QDFUiakSgzkQ1HMfiSLccR73lGMI21bzWRrYiYqG7BsA9IvKgqo6r6sMi8pj9XhOR9SJSTpKkcsIJJ9h94fLLL5ejjjpqc9BnWWZF509ul2D13tua6hcs7CcZrTJQOwhDlYjaIVCnM/It14x618RpZgviB+PfbdR7p42ELXDj+2OqaiPdh+z2EMIjSZLMVVUL1hcDeGbN78OmB2uWZTuJyBcBvGTChxioHabY6gsgovbVRoGKmtCzTixVO9W8v9+EUa+oqgWuvY3HUa+F7/okSe6Kf6qqzo9T0Atqj9tYsGZZ1qxgtRcI20+4jYHagThSJaJOCNR6qx75sZCdE9+fOO3alBGrNRiPu38/AWD/+HuZgdqhWPyBiHotUKu/+5LYg7T6/kQNLxCxatUqSZJkVwDHAdiLgdr5GKpE1GuBOh0NDdbjjjsOqnoKgNfGgOcItcNx+peI/oKBukUNmQrO8/yFqvpVADsyULsDQ5WINmOgNjdYvffPA/D1uNmKI9QuwelfImKgNnkq2Hs/F8CzANh5WQZqF+FIlajHcYTamhGr9363WHjih865zWUZqfMxVIl6GAO15cEqzrm61Tam1mOoEvWoCYFqxRLWxUIJG+I5zvnxzd7fodXX24ZaViuY2hdDlagHTQjUawFcB+AcAI+JyCNWN1dVd1bVhbHS0Gm2pghg55q7KcdKRGtj+M6Lv1Pmxj+1B37HMFjpr3T7DzwRTZBl2RNE5BsxJH+hqt8QkSucc/eMjIzI4ODg5unIFStWSF9fH9atWyfFYtHC9+MATqkJVgvgS2wHawhhkYhsH0e0+8WAtb/vEUN2UQxniQFciKPjaiH7TsZgpb9gqBL1mCzLrHLPG0QkEZGvhBDuS9PUpny3ynu/N4CP1QRrEJGbAXxXVT/nnFt90UUXzRkbG+tX1UKSJNtbXV0RsTKA9pgLQwj9IrJfPJe5U2x11h/ftzeNf6+WDizW/J5q599XDFZq+x9SIqqjLMusruymNE3v9t7vvHDhwnU77LDD2OMf//gpb5SZJFitufhtAL4D4NOlUmnStcVVq1YlxWJR16xZUygWi9VGHpunjIvFooQQdlXVnVR1gYjsE0e2uwBYEke6Ng1to+ViHPEuiEcC++OfoQ2OCDJYiaFK1ENrqP+sqhcC+GKapg/P4r5mFKxbk+e5lEolXb58ucydO7cwMDBQXr58+ZxCobA5PEXEQnZ7EbFRsI16F8QAtlHvovi2ZwzqneLfEUN3bs1Uc9LgtV4Ga4/jSJWotzYlfVhVP5ym6fgs77PuwTpVIyMjydjYmFYqlUJfX59NEydJkmwe9RYKhaRcLu9ua7siYrftE0N2l/j+vBi4u9eMdKuj3bkxeGc76mWw9jCGKlHvBKoF3hudc4/V6b5bFqxb89vf/lZOPvlk9d4nMSTLlUplno1yLSwLhcKiuKa7IISwt4hsFzdV2ah3u/hWXevdPEKOIWshPSfuei5sY4ezBeu/ALgiTVPbIU09gqFK1KUmBOqvROSdIYSb0jQNdXyMtgzWqcrzPCmVSuHcc88t9Pf3bw5dC9kQggVoUUT2UFUL1bkism/8Hm3ka9/3/BjO1roNNaNexBHxWar6hjRN17fwW6QmY6gSdX+g3iwiHwDwy1KpVPdf8J0erFtja7yVSmXz/PKcOXOKqhqKxeI8VZ1nt4uIba6yNwvYvZMksZGt/d2OEp3pnLu+1d8DNRdDlaj7Sw9eAOAM59xtDXzMrg3WqcrzvFAqlSoXX3xxcWxsrFgqlaw6FfUYhipRdweqhdm7nXNfasJj93ywErX6XBcRNbY4/ngsI9hwzrm7ALwPwLkA7MhOQVUfB+AVAN6R5/ms2qURdQKGKlH3d5vZbnh4uFpwoaEYrNTrGKpE3R2oC+PxkKZhsFIvY6gSdXc/VDtP+YwkSY5p5nUxWKlXMVSJurvBuG1GtHXNE7Mss+IGTcNgpV7EUCXqjkDdECv92DGOiQXyrUTf6SJS8t7b+03DYKVewyM1RJ0dqLbj9k4Av7GdviJiBQpKAKz6z5MmfOmfVNWK6g8PDQ092uRr5nEb6gkMVaLODdTMmoyLyK8XLlx4+9q1a8P8+fNldHR0H1U9CsCrADxrwl3cAOC9qpqnabq6ydfOYKWux1Al6hDe+8Oshm+sO/sjAJ8NIdw42agzz/P5SZLsWqlUPgzg5fH/evX/O4OVqEEYqkQdIMsy28U7KCJvBvBooVB4P4CHBgYGttrCzXtvR2r+I45arbUZg5WogRiqRB0iyzIr2r4/gFun007Me2+VjD4B4NWxewqDlahBGKpEPYDBStQcPFJD1AOcc1ZY/z0Avjnh2M2BAD5ux22yLNuhydfEWsHUdRiqRD2CwUrUeAxVoh7CYCVqLIYqUY9hsBI1DkOVqE1Ybd4sy3ZvxmMxWIkag6FK1CaVkkTkawBek2XZomY8JoOVqP4YqkTtU3pwmYjMATDlM6izxWAlqi+GKlH71PL9RqFQ+FSaplutklRvvRSs3vv++l8t0f9hqBK1R6B+u1gsvmNgYGB9K66lA4P1nbEE4zZdcsklm4vceO+fB+CrsbA/UUMwVIlaH6g/F5F/KxaLa1r5j9FJwaqqVsv4A3meb7+1r8/zPCmXywvzPLcg/jqAvwNwkvee1eSoIfiDRdTaQL0GwPtVNUvT1BqNt1wblzT8aGxltxOAAOAxAOeo6scA3F97TRamAPoAHKmqzka2AOwFwWfte3DOjTXz+ql3MFSJWheotnb6ExF5R6lUured/iHaOFg/BeDZABbEkbRd1woAvxWRPAZtRVUXi4g9109X1SPj5zNQqeEYqkStCVSzPo6aPt+O/whbC1ZV3RysQ0NDzQ7WJbYuCuDkCR9aC8Cmr+8HMCeG6JI4orW2eQxUagquqRK1JlBNsZ3/D25tjVVEPp4kyYD3fvsmX9MdSZK8FcDVEz60MD631sj9YAD7xhcBDFRqqrb9D03U5YGKOIp6QpZlu6FNbWPz0idUdWB4eHhKu3DrpVAo3CEiXwRw7xRm3zhCpaZiqBK1JlCNnZlMReTx7fyPsJVgPUhE/qNQKBw7MjLStPOfxx9//Ggcqd5bcy2TYaBS0zFUiVoTqFWHAPhkXCvsyGBV1c9UKpWjVq1aZdPZTTFv3jzbNb3KNiVt4VMYqNQSDFWi1gVq1QkAvuC936tDg/XJIvL5SqVi65lNsWHDBo2bk2wKfSIGKrUMQ5WotYFatdTCoIOC9ax4JKgarE8JIXwtz/ODmnEdIjJfROy86kQMVGophipR6wPV2JrkM+wcpvd+zw4I1nfFYK31NFX9ivf+CY2+hhDCPFXdNx6fqWKgUssxVIlaH6hVtov2mQA+3SHB+g4A35rwoaNsV3Ce5xZ4DZHneZ+InBYfq4qBSm2BoUrUHoFatX0HBautab4NwPdrbrYiEcdb4HrvZ/tc/I0syxJVfTKAUnyuDAOV2gZDlah9ArXjgrVSqVhFpfdbU4Cam3dX1WWq+hLv/Y71eqwsy6RYLG4fqyk9J079MlCprTBUidorUDsqWJcuXWoble6JRe2X13zIzrA+V0SOyvN8bj0ea86cOVKpVKx923sBWAlFBiq1HYYqUfsFakcFq3Nuk6paof0vA7i89kOq+vK4Vjxr5XLZyg++nt1mqJ0xVIlmH6gaz21ust/9vRisQ0NDa0RkpaqeDeC2mg+9TFXP8N7PujBECGG1qi6P/VXZvo3aErvUEM0uUP8IwBppXxID9XAAT7Lpzzo/sdbA/De2Acg5d0+7/qPZcRoR+Yiqnho3LVnFoystCEUkK5VKWysruE1Zltka7Zo0TbdUSYmopRiqRDMP1F8B+DaAyzZu3HjXM57xjHKWZY8DcIyInBF3qPZisNpRl+8CeGLNdX+ov7//c09/+tOtYARR1+L0L9EUZVlmo9AvxED9TgjhHZVK5dfOudstUO1z0jS9TVV/Y/1GAZzXi1PBSZJcC+AzAB6pue6Xb9y4seFFIYhajaFKNHW7quqfAXwJwFtCCDcvXbrUGo3/laGhoccqlcrVIQTr+/nLXgtWVR0XEesi84eagvc7qup+v/jFLzg7Rl2NoUo0decDeKeqvt0598iyZcsmK+a+2bJlyzZZ6CZJ8hYAv+ilYLV1U1W1XcC+ZolpH5sWX7hwYW1ZQaKuw1AlmqI0TTVN02vSNLWdvtu0bNmySrFYtJHtm3stWEMIVvnoUgB3xJtEVXdSVYYqdTWGKlEDHXfccaFSqdzVa8E6NDRULhaLtrZ6X7wpEZElfX191dKCRF2JoUo0oVh7nuelelUBMkuXLu3JYA0h2Ij+5pp11YUiwqMw1NUYqkSR976gqh8A8BWr3MNgnR1VtaM0t9fcZAUg+vgDR92MoUoUqeoi+z+hqrsB+EcG6+yobq7zoHGzkv0ZQggMVepqDFWi/2Nl8GzHqp013R/A6xisMxdCsCC1vqvjMVjXqar9nahrMVSJojRNQ39/fw7Adq3OVVWrCMRgnbmiqi6oOVazoQG1kYnaCkOVqMbY2Jj9cSMAK+rQx2CduUKhMEdErIqSHaMZV9XbK5UKyxRSV2OoEtWoVCq2mWanuKnGMFhnKIQwH8DO8a9lEflzf3//31SgIuomDFWiaHh4WEIIC2OHmdoiBQzWacrzXJIkscL6Vi/ZPArg3vFxDlSpuzFUif63WP6CJEmWFAqFtwM4bZIOTgzW6U/9HgigP950i4hcXiqVtljakagbMFSppw0PD8/x3u8N4O8BfArAu7by/4LBOkWVSuUAVX0VgO1sg1IssL+2fv9yRO2JHSOo5wwPDxfuv//+sHjx4qcDOBjAK2Nj8T2m+H/CurDcBOBr1rGmVCptqte1XXjhhUmhULCQ/xyA56Ix/Vjf6Zy7Gw3ivd9dRN6mqq+L69MPAHiFc+6CRj0mUbvgSJV6Sp7nC0TkhMWLF787Vk76WGwmvngaLzI7ecT6LOt16r3fCw3gve8XkcNVdSgGqpUqPDuE8PtGPB5Ru+FIlXqC9343VV0sIhaERwB4mp1F3cKnV6sATXy/W0aso7GN3ZuccxbgdbFy5cqkXC7vZ3WIATwv3nyviLw3hPDdNE1Z95e6HkOVuno379DQkHrvLUBfAOAkAEfbaY+aWZqxmt2pD8YCBfY+4rGaeQB2jxtudom3Sc3/nU4NVtuGm6nqGWma1tbnnbEsy3YUEbvWV9Tc/IU43TyldnlEnY6hSl3Je281fPcWkeMB2FTv3jEUq6PPR2Kvz6vi252xo8pYPFNZDVs7YrMohGDTxscCsJHYQLyvXTs8WM0qVX1LCOGGpUuXzugM6apVqwrj4+M21fsJAK+u+dAFqvo+AFdbtar6XTJR+2KoUtfJ89xGk4Oq+gwAr6kpQDAWR6LnALhCVc+1cBURC1hxzm31F7/3fq5VXOrr63uaiFi4ng5gXwBPtvsWkZs7NFivVNWPALg8TdNpTQdnWbYwSZJ9Y3i+rOZDfwDwRQDfdc6trv8lE7Unhip1Fe99n4jYbt4XqOpAHGmah21QBeCXSZL8TFU3lEolC9gZy/N8b1U9BMDzAViA2/Tn/QD+FcAPSqXS5jYtHRKsNwD4HoBznXNXZFkmaZpu9fq99xamTkReCuDkmg/ZNPqPAXzEOXdPA66VqG0xVKlreO+tCtLb4+h0Sc1GJBt9nSkiXlUvd87VLeyyLCuKiAW5rdmmqrpERP6xVCrVZZ2yycF6H4DrAPyPql5pz5tNgzvnNk+Fr1ixYm4IIQkhPF5E9o7t8exI0gE197EpboJ6q3Pu1gZcI1FbY6hSNwWqjRDPALBDTe3e22LQXiQiD9Zz9Fgrz/MCgH1Uda1zzkbFDdGEYK3E3cGX2ZqziNweR57WwN3O8e4I4CnxXO9uk/wOudhe1DjnbORL1HMYqtQtgfrReLazULOz10rjvWbhwoWrDj/88K45ztGEYDUh/n7YUG0wbudzY03k2t3Pta6JRR6ub9A1EbU9hip1Q6B+0I5t1IxOjY2wXuucG0YXalKwToftoH6Vc86mj4l6FisqUcfK87wv1ur9pzhCrbpbVd8TQrgIXcoqL42Pj98ZQngDgJ+18FJsvXWl7YRmoBJxpEodyntvo9LXiMg7VXX/mlC1wg2fDiF8fWhoyDbedL1Vq1btND4+fiaAF9UUp2iGxwBcEjclcQ2ViCNV6kTeewvQZRYittu2JlCtStCVIjKSJIkdbekJxx9/vJ2ztRHrN2Px+masH9vO3rNjqUMGKlHE6V/qKN57G4VZ4YVnAjhmQv3esVi8fWU9j810glhg4V0iYmUB7ThMI7uBXwrgG7bb2jlnlaSIKOJGJeo43nsr7vDZ2AWlykL0bFV9Y5qm96JHee8XqOpzReQ5sai91S6uh0p8jn+qqj+0ddQ0Te2oDRHV4EiVOkqe51YQ//0TAtWsA/C7JEl6uhG2c269iPw0HjF6fzyna31UZ2ONiFwmIh8sFApvUtXzGKhEk+NIlTpGlmV7iMi7Y8WkRRM+/EdV/bs0TX/XostrKyMjI8ng4GDw3p9om4VjGcHHx7KNtV16JtKat9vjGu23AFwvIheXSqVyk78Voo5Se66PqK3FrjODkwSqTU3eqqoNq2TUaSxQ7U/n3AXe+6ut9GA8z3pArIi0ZwzW/vh7YE2spLQ+rsneGVvD3XvkkUf+6aqrrkKjqlERdROGKnUE7/12AP4hNhjHJKF68fnnn8/i7ZNwzj0E4KE8z/9cLBZlfHx8iaruEF+cLIifts6aAYjIJhG5J4SwaeHChWNHHHEEg5RoGjj9Sx3RGzX2MP0PAEdO8nO7VkSsROG3S6VS15QjbEZVpmKxqDYCtfetoESrr4mo0zFUqSN4760o/ke2sJv1DlV9mVVQWrp0KUdWRNQy3P1LbS/LsoPjeqDV+Z1MEJFRBioRtRpDlTrB7gD23cLPq8bjNI0sdkBENCUMVWpreZ4vFBEbpVpHli0tYYTYooyIqKUYqtTu5sZRam0XmomKqrqlqWEioqZhqFJbU9UnxXOVW9qAZLfbaHaXJl8aEdHfYKhSW4thudNWdqrb7fNFxCoFERG1FEOV2pb3vj+E8LQpFIWfp6pPzvO8tmNN17jgggv6vfdWAYmI2hxDldpWoVAQEXliLKW3NfOt/F6hsLVl1860YsUK6evrs56xZ2RZdlirr4eIto6hSu3MpnR33cp6apV9/OBKpXJw7LfaNQYGBux7s5KCVhj/jQxWovbGUKW2ValUto9nVGUKP8cHquoTu7E5uYg8asEqIs9isBK1N4YqtS1VtYYPU53TtcLwz8rzfC90GVW1FwpW03ixiDwTwOlZli1u9XUR0d9iqFJbyvNckiRZNI1OSnZO9fAQQjdu6JkbX1xYuO4pIk8RETYOIGpDDFVqS9Y5RVUtTKzl21QdIiJneO9t2rhriMh4DNTqNLhVkGKxC6I2xFCldmbhMZ2NRxY8TwXwdO991/QKDiEkNc/D5lrHqlpu8WUR0SQYqtS2078iYvV810zjyyx47NjJMhHpQ5cQkWoz8epo1QJ1Y6uvi4j+FkOV2nb6F8B6AGPT/FIbob5OVV+A7jEvntWtNg+w3cBsKE7Uhhiq1LbiFOdMfkatGMRL8zw/Eh1ueHi4oKo710z/2gj15hDCaIsvjYgmwVCltqWqNlK9bwajMtvgdKSqDmZZZsUjOpbI5izdLxbCqDZkX7dx40bu/iVqQwxValvj4+MPAfjzNDcrVVnRiNcnSWIblzqWHVEVkV1r/q8+GEK4s6+vr6sqRxF1C4Yqta2+vj77+bxzBuuqVU9Q1U967w9Ch0qSxIpZHFFTBGM1gJtOOukkrqkStSGGKrWt8fHxTQCuArB2FndjvVg/5r1/HDqT1f3dK/5ftTXmP4mIBSsRtSGGKs2Y976hPz8nnXSSxp2us9mUYyO8pwN4h/d+H3QQa2UnIgOxqYCxddRLnXM2LU5EbYihSjPivbdzoO/x3i9t5FOoqrcAuHIKnWq2Zg8ApwD4pw7rSzpHVW1NeOf4/d+pqn/03ndfjzuiLsFQpZmyIgt2FvQb3vuTG/g0ro3rqrO1P4BTVfXV3nvbxNTWsiwTVbVR6lDcqGVv14vIJc457vwlalMMVZqp6wCcC2BvC9Y8z0/N87zuVYwefPDBUVX9ddwFPFsHi8gLAbzSe2+j17ZVqVS2U9XDAewSb3oAwHIRmemmLSJqAoYqzYhzbmMI4cv2i946p6jql1X1uatWrZpvJQbr9bS++MUvtmnPu2Ko1INNp77cqi6181RwoVCwFwCvBVBtDvAggFWlUolFH4jaGEOVZv7DkyRrbDoybiSy/p5njo+PPz+EsMimL+v11IYQbgDwo1luWJo4df1Sa/jtvbeRdlvJ83xfEfmnuBaMWP/4KzvssMPvWnxpRLQNDFWasSRJ7MjL6ppNRBYCnxaR5ydJsnO9grVQ2Lwv5/o4BTybDUu17OzqiwG8t52O23jv7QjNMwAcHWv+luOxoqsfe+wxnk0lanMMVZqRkZERS7qFqnporLVbZZuAPq6qLxSRxfWYCnbOWZh4e9gZVlfakscDsDXWz3jvD0CLDQ8P227fA1TVwv7AeLOtof4GwCWxyQARtTGGKk1bnuc7qupRIYR/tU0/kwTdbgA+ZIEVQlgyPDw86yAMIdiI7Ydx1FZP9iLgmQC+7b0/evny5dZiremuuOIKKRQKi0XknXHHb9WPVPUrzjn2TyXqAKwfStsUG34nNoqy3b4i8hIATwJwzDZ+hh6yMoGqenaSJLfGEeeMee9t3fbfAbwsTo3W2w2q+glVvXhoaOhGNH/a93MATq+5OQfw4RDCiqGhIe76JeoADFXaIu+9dUaxt6VxOvJE2+kbNyVNdZbjYQD/qao/FZEbZxuseZ4frqrfj6HeCHep6s9F5BfOueWrVq2S448/vmHTrsPDw3YMaeckST4G4O9rPmSbs74C4FvOuUca9fhEVF8MVforNlU7f/582bhxo52RXBYD9ZB4XrIww58ZC4UvisiPQwjXpWk642C96KKL5oyNjb3KRnBx6rYRbPPVnwB8vVAonB1CWFMqlWxTVl0NDw/PF5H9ReRfANjov8rKEP4YwEecc3fX+3GJqHEYqvQXWZZZQ2w7H3m8iLwtBulOccetxCMtdryjHH/xl+M07HjsYWqfb1PFi2q6qlRZDd+v2RqhiFxdKpVmHKzeewv5t8QgqvYZrbdy/L6+HYsuXFAqlepWyD7P891DCIeLyOsBPKfmQ9aE/EL7/pxzVqKRiDoIQ5Vqa/meFo9zPDd2R6mOMu8AcFmsPXtNDNZHVHWDiGwOTxHZQVUtVHcRkePiNPFRMfSqm38slM4C8AMRuWyWwfpsEXl/rDo0p4H/jBauf7D6wyLyVVW92zk3q7KJsRXdK+MsgD1HVfbiZQWAM5xzNv1LRB2GoUr2S95C6a0AXmE9SAH0x3q7t6rq10Tk1iRJfq+q5VKptLFamzZN07+sNXrvxTm3+e9Zlm2fJIkdszlOVZ8cCy3sHke9jwH4noh8X1Uvmmkd23hU5zWq+u/xvhv5s1z9Pi1crwDwMwC/F5F7C4VC+YQTTihvawbgf193iBWdsM1eb4rHeardZ6psZ/Ppzjl7HCLqQAzVHhcD1Y7G/COAHeP07bCqniMiv77//vtveclLXjKjjTorVqyQEMLcEIJtKnquiNhRERdHrGer6ncsc2rDeZrXbj+/77C1xwaPVmttitPgl9pmIhFZqaq3WuH/JEkeDCFYIXwbgWuSJDvGUfpB8Tyvff8H1dTzrXVNDFSrqUxEHYqh2sNioH4UwJvjGqjt6P1BCOFTAG4ZGhqq2xpilmV2tnW3JEneFM+FWuEIK8X3k5mGqrnjjjuS22677X2q+m/xBUGzhPh82Uai9QDuA3BPHNXaWznukt4jjtDtfUyya7paMek1zjmrGkVEHYyh2ttrqDZCfVfcZGS+qarvqVQqjy5btqwhxQa89/PjdLAFz1n1aGN2ySWXzN24ceO74/fTzGCtpTVhW/1/VW3ZtiWr41r1W51zf2zCNRJRgzFUe7SYgxVsV9X3xepHNnr6Xtxx+lAzHt+6m1XXYGfrd7/7nU25Fh599FGrRmTf0/wWhutU3S4iVnbxw6VS6eZWXwwR1QdDtcd4722a91lWSB7AkQBsxHqeqr5DVW8cGhrq2AbYtnkqdnd5A4B9J9QkbieXxXq+33TO2c5qIuoSrP3bQ0ZGRuxF1D6xMtKhMVCtyMEPReTOTg5UE9dmvwjggwAuiNWc2kV1VG47h23N+osMVKLuw5Fqj/HeW1cWay6+c/xF/1tVfX2aprejS8RdwceKyDJVtUbfS1p8SRviJiYr1fjFEMJDaZra5iYi6jIM1R6S57m1FbNALcV/+0dE5I2lUslq6XadPM93U9WnAPjneC7UpoSbyV60PCwiNjrNbJRaKpVYGJ+oi7X7Zg6qk+HhYStBeEAMluqLKSvEcFe3PsmlUukBK/mXZdltNuUtIs+IZ0XnNfBca7Wko20+sjKDXwJwrRXTKJVKHT29TkTbxlDtEUmSWJWk5wF4XM3Nd4QQur6+bJqmt3rvv5MkyU9iA/DDVPU5cSNTtRzjbFlg2ij0JtuQrKo/AvDHNE25s5eohzBUe4DtirU+qLFdWnUkZX+OFwqFths9nXvuuXLKKads3tizfPnyZNmyZbNqF2ecc7aGuT7P868lSbJ9COEHAI5Q1VIcve8XC2BU6xRXn6fJ2Mcq8fPvBXB/3PBldXuvKxQKV1pd5MHBwbZ7bomosbim2iO898+NHVcW1gTDpdZwvFQqtfRYR5ZlfSJiTdAX2Z8hhO1EpNpqLohs/jHdWKlU7kySpKyqo/Vo2p1lmY3eF6jqfkmS7K+qe4rIUXET155xJFuumS62TjurRWRMVW1K+RYRuU5ErrdrKpVK9+R5nsymUQARdTaGag+4+OKLC5s2bXp9LElY2yrtahF5cTOLDwwPDyfFYlFFZGEIYS9VtRJ+1mlmV1V9gojsHa9xl3jkqxxnVEbj1Kqtk660Yv/W6UZVx5xzswrY5cuXS6VSQV9fX581AhCROXFa2CpNWf3iBfFFyLokSaw7j4YQRguFwjo7GDs4ONiQ6lNE1HkYqj1gxYoV/ZVK5dMAXjdhyv9BAG8XkR+USqWGBkOe5zbq2zGE8MQ4GrS13WNigO5ZDbCtnJ2unY59NG6y+rWq2guDnznn7La6u+iii2R0dBTLli2rS/UnIupuXFPtASISYmhNDCxrJn5YkiQ/t1FYPR/z/PPPlzlz5tg0ro1AjwghHCIiqYjsHtcwk1h8YsrfRs37O8a3M0TECtqfmGXZJ1T1jqGhoboWfDjuuOMYpkQ0ZQzVHrBp06Z5hUKhdtq3yqY5X12pVKyN2U/qUQKxWCwWy+WynYe14HxO/PPoOKU6vwE/v1bYYV8RsXOoX/fe/9Y5Z+udRERNx1DtAYVCoVjTiQaTjFbfl+e5bbSxerTT8tOf/lR22mmnXZIk2U5Vl5bLZWty/kwRsTVJWx9t9DJD9b6PtHVaEdnTe/8DNvomolbgmmoPWLVq1fzx8fEvWBPsuKN2olER+ZOq2hTq+SKyduPGjeVnPOMZWttwfGBgQO+//3658cYbbY3WNvQcqqqLReRZccR4WJzS3VKAN8OfAZwD4CvsT0pEzcZQ7QGx1donrbXbVjYC2ZnKtQA2Fy1Q1cvijttNtsM2SRIb0e4qInbc5Bg7fhJ37e4Q1zfbyR2qaq3svmaFH1p9MUTUOzj92wOs16gdRRGRjVtZ1yzEgHyNVQYSkQdi0G4SkfFYFGEnO04CYPv4s9OuL8qWiMgL7NhNlmWPpmnakJ3BREQTsfVbD0jTdBOAq+JIdFuKMXitwpBt/jkoTuvaWqmdKd05TvG2a6BWWfWo18ZWd0RETcFQ7R0PxJJ60z0i0u7huTVPF5F3e+/bbXqaiLoUQ7VHqOoNVtBoBqHayex7PdJ2JVspxFZfDBF1P4Zq77D10StsEw96h42yHy8iR8+ZM6eTR9xE1CEYqj1iaGjINhtdAOD36C22Rnzq+Pi47VQmImoohmoPGR8ftxJ+n+nBYLU11b1afRFE1P0Yqj3kxBNPtBMxVuThZwCsZm4nTV2Pxz+rvUynw3Ytl/I8365B10dEtBnPqfaYNE3v8d5bAf0DAZzUhoUbKrG4/9rY6m1NXAe2rjTbxWpNmxsBxLBcPMWf812nWcCfiGjaGKo9yDl3jff+zBioT48h1UqjMUSvi31Svao+oKo3ich6EdlUqVTGCoVCwfqXqqo1Ft9DRJ6sqi+0UWgsXDFZCUbE0e1usXcrC0EQUcNwR2QP894PAnh3DFZrCt4sIY5Ib4lnZ38N4LZCoXBxCGHD3Llz1xxzzDH2OVt18cUX91nAjo2NWQP2U+34zFZeKF4L4KXOuT/W/9shIvpfHKn2MOfcSJ7nVtv3HwAsjY3DG2k1gA2W5wBuBvArAA8/8MADt+2yyy52PdsM0lrHHnusrbOuzrLsc3Y/ImJ7BI7Ywoi1mCQJ9xAQUUMxVHtcqVS61Hv/mKpeISKvjkXy61XX18ojWvBZ4Yn7bUQqIjcXCoUry+XyBuecBeyspWm63nv/3VhC8XFx/XQy/fV4PCKiLeH0L22W5/kiW6cEYFOpTwFwXPz5mGobt1AzrWvt1x4CMCIifxaRS0II927YsOHBU045ZVqj0elYuXLlDuVy+b8BnDbJh69MkuSVg4ODf2jU4xMRcaRKm5VKJdtd+1iWZR8QETvTeSyApwI4Ku663TUGrNa8GKvEjT8b4kj0ajuqkyTJRar6qKret2DBgg1HHnlkw4K0loisU9UfiIhdu7WmqzUWQljPf24iaiSGKv2VNE3Xrlix4saBgYEbVqxYsTCEsCiEsIuIWEjNq2n7tjpO724OT9vBu2HDhgf6+/sxODhYbsXTevzxx5e99zfGa6sNVXshYLuJW3JdRNQ7GKr0NwYGBjYX3R8YGLBjLmuHh4fvTtP0Grvt7rvvloceekgOO+ywzaNP772kadpORfrvjxWjDqjZsGRhekOhULApaSKihmGo0jYNDQ39JTT32msve/8vf3fOaZt149kQm7HX7gAeiyPV6VZiIiKaFh4xoG40MTxvV9W8VCpx+peIGoqhSl0lSRI7NrOgJlhtJH2niFiTdiKihmKoUldJkmQhgP1rpn+tdvD3nXN3tvjSiKgHMFSpa1x44YWFSqXyxJqSizbde6WqXm8bqlp8eUTUA7hRibpGoVCwn+dTasot2g7lCwuFwrWDg4NttaGKiLoTQ5W6QpZl9rN8MoDBGKY2C/OrQqHwrYGBAW5QIqKmYKg2gPc+EZE5IjI2ODjYlGpCvWxkZEQqlcqequpE5IAYqNaV5qchBLZ6I6Km4ZpqnXnvbYPMe1X17ap66oUXXrjQe98ThdxXrlzZknXLvr6+uSLyLBF5bSyabwUgMgDDpVKJpQmJqGkYqnUmItbwezGAd6rq5wqFwpftl32WZQcsX7681c3AG8Z7P1Aul/cdHh62OsFNcf75528O8U2bNj0PwEdiCUUr9HA5gDOdc1Y+kYioabgjss7yPLeR6mtV9ZPxl7w9xw8DuEtVfyUiV4UQVorI2jRN69L6rNW8988HYN1hVqrqzy3v0jS9u5GPmWVZUi6X5xeLxeeKiPVT3Sl+6BIAr3bOWbs5IqKmYqg2wPDw8F5JknwTwIkTPmRTkaMALgBwnYj8TEQeGRwcfBAdzHs/BOATAJ5shRYAXA/g0wBuacRo0XvfB+DAuDHp/QB2iB+yLjmnO+fs8YmImo6h2gDDw8OLROT9IvKm2NllItu8ZKPUP4nIxar6WxH5vare5Zyzpt4dx3u/LE7BPiWua95mu29t8K6qmYiMOuesJu+MZVnWJyL9sV9qCsBGyNvF5/IK6wXLQCWiVmKoNoj33pp8fx/Akm186sY4gs0B/E5EfqGq9zrnbLNNpwfraPzefi0i14cQLGRXl8vl+4vFonW32erO6AsuuCApFotaLBbnVSqVvQE8DcBzrP0rgN1if1ebZr4UwD8756ztGxFRyzBUGyTLsn1E5OMAXmQbVKfwJZX49jsbwQL4AYBby+WyBUVYtmxZ6NBgNSGG660AbrJTMADuUdU/2AgWwLgdP7LPU1U75jVfRBJVtZ6oB8WygyfFSklLahqlrwSwHMBZzrnbW/ytExExVBvl8ssvl/Xr178BgG1Ymu6RGgvXR+JZy5E4hfqHRx555OHTTjtNOzRYa783K8ZgYXoXgHXWli3u2i3Gj+8U33aIO6m1Zhrdpnrt7Olv4kzAtc452whGRNRyHKk2yMUXXywbN248REQ+b/2+Z/hcV2KgXB9HeRYiNxeLxd+HEHRwcLDSocE6UbUCEmpGoZjw94djcfwf24Ykm0pW1U1Lly7tyDVoIupODNUG8t4virtgX12nM8H3xjXEn8dR7EWqui5NUxvldXqwTha0Fpi3xOnwYVs7FZE/hBBGt7UeS0TUCgzVBsuy7EQR+SqA/ep4txY2tob4+zgNeoWtvRaLxTHnXOiCYL3DjhwBOE9V7ejRtUmSrB8cHNzU4MslIpoVhmqDee+tFu0XAAzV+fmuToveF9dffxyniS+0HcXOOVuz7MRgvUpV7XP/GEK4IUmSbe4SJiJqFwzVBluxYkVSqVSqG5YmO7NaL7aBZ3Xc2HSFqtoo7+6hoaFHOyhY7UjR6XPmzPnDsccey84yRNRxGKoNlue5HQ2xdmT/FQOlGc/5o3H99VxbhywUCitCCGtKpdJoGwfrqKp+QkQ+45yzHcFERB2HBfUbrFQqhSRJrornT5v1ImZHAAdbhSEAX6tUKp9T1feMjIw82Xu/OK71Nv0FlXNueSwraGvBE+seBxG5de7cuewqQ0Qdi6HaBMVicTRuKLJzmc00H8CiWNbv3SGEb4vIR733LwDwhCzL5vz617+WNgnWsohsKpfLnD0hoo7FUG2C4447ztYHrwHwEFr372zruU9T1ZcC+DqAz4rIB/r7+4/IsswqF7U6WO0a5xSLVv+BiKgzcVTQJBdffHHf2NiY9Vi1MFmA1qvEILPOLn9W1e/EIvgW/oU0TctNXmO10P8GgHc559picxUR0XQxVJskz3NR1VMBWIUlKw7fTux4jrWfuzm2pVslItf09fU9GkfZzQrWq5IkebWI3DwwMND25RiJiCZiqDZRnuc7qKqF6svRnqplD2+IlYx+oKo3L1q06Oq1a9dqqVSqNDBY7ciR3f/znXPNXnsmIqoLhmoT5Xlux0heH6eArWC8GYsF5XeNrczaiRWWeFhErLDEdX19fcs3bdo0lqbpxJ27s+a9P8ZGy845C3Mioo7EUG0y770ddfkhgEPiTQ+o6vdF5DEALwSwM4Dd0V42xeC3ohLDIrKqUqncUigU1jrnOE1LRBRxq2WThRDuFZHzRWT/eORFRMR6jH5LVX8N4AARebEdeQHwxPjCp9W7tOfGdWDrEXuCjV4LhYI1HL9+eHjYQvaxSqWyZtmyZVsMWO99kiRJfwhhL6v0ZMUe0jRlIBNRV+FItQWyLHuRiPw3gO3jTb8F8Crn3P3Dw8N9hUJhxxDC4SJyXGzO/TgAu6G92BSwbWK6VFVvFZFf2nSxiNyiqhsrlYq1ZQsrVqwoVCqVOar6VBEpxYIUH1PVb7Rrdx0iopliqDbZBRdcIIVCYXGSJGcCeF4chdqu27dZVxbn3ObdtlmWFZcsWVK56667DldV63BzOoB9ATw1bugpoH1onB62c7iXx53EttlpjYgsUlXb2XsogKPjcaKPAfiAc65t+8ESEc0EQ7UFsizrFxHbrPRuAH2xd6gFzb9uqXVbnud7isheIQQL4qcBODbWz223zU0hvq2t+buVTUR8AfFZAO91znGUSkRdh6HaInmeH6aqZwE4LAbPFSLy+lKpZHWCJ3XZZZfJ6Ohon4g8Lo7+nhNHgAfFcG712uu2MFCJqKu1+y/hrhVCsKnSG2PDcft32G9bjcyPPvpojSO8PznnfiIi77NWafGM589sutU2AKE9MVCJqOtxpNpC3vuXAPgygB3iuuTPROSNpVLpvmnez/xCobB9pVIZjOuWpwBYXDPt2moMVCLqCRyptoj3XuJmnmvjxiOJG5H2mO59OedG58yZc79z7kciYiX/LKw/BOBCtB4DlYh6BkeqLeS9nxPr3r4z3mTh+kFV/XiapuOzvG/bJfx9AAeidRioRNRTOFJt5ZOfJJXYZ/WP8SZV1UNnMlqt5b1/EoCvThKo59uxndjXdVahPQUMVCLqOQzVFhocHKzEM6rVAvJFEUlFxHb2ziZQrY3bURM+9D0Ar4xv7wHwGdvw1KAerwxUIupJDNUWmzdv3t0i8l0r/RdvsrOny7z3O9Y5UP/JKjY55x4UkR9tv/32/wrg1QD+GYA1Db8pbpaabelABioR9SyuqbaBPM8HVPUrcbrW/k0uBvAK59ytdQxUK9j/Ny655JLipk2bdlPVIwFYXd+lsSziTHYOM1CJqKdxpNoGNmzYcAmAc2MRCMRwfVae53MbGajmmGOOKZdKpXtU9Teq+gEAbwbwLgAXAfjzNL4NBioR9TyGahuYN2+etaqxSkrV86lWaP/JhULBdgc3LFBrpWlaTtPUWrxd5Jz7uoi8CsC/x81N28JAJSLiSLU9OOfGVfXCuHEIsVj+KZVK5enNCNQJ17J5TbVUKt0sIj9MksQ2NVkHmi1hoBIRRRyptolKpbJWVe24y+qa0eoheZ7PaVagTlQqldaKyI3xvOu9k3wKA5WIqAZDtU0sXbp0vYhY27R18aYdVPW0EMLurQjUqoGBgQ3WLxXAxK4yDFQiogmK6BJXXnmlHHHEEXr11Vcna9eutWMpIiLlEIJt/tFSqdToYgezFkK4JkkSm2r9h9h1Zi8LzjzP7y2VSuVmB2p8PLsOm4beueZmBioRUTeGap7n8+z4x9q1ax83MjJy4Jo1a7ZX1SW2/wfAo7Fy0GN5nl+lqg9v3Ljxxrlz56ptzEGbERHrQfoHALZhyMJsPxEZFBGrulRuQaDaTMYT4uNVdyIzUImIuumc6sjIiFUeKlQqlWPtfKWIWFeW3WJBetvkMyf+WR2dWkg9Ehtn/wLAdVYecGxsbP1JJ51kVY3axooVK/apVCrfsj1DsRDDFQDOALC+mYFqRkZG+kMI/wjgwwAWMlCJiLpspOq9XxBCOM6q/AF4qYjstJVCBXNq/rRQMDbaexDAqX19fV/y3ltv0vvRJkII62LnmmPj6NBGis8A8EIAhzcrUI2qPh/AvzFQiYi6bKR67bXXJuvWrdthfHz8HbYxNY7YtnmOcws0fu+2MciKHnw/TVPb5doWvPf2/X03rqkijrhtOrhpgeq9fwGArwGwFy2c8iUi6pbdv1YHd/Xq1UeMj49/HcBb4yhupoFa+2LCgvnvReQ9eZ5bd5h2cUcsVVidvm52oNqo/nUMVCKiLgtV771tOjpVVW209DwA8+t83bYO+2xV/XDsQdpye+yxx+1WlrembGHTAtU452zt+e0A3gLgvc65icdpiIio00LVe39QPF5iTbyPb+BD7WrF5EXkfd77g9Fijz5qm5YxDMBKF9b6YaMDtco5Zz1ez2SgEhF1Qah6758WC7tb/89DmvCQO6mqBfersizbGy107LHHaixmb71WqzaJyHAzAnViyUIiIurgUPXeHxOPcTw7Ts82y15xp+0RWZZNqUNMozjnHolTvdUG5nZE6OQ8z/dr5XUREVEHhar3fgDAp+ORGZuWbbZDReTVIrIdWu9OAFYi0EaMRVU9VFX3bPVFERFRB4Sq9z4F8AUbKdacK9W4YefR+Gbt0e6xNqQ1u2PrzYL9RXmeT9x121Tr16+3dU0rW1jdKGTNw1/uvbdi+0RE1GbapviD934ZgC8B2D+GfSW+XRJHa1msirTOivqq6pMBLInTtTai3aOOl2OBfkiSJAtqusY0XX9/v5UuvFZVbwFwUHxerIH53tddd90fDznkEK55EhG1kbYIVe/9iQDsDOo+8SbbjGOjtJ+FEH4jIndZXVzn3OYjJhdddJGMjY2tmDt3LsbGxn5sAaiqVk7vsFjzd7ZFLWyEemIsF3gZWmRoaCiMjIxcpqrXA6juSj5WRIYWL15szw8REbWRloeq9/4kAN+oqR5kfTu/paoXrF+/fjhJEjzzmc/8qxHZcccdZ3+vFsS/fGRk5Heq6gG8I07dPqUOwbpQVXc+++yz5fnPf37LRoRJkoyq6q9VdSCOxm1t9YTrrrvuVwDsPCsREbWJpA0C9X9qAtWOkbxHVb9sx0ee/exn68RAnczg4OAm59xtVqdWVT8P4PwtFE6Yjl1F5Ck77rjjbCo3zdoJJ5xg68ZXA3ioZhQ9oKo2TU5ERG0kaYNAXRxvulVErNDDT9M0vX0mZySdcw+JyA9V9b8A/GSWwWqj+EVxo1RLichNAH4OYGO8yRqXv857v83ztCtWrJDzzjuv4L2vTq0TEVE3heokgXqLiJxeKpWWO+dGZ3Pfzrk1qpqHEM4E8INZBKtNL89NkqSl51VNpVKx1nU32CatmjOrTxGRY/I8t7KNk8qyzNrj7dbf3/8qEfl2nucvbt5VExH1nqQdAtWOiZRKpYvq9RhDQ0MWzFeGEGw38c9mGKz23Gi5XG55v9U0Te36feyqU/VkVT1dRBZbf9mJX+O970uSxGoZn2F1k1XV2uXtk+d5Wx2jIiLqJkk7BKpz7tJ6P9bQ0NCGuBZpm6AumME0rj03o0mSVDdEtdra+HzVFrc/NYTw4XK5fFCWZTvYDRaw1nPWztmq6ltiqUc71/oFVT2zVCrNdq2ZiIha3U91kkC1akGnOedqR191l+f59qr6MgBvsNHdNL7ntSLy9iRJzhoYGGhUkYlpybLsFBH5xiRnci+0UayIXKWqtg58dNwFbcUibPqa/VCJiLrlSM0kgVpW1VXxPGpDlUqlNd77n8YzrI+3mgpT/FJbm/1TuwRqZJWk7o8blWpfHCy186uqOhZH5DvWNGJnoBIRdcv07ySBaooiYo3G/78sy2z02FDOuQdFxMLlD1P8EgukW1S1eoylLfT19d0I4NItTGXbhqUdYqAaBioRUTeF6hYCtWpfEXkBgNc2I1iTJLkbwHdjqcNtCbGSkq1hto3x8XGNXWumsi7KESoRUbeE6jYCtenBOjAwsD42/bY/t+V2EblYRFq+87dWX1+fTUVfOYUXBgxUIqJuCdUpBmrTg1VVr7UNslMY6d2UJMkq51y77Pzd7IQTTgjxrOrW1nkZqERE3RKq0wzUZgfrxrjRZ2vft5VK/NqCBQvaaj21Wh0prpVuaQTNQCUi6pZQnWGgNi1YVdXCyEr+2RnWLYWuTa9ed/jhh7fV1K8ZGBioblCarM8rA5WIqFuO1MwyUP8qWFXVzmR+PU1Ta3lWN8ViMYQQNm1j+ne9qu6TZZmEEO4TEYQQ1hWLRa22nmuVkZGRvhDC/rG9XS0GKhFRt4RqnQK14cGqqlYzd89JQqnKbrcCC6fYNHChULhXVe8oFArXAXg4z/ObQgiPJEmyfsOGDautn2uapk1bdw0h2PUfW3NsxjBQiYi6JVTrHKiNDlZbj9x5G5+zS/zTPk9EpBw3Bo2p6p0iYkUhbpo3b5511bGg/b2qrq5UKvdWKpXH+vr6JE1TGw3XlffeAvV4AEfGkbZN3TNQiYi6pUxhgwK11p9V1Qri1yVY8zy35uX/rapHzfJ7r8RgG43HW8ZiFxk7C3tbLDKxOoRwe5Iktn5r/V5Hh4eHk6GhoWlPIQ8PD0uSJFZ+8M3WbzYWemCgEhG1GaljoFbL4rVlsJ511lmy7777PhfA52uaotdTJY4eN8Q3K4B/cwzd6+Ku4odDCDeJiJ2VfThN0402AnXObXFTVJZlxSRJ9lDVZwD4j1g1iYFKRNSGpA6Buj7W8K0WJLC6tDvFnp9tE6xZlu0tImdZAxs0R+2LjI1xCvnReKTHzpramdn7ANwhIja6HRWRB8vl8mihUCjYvLOqzgkhnCwiNrJ+Rew2w0AlIuqWUJ0QqFbKbyWAX1iohhA2FgqFIVUtWeuxLRz9aHqw5nm+o6ra1OnrY+i3g2oLtzU1o9t7YuCOxu4ytq57EIDt2G2GiKjLQtV7fzKAb8ZA/bmqWhPwa9I0faDmc+ap6v4i8nIA7wQwp5XBmmXZfBE5MV7L8c1sdzdN1TOoUjOVXHutHKESEbW5KQeM996C9NzYQu07IYR/U9W7ly5dunGSzy2EEBYmSfKPAD4UR1lND9Y8z+1c58Ei8j4AL27jQN0WBioRUTdVVFJVm5b8DID/DCG8ZePGjbdNFqjGNt6EEB4LIXwq7lbdUgUjNKry0ooVK+x721lEzohT0QxUIiJqqCkHjVUYsuIIdm7TOTetxt3e+zcB+GhcG2z4iPW3v/2t9Pf3LwghfCBO+za8b2yDcIRKRNRBmjZ6896/EcDHmhGs3nvbIPX/ANi0LwOViIiaommB45z7fAw5m0Zu2FTwypUr7Xt6/4RAHZuwGajdcYRKRNSBmr7O2OAR6zdF5PlxlFoN1OXxbOiu8TiN1f7ti2c+kwYWrZgpBioRUYdqSZg0KFjviOc8j64J1B8nSfIP1mnGdiCXy+UlIrJHPBL01FiY/gkxbBfGohXlWLiiFc8NA5WIqIO1bITWoGCt9WMAZzjnrIrRX2roDg0N6apVq5KxsbH5VrGoUCjYyNU2Ne0nIgcDsNA9NI5kd64Z0dbzWNBkGKhERB2updOeDQzWm1T1VWmaXjzVL1i+fHmxWNzctGeuiNhU8XaqemCcLt4PwCEWvgCWxFFtfyxsUY/pYwYqEVEXaPlaYoOC9S5V/RGAb8ymCH+1q8zKlSvnl8vlRTFMHw/A3j84Th3byPaJMWC3j+u1Mo1NYAxUIqIu0fJQbfZxm9latWqVjI6Oolgszo9F721ddu9YaOKpcX12//hmTc93jUFbDdtaDFQioi7SFqHaacG6Jd77uapq/VJ3E5Gd4ij2oNiu7ZDYcm73uFHqKwDe65yrHvchIqIO1zah2i3BOtGFF15YVNVCsVjcMYRgvVGXxO/PM1CJiLpLW4VqtwZrrSzLNp+NTdO0UwpREBFRp4ZqLwQrERF1p7asi9uskoZERERdH6qGwUpERJ2mbUPVMFiJiKiTtHWoGgYrERF1irYPVcNgJSKiTtARoWoYrERE1O46JlQNg5WIiNpZR4Vqg4P1NBF5nffeyglO2cjIyOF5nlsnGyIi6nFtWfyhhQUi7gTwSwBfdc5du5XHlkKh0FepVE4D8C8iYi3m3lkqlVbX8VqIiKjDdNxItcEj1n0APA/Au7z3T5/sE/I8L1hh/Eql8hoAX7AWcKp6V52vg4iIOlDHjlQbPGJ9GMDvAHyiXC6PJEmyMUkS62BugToAYCmA18f+qf8J4D0sjk9ERB0fqg0M1rEYrtbs/H4A5diU/GkArMzhfPZDJSKirgvVBgZrNVyto8ymmvu2aXM2GCciou4M1QYH60QMVCIi6p6NSk3cvDQRA5WIiLo/VJsQrAxUIiLqnVBtYLAyUImIqPdCtQHBykAlIqLe2qg0Ge/9m+y8KYD+Gd4FA5WIiHp7pFrlnDsTwD/HIzHTxUAlIqIp6/pQNapqU8H/Fs+cThUDlYiIpqUnQhVARVX/G8DnAIxP4fMZqERENG09EappmqqIrI4lB38LIGzl0xmoREQ0Iz0RqsY5V1bVPwC4fiuhykAlIqIZ65lQNePj46MALgewdpIPM1CJiGhWeipUi8ViIdYFnniUiIFKRESz1lOhGnuiHgZgUc3NDFQiIqqLngnVPM8LIvJ0AE+tWVNloBIRUd30RKiOjIyIiOwKYBkAC1abBmagEhFRXfVEqM6fP78YQniOqlrJwvkMVCIiaoSeCNV169a9MNb/tbVUjlCJiKghur6gfpZlS0TECj4cyEAlIqJGst2w3c4qKX0UwBMAfMQ5N536v0RERFPWC6G6VlV/LCJjzrmtlSckIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiJ0qP8ftFKdogGhtwYAAAAASUVORK5CYII=" alt="Brasão Oficial da República / Marinha do Brasil" class="h-16 w-auto object-contain mx-auto" />
+            </div>
+            <p class="font-bold tracking-wider text-[11px] uppercase text-slate-900">REPÚBLICA FEDERATIVA DO BRASIL</p>
+            <p class="font-bold tracking-wider text-[11px] uppercase text-slate-900">MINISTÉRIO DA DEFESA • COMANDO DA MARINHA</p>
+            <p class="font-bold tracking-wider text-[10px] uppercase text-slate-700">CAPITANIA FLUVIAL DE JUAZEIRO • GABINETE DO ORDENADOR DE DESPESAS</p>
+          </div>
+
+          <!-- TÍTULO -->
+          <div class="text-center space-y-1 py-1">
+            <h2 class="text-base font-black uppercase text-slate-900 tracking-wide">
+              DESPACHO DE JUSTIFICATIVA CIRCUNSTANCIADA DA AUTORIDADE COMPETENTE
+            </h2>
+            <p class="text-[11px] italic text-slate-600">
+              Excepcionalidade do Art. 6º, § 5º da Instrução Normativa SEGES/ME nº 65/2021 c/c Art. 23 da Lei nº 14.133/2021
+            </p>
+          </div>
+
+          <!-- 1. OBJETO -->
+          <div class="space-y-1 text-[11px]">
+            <h3 class="text-xs font-black uppercase text-slate-900">1. Identificação do Objeto Demandado:</h3>
+            <div class="border border-slate-300 rounded-lg overflow-hidden">
+              <table class="w-full text-left border-collapse text-[11px]">
+                <tr class="border-b border-slate-200">
+                  <td class="bg-slate-100 font-bold p-2 w-1/3 text-right">Código do Item:</td>
+                  <td id="justSheetItemCode" class="p-2 font-mono font-bold">—</td>
+                </tr>
+                <tr class="border-b border-slate-200">
+                  <td class="bg-slate-100 font-bold p-2 text-right">Descrição do Objeto:</td>
+                  <td id="justSheetItemDesc" class="p-2 leading-relaxed">—</td>
+                </tr>
+                <tr class="border-b border-slate-200">
+                  <td class="bg-slate-100 font-bold p-2 text-right">Quantidade & Unidade:</td>
+                  <td id="justSheetItemQty" class="p-2">—</td>
+                </tr>
+                <tr class="bg-amber-50">
+                  <td class="bg-slate-100 font-bold p-2 text-right">Preço Unit. & Total Estimado:</td>
+                  <td id="justSheetItemTotal" class="p-2 font-black text-amber-900">—</td>
+                </tr>
+              </table>
+            </div>
+          </div>
+
+          <!-- 2. COTAÇÕES OBTIDAS -->
+          <div class="space-y-1 text-[11px]">
+            <h3 class="text-xs font-black uppercase text-slate-900">2. Cotações Válidas Identificadas nas Contratações Públicas Similares:</h3>
+            <p class="text-slate-700 text-[10px] leading-relaxed">
+              Realizada pesquisa no Compras.gov.br e PNCP no lapso de 1 ano, obteve-se o seguinte resultado:
+            </p>
+            <div id="justSheetQuotesList" class="space-y-1 pl-3 border-l-2 border-slate-300"></div>
+          </div>
+
+          <!-- 3. MOTIVAÇÃO CIRCUNSTANCIADA -->
+          <div class="space-y-2 text-[11px] text-justify">
+            <h3 class="text-xs font-black uppercase text-slate-900">3. Motivação e Fundamentação Circunstanciada:</h3>
+            <p class="text-slate-800 leading-relaxed">
+              <strong>I. Da Abrangência da Pesquisa:</strong> A busca de preços foi realizada de forma ampla e irrestrita nos sistemas oficiais do Governo Federal, cobrindo todo o território nacional no período regulamentar de até 1 (um) ano.
+            </p>
+            <p class="text-slate-800 leading-relaxed">
+              <strong>II. Da Escassez de Registros Similares:</strong> Restou comprovada a indisponibilidade de 3 ou mais contratações com especificações técnicas e condições similares no período recente, em razão da sazonalidade ou especificidade da demanda desta OM.
+            </p>
+            <p class="text-slate-800 leading-relaxed">
+              <strong>III. Da Razoabilidade e Vantajosidade Econômica:</strong> Os preços obtidos foram devidamente saneados e demonstram conformidade com a realidade do mercado, inexistindo qualquer indício de sobrepreço ou inexequibilidade, resguardando a economicidade (Art. 5º da Lei 14.133/2021).
+            </p>
+            <p class="text-slate-800 leading-relaxed">
+              <strong>IV. Da Necessidade Inadiável do Atendimento:</strong> A interrupção ou dilação excessiva do procedimento causaria prejuízo à prontidão e às atividades regulares da Organização Militar.
+            </p>
+          </div>
+
+          <!-- 4. DECISÃO DA AUTORIDADE -->
+          <div class="space-y-1 text-[11px] text-justify bg-amber-50 p-3 rounded-lg border border-amber-200">
+            <h3 class="text-xs font-black uppercase text-amber-950">4. Decisão da Autoridade Competente:</h3>
+            <p class="text-slate-900 leading-relaxed">
+              Com fulcro no <strong>Art. 6º, § 5º da Instrução Normativa SEGES/ME nº 65/2021</strong>, <strong>AUTORIZO e RATIFICO</strong>, em caráter excepcional e devidamente circunstanciado, a fixação do valor estimado com base nas cotações obtidas, determinando o regular prosseguimento do processo.
+            </p>
+          </div>
+
+          <!-- ASSINATURA -->
+          <div class="pt-6 border-t border-slate-300 space-y-6 text-[11px]">
+            <div class="text-right">
+              <span id="justCityDate">Juazeiro, BA, na data da assinatura digital.</span>
+            </div>
+            <div class="text-center pt-2">
+              <div class="border-t border-slate-900 w-1/2 mx-auto pt-1"></div>
+              <input id="justSigNome" type="text" value="ORDENADOR DE DESPESAS" class="w-full text-center font-bold uppercase text-[11px] bg-transparent focus:outline-none" />
+              <span class="block text-[10px] text-slate-600">Ordenador de Despesas / Autoridade Competente</span>
+              <span class="block text-[9px] text-slate-500">CAPITANIA FLUVIAL DE JUAZEIRO</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL: DOSSIÊ DOCUMENTAL DA COMPRA PÚBLICA (ARQUIVOS DO COMPRAS.GOV)   -->
+  <!-- ===================================================================== -->
+  <div id="quoteDossierModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm p-4 md:p-8 flex items-center justify-center no-print">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-2xl w-full p-6 space-y-5 border border-slate-200 max-h-[92vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b pb-4">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">📂</span>
+          <div>
+            <h3 class="text-base font-black text-slate-900">Dossiê Documental da Contratação Pública</h3>
+            <p class="text-xs text-slate-500">Acesso aos arquivos oficiais, termos de homologação e certidões do fornecedor.</p>
+          </div>
+        </div>
+        <button onclick="closeQuoteDossierModal()" class="text-slate-400 hover:text-slate-800 text-lg font-bold">✕</button>
+      </div>
+
+      <!-- CARTÃO COM OS DADOS DA COMPRA -->
+      <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2 text-xs">
+        <div class="flex justify-between items-start">
+          <div>
+            <span class="text-[10px] font-bold text-slate-400 uppercase block">Órgão Comprador / UASG:</span>
+            <strong id="dossierOrgName" class="text-slate-900 text-sm block">Comando do Exército</strong>
+            <span id="dossierUasgUf" class="text-slate-600 font-mono">UASG: 160161 (PA)</span>
+          </div>
+          <div class="text-right">
+            <span class="text-[10px] font-bold text-slate-400 uppercase block">Nº da Compra:</span>
+            <span id="dossierPurchaseNum" class="text-xs font-mono font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded">00018/2026</span>
+            <span id="dossierPurchaseDate" class="text-[11px] text-slate-500 block mt-1">Homologado em 14/10/2026</span>
+          </div>
+        </div>
+        <div class="border-t border-slate-200 pt-2 flex justify-between items-center">
+          <div>
+            <span class="text-[10px] font-bold text-slate-400 uppercase block">Fornecedor Vencedor:</span>
+            <strong id="dossierSupplierName" class="text-slate-800 block">LICITARE PRODUTOS LTDA</strong>
+            <span id="dossierSupplierCnpj" class="font-mono text-slate-600">CNPJ: 18.641.075/0001-17</span>
+          </div>
+          <div class="text-right">
+            <span class="text-[10px] font-bold text-slate-400 uppercase block">Preço Unitário:</span>
+            <span id="dossierUnitPrice" class="text-base font-black text-emerald-700">R$ 2,28</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- GUIA DE EXTRAÇÃO DE ARQUIVOS NO COMPRAS.GOV.BR (ACOMPANHAMENTO) -->
+      <div class="space-y-3">
+        <h4 class="text-xs font-black uppercase text-slate-800 tracking-wide flex items-center gap-1.5">
+          <span>🏛️</span> Arquivos e Termos Oficiais no Compras.gov.br:
+        </h4>
+
+        <div class="bg-blue-50/70 border border-blue-200 rounded-2xl p-4 space-y-3">
+          <p class="text-xs text-slate-700 leading-relaxed">
+            O Compras.gov.br centraliza todos os arquivos desta contratação. Clique no botão abaixo para abrir diretamente a tela da compra:
+          </p>
+
+          <a id="dossierComprasUrlBtn" href="#" target="_blank" class="w-full bg-slate-900 hover:bg-slate-800 text-amber-300 font-black py-3 px-4 rounded-xl text-xs shadow flex items-center justify-center gap-2 transition">
+            <span>🚀</span> Abrir Tela da Compra no Compras.gov.br (Acompanhamento) ↗
+          </a>
+
+          <div class="border-t border-blue-200 pt-3 space-y-2">
+            <span class="text-[11px] font-bold text-slate-800 block">Arquivos disponíveis nos botões do cabeçalho da página do Governo:</span>
+            <ul class="text-[11px] text-slate-700 space-y-1.5 list-disc pl-4">
+              <li>
+                <strong>📥 Todos os relatórios e termos:</strong> Baixa o pacote completo com o Termo de Homologação, Termo de Julgamento, Ata e Histórico de Lances.
+              </li>
+              <li>
+                <strong>📋 Relatório das declarações:</strong> Certidão com as declarações de enquadramento ME/EPP, cumprimento de requisitos de habilitação e integridade do fornecedor.
+              </li>
+              <li>
+                <strong>📄 Termo de Julgamento / Homologação:</strong> O ato administrativo oficial emitido pelo pregoeiro adjudicando o item a este fornecedor.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- CERTIDÕES E CONSULTAS EXTERNAS EM 1 CLIQUE -->
+      <div class="space-y-2 pt-2 border-t border-slate-200">
+        <span class="text-xs font-bold text-slate-800 block">Consultas Rápidas do Fornecedor:</span>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+          <a id="dossierReceitaLink" href="#" target="_blank" class="bg-slate-100 hover:bg-slate-200 text-slate-800 p-2.5 rounded-xl font-bold flex items-center justify-between transition">
+            <span>🔍 Cartão CNPJ (Receita Federal)</span>
+            <span class="text-[10px] text-blue-600">Consultar ↗</span>
+          </a>
+          <a id="dossierTransparenciaLink" href="#" target="_blank" class="bg-slate-100 hover:bg-slate-200 text-slate-800 p-2.5 rounded-xl font-bold flex items-center justify-between transition">
+            <span>⚖️ Consulta CEIS/CNEP (Inidôneos)</span>
+            <span class="text-[10px] text-blue-600">Consultar ↗</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="pt-2 text-right">
+        <button onclick="closeQuoteDossierModal()" class="bg-slate-800 hover:bg-slate-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition">
+          Fechar Dossiê
+        </button>
+      </div>
+    </div>
+  </div>
+
   <div id="shareInfoModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm p-4 flex items-center justify-center no-print">
     <div class="bg-white rounded-3xl shadow-2xl max-w-xl w-full p-6 space-y-5 border border-slate-200">
       <div class="flex items-center justify-between">
@@ -829,6 +1089,17 @@
     }
 
     function renderPriceReport(rep, qty, itemType) {
+      const vQuotes = rep.valid_quotes || [];
+      const justCard = document.getElementById("justificativaCircunstanciadaCard");
+      if (justCard) {
+        if (vQuotes.length < 3) {
+          justCard.classList.remove("hidden");
+          const countEl = document.getElementById("justQuoteCount");
+          if (countEl) countEl.textContent = vQuotes.length;
+        } else {
+          justCard.classList.add("hidden");
+        }
+      }
       const prefix = itemType === "SERVICO" ? "CATSER" : "CATMAT";
       document.getElementById("resItemTitle").textContent = `${prefix} ${rep.catmat_catser_code} — ${rep.item_description}`;
       const sm = rep.sanitized_metrics;
@@ -876,13 +1147,104 @@
             </span>
             <p class="text-[11px] text-slate-600 mt-0.5">${q.purge_justification || ''}</p>
           </td>
-          <td class="py-3 px-4 text-center">
-            <a href="${q.pncp_or_compras_uri}" target="_blank" class="bg-slate-900 hover:bg-slate-700 text-amber-300 font-bold px-3 py-1.5 rounded-lg inline-block">
-              Abrir Compra ↗
+          <td class="py-3 px-4 text-center space-y-1">
+            <button onclick='openQuoteDossier(${JSON.stringify(q)})' class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-2.5 py-1.5 rounded-lg text-[10px] shadow transition flex items-center justify-center gap-1 w-full whitespace-nowrap">
+              <span>📂</span> Ver Documentos & Termos
+            </button>
+            <a href="${q.pncp_or_compras_uri}" target="_blank" class="text-[10px] text-slate-500 hover:text-blue-700 font-bold underline block">
+              Abrir no Gov ↗
             </a>
           </td>
         </tr>
       `).join("");
+    }
+
+    
+    // =========================================================================
+    // MODAL DE DOSSIÊ DOCUMENTAL DA COMPRA PÚBLICA (ARQUIVOS DO GOVERNO)
+    // =========================================================================
+    function openQuoteDossier(q) {
+      document.getElementById("dossierOrgName").textContent = q.buyer_org_name || "Órgão Público";
+      document.getElementById("dossierUasgUf").textContent = `UASG: ${q.buyer_uasg} (${q.buyer_uf || 'BR'})`;
+      document.getElementById("dossierPurchaseNum").textContent = q.purchase_number_year || "—";
+      document.getElementById("dossierPurchaseDate").textContent = `Homologado em ${q.purchase_date || '—'}`;
+      document.getElementById("dossierSupplierName").textContent = q.supplier_name || "Fornecedor";
+      document.getElementById("dossierSupplierCnpj").textContent = `CNPJ: ${q.supplier_cnpj || '—'}`;
+      document.getElementById("dossierUnitPrice").textContent = `R$ ${Number(q.unit_price).toFixed(2)}`;
+
+      const comprasUrl = q.pncp_or_compras_uri || "https://compras.gov.br";
+      document.getElementById("dossierComprasUrlBtn").href = comprasUrl;
+
+      const cleanCnpj = (q.supplier_cnpj || "").replace(/\D/g, "");
+      document.getElementById("dossierReceitaLink").href = `https://solucoes.receita.fazenda.gov.br/servicos/cnpjreva/cnpjreva_solicitacao.asp`;
+      document.getElementById("dossierTransparenciaLink").href = `https://portaldatransparencia.gov.br/sancoes/consulta?codigoSancionado=${cleanCnpj}`;
+
+      document.getElementById("quoteDossierModal").classList.remove("hidden");
+    }
+
+    function closeQuoteDossierModal() {
+      document.getElementById("quoteDossierModal").classList.add("hidden");
+    }
+
+    // =========================================================================
+    // MODAL DE DESPACHO DE JUSTIFICATIVA CIRCUNSTANCIADA (ART. 6º, § 5º IN 65)
+    // =========================================================================
+    function openJustificativaModal() {
+      if (!activePriceReport) return;
+      const rep = activePriceReport;
+      const qty = activeQuantity || 1;
+      const itemType = activeItemType || "MATERIAL";
+
+      document.getElementById("justSheetItemDesc").textContent = rep.item_description;
+      document.getElementById("justSheetItemCode").textContent = `${itemType === 'SERVICO' ? 'CATSER' : 'CATMAT'} ${rep.catmat_catser_code}`;
+      document.getElementById("justSheetItemQty").textContent = `${qty} ${rep.target_supply_unit || 'UN'}`;
+
+      const unitEst = Number(rep.final_estimated_unit_price || 0);
+      const totalEst = qty * unitEst;
+      document.getElementById("justSheetItemTotal").textContent = `R$ ${unitEst.toFixed(2)} un. | Total: R$ ${totalEst.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+      const quotesList = document.getElementById("justSheetQuotesList");
+      const vQuotes = rep.valid_quotes || [];
+      quotesList.innerHTML = vQuotes.map((q, idx) => `
+        <div class="flex items-baseline justify-between text-[11px] py-1 border-b border-slate-100">
+          <span>
+            <strong>Cotação ${idx + 1}:</strong> ${q.supplier_name} (CNPJ: ${q.supplier_cnpj}) • UASG ${q.buyer_uasg} (${q.buyer_uf}) • Compra ${q.purchase_number_year}
+          </span>
+          <span class="font-mono font-bold text-slate-900 shrink-0 ml-2">
+            R$ ${Number(q.unit_price).toFixed(2)}
+          </span>
+        </div>
+      `).join("");
+
+      const today = new Date();
+      const meses = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+      document.getElementById("justCityDate").textContent = `Juazeiro, BA, ${today.getDate()} de ${meses[today.getMonth()]} de ${today.getFullYear()}.`;
+
+      document.getElementById("justificativaModal").classList.remove("hidden");
+    }
+
+    function closeJustificativaModal() {
+      document.getElementById("justificativaModal").classList.add("hidden");
+    }
+
+    function downloadLiveJustificativaWord() {
+      const p = getReportParams();
+      if (!p.code) {
+        alert("Realize uma pesquisa de preços antes de baixar a justificativa em Word.");
+        return;
+      }
+      const orden = (document.getElementById("justSigNome") ? document.getElementById("justSigNome").value.trim() : "") || p.orden;
+      window.location.href = `/api/v1/prices/export-justificativa-docx/${p.code}?item_type=${encodeURIComponent(p.itemType)}&supply_unit=${encodeURIComponent(p.unit)}&qty=${encodeURIComponent(p.qty)}&ordenador=${encodeURIComponent(orden)}`;
+    }
+
+    function downloadLiveJustificativaPdf() {
+      const p = getReportParams();
+      if (!p.code) {
+        alert("Realize uma pesquisa de preços antes de baixar a justificativa em PDF.");
+        return;
+      }
+      const orden = (document.getElementById("justSigNome") ? document.getElementById("justSigNome").value.trim() : "") || p.orden;
+      window.location.href = `/api/v1/prices/export-justificativa-pdf/${p.code}?item_type=${encodeURIComponent(p.itemType)}&supply_unit=${encodeURIComponent(p.unit)}&qty=${encodeURIComponent(p.qty)}&ordenador=${encodeURIComponent(orden)}`;
     }
 
     function getReportParams() {
