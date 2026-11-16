@@ -135,14 +135,15 @@ class GovProcurementAPIClient:
     ) -> str:
         """
         Constrói a URI clicável de auditoria:
-        - Se houver Número de Controle PNCP (formato: CNPJ(14)-1-SEQ(6)/ANO(4)), monta o link direto do Portal PNCP.
+        - Se houver Número de Controle PNCP (formato: CNPJ(14)-1-SEQ(6)/ANO(4)), monta o link direto do Portal PNCP
+          com o sequencial de 6 dígitos oficial (ex: 000076).
         - Caso contrário (ou para dispensas/pregões legados no Compras.gov.br), monta a URI pública oficial do Comprasnet.
         """
         if pncp_control_number:
             # Padrão PNCP: 00394502000144-1-014956/2026
             m = re.match(r"^(\d{14})-\d+-(\d+)/(\d{4})$", str(pncp_control_number).strip())
             if m:
-                cnpj, seq, ano = m.group(1), m.group(2).lstrip("0") or "1", m.group(3)
+                cnpj, seq, ano = m.group(1), str(m.group(2)).zfill(6), m.group(3)
                 return cls.PNCP_PORTAL_EDITAL_URI.format(cnpj=cnpj, ano=ano, sequencial=seq)
 
         return cls.COMPRASNET_PUBLIC_URI.format(chave_17_digitos=chave_17)
@@ -303,6 +304,19 @@ class GovProcurementAPIClient:
             out = []
             for row in rows:
                 ctrl_ata = row.get("numeroControlePncpAta")
+                pncp_ata_uri = None
+                pncp_edital_uri = None
+                if ctrl_ata:
+                    # Padrão: {cnpj}-{tipo}-{seq_compra}/{ano_compra}-{seq_ata}
+                    # Ex: 10784782000150-1-000572/2025-000001 -> /app/atas/10784782000150/2025/1
+                    m_ata = re.match(r"^(\d{14})-\d+-(\d+)/(\d{4})-(\d+)$", str(ctrl_ata).strip())
+                    if m_ata:
+                        c_cnpj, c_seq, c_ano, a_seq = m_ata.group(1), m_ata.group(2), m_ata.group(3), m_ata.group(4)
+                        pncp_ata_uri = f"https://pncp.gov.br/app/atas/{c_cnpj}/{c_ano}/{int(a_seq)}"
+                        pncp_edital_uri = f"https://pncp.gov.br/app/editais/{c_cnpj}/{c_ano}/{str(c_seq).zfill(6)}"
+                    else:
+                        pncp_ata_uri = f"https://pncp.gov.br/app/atas/{ctrl_ata}"
+
                 out.append({
                     "numero_ata": row.get("numeroAtaRegistroPreco"),
                     "uasg_codigo": str(row.get("codigoUnidadeGerenciadora") or ""),
@@ -314,7 +328,9 @@ class GovProcurementAPIClient:
                     "preco_unitario": float(row.get("valorUnitario") or 0.0),
                     "saldo_adesao": float(row.get("maximoAdesao") or 0.0),
                     "modalidade": str(row.get("nomeModalidadeCompra") or "").strip(),
-                    "pncp_ata_uri": f"https://pncp.gov.br/app/atas/{ctrl_ata}" if ctrl_ata else None,
+                    "pncp_ata_uri": pncp_ata_uri,
+                    "pncp_edital_uri": pncp_edital_uri,
+                    "numero_controle_pncp": ctrl_ata,
                     "codigo_pdm": row.get("codigoPdm"),
                     "nome_pdm": row.get("nomePdm"),
                 })
@@ -446,7 +462,35 @@ class PriceResearchController:
         1. Busca cotações homologadas na API Oficial do Compras.gov.br (OAS 3.1).
         2. Aplica o Motor de Saneamento Estatístico (IN 65/2021).
         3. Devolve o relatório auditável completo em JSON pronto para o Frontend / PDF.
+
+        Possui cache em memória (TTL 30 min) para que uma mesma pesquisa NÃO seja
+        refeita no Compras.gov.br ao exportar Word/PDF/Excel ou ao repetir o lote.
         """
+        cache_key = f"{(item_type or 'MATERIAL').upper()}:{catalog_code}:{(target_supply_unit or '').upper()}:{months_back}:{uf or ''}:{uasg or ''}"
+        if not hasattr(self, "_research_cache"):
+            self._research_cache = {}
+        cached = self._research_cache.get(cache_key)
+        if cached and (time.time() - cached[0]) < 1800:
+            import copy
+            return copy.deepcopy(cached[1])
+
+        result = self._execute_in65_research_uncached(
+            catalog_code, target_supply_unit, item_type, months_back, uf, uasg
+        )
+        if result.get("status") in ("SUCCESS", "NO_DATA"):
+            import copy
+            self._research_cache[cache_key] = (time.time(), copy.deepcopy(result))
+        return result
+
+    def _execute_in65_research_uncached(
+        self,
+        catalog_code: int,
+        target_supply_unit: str = "UN",
+        item_type: str = "MATERIAL",
+        months_back: int = 12,
+        uf: Optional[str] = None,
+        uasg: Optional[str] = None,
+    ) -> Dict[str, Any]:
         description, raw_quotes = self.api_client.fetch_material_or_service_prices(
             catalog_code=catalog_code,
             item_type=item_type,

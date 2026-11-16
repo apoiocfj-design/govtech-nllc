@@ -1,30 +1,28 @@
-# ==============================================================================
-# DOCKERFILE - SISTEMA GOVTECH NLLC (CLOUD RUN / FIREBASE HOSTING)
-# Imagem leve baseada em Python 3.12 Slim (Linux Alpine/Debian)
-# ==============================================================================
+# Sistema GovTech NLLC - imagem para nuvem (Render / Cloud Run)
 FROM python:3.12-slim
 
-# Evita criação de arquivos .pyc e força saída direta de logs no console
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV PORT=8080
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONIOENCODING=utf-8 \
+    PORT=8080
 
 WORKDIR /app
 
-# Instala dependências do sistema necessárias para compilação mínima
+# Chromium headless para capturar a pagina oficial do PNCP em PDF (opcional; ha fallback em ReportLab)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
+    chromium fonts-dejavu-core ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Instala dependências Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copia código-fonte e banco de dados SQLite indexado (CNBS)
 COPY backend/ /app/backend/
 COPY database/ /app/database/
 COPY frontend/ /app/frontend/
 
-EXPOSE 8080
+# Descompacta o catalogo CNBS durante o build (evita atraso a cada inicializacao)
+RUN python -c "import gzip,shutil; shutil.copyfileobj(gzip.open('database/cnbs_catalog.db.gz','rb'), open('database/cnbs_catalog.db','wb'))" \
+    && rm -f database/cnbs_catalog.db.gz
 
+EXPOSE 8080
 CMD ["python", "backend/main.py"]

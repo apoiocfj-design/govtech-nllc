@@ -5,399 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/app_logo_transparent.png" />
   <title>GovTech NLLC • Sistema Unificado de Compras Públicas & Auditoria</title>
-  <script src="https://cdn.tailwindcss.com">
-    // =========================================================================
-    // CONTROLE DE JANELAS MODAIS E GERAÇÃO CONSOLIDADA POR SELEÇÃO DE ITENS
-    // =========================================================================
-    let currentSelectedModalItem = null;
-
-    function openCatalogSearchModal() {
-      document.getElementById("modalCatalogSearch").classList.remove("hidden");
-      setTimeout(() => document.getElementById("modalKeywordInput").focus(), 100);
-    }
-
-    function closeCatalogSearchModal() {
-      document.getElementById("modalCatalogSearch").classList.add("hidden");
-      currentSelectedModalItem = null;
-      document.getElementById("modalSelectedItemBar").classList.add("hidden");
-    }
-
-        let modalSearchDebounceTimer = null;
-    function onModalKeywordInput(val) {
-      clearTimeout(modalSearchDebounceTimer);
-      const q = val.trim();
-      if (q.length < 2) {
-        document.getElementById("modalCatalogResultsList").innerHTML = `<div class="p-8 text-center text-xs text-slate-400">Digite pelo menos 2 caracteres para iniciar a busca instantânea...</div>`;
-        document.getElementById("modalCatalogStatsText").textContent = "";
-        return;
-      }
-      modalSearchDebounceTimer = setTimeout(() => {
-        searchModalCatalogKeywords();
-      }, 260);
-    }
-
-    async function searchModalCatalogKeywords() {
-      const q = document.getElementById("modalKeywordInput").value.trim();
-      const type = document.getElementById("modalCatalogTypeFilter").value;
-      const list = document.getElementById("modalCatalogResultsList");
-      const stats = document.getElementById("modalCatalogStatsText");
-
-      if (!q) {
-        list.innerHTML = `<div class="p-8 text-center text-xs text-slate-400">Digite uma palavra-chave para buscar.</div>`;
-        return;
-      }
-
-      list.innerHTML = `<div class="p-8 text-center text-xs text-slate-500 font-bold animate-pulse">⏳ Consultando base oficial CNBS de 253.782 itens...</div>`;
-      stats.textContent = "Buscando...";
-
-      try {
-        const endpoint = `/api/v1/catalog/search?q=${encodeURIComponent(q)}&type=${encodeURIComponent(type)}&limit=30`;
-        const resp = await fetch(endpoint);
-        const ct = resp.headers.get("content-type") || "";
-        
-        let results = [];
-        let totalFound = 0;
-
-        if (ct.includes("application/json")) {
-          const data = await resp.json();
-          results = data.results || [];
-          totalFound = data.total_found || results.length;
-        } else {
-          // Servidor retornou HTML ou erro de conexão
-          throw new Error(`O servidor retornou uma resposta não-JSON (${resp.status} ${resp.statusText}).`);
-        }
-
-        // Se for um código numérico e a busca não trouxe ou trouxe poucos, garante opção direta
-        if (/^\d{4,8}$/.test(q) && !results.some(r => String(r.codigo) === q)) {
-          const isServ = type === "SERVICO";
-          results.unshift({
-            item_type: isServ ? "SERVICO" : "MATERIAL",
-            codigo: parseInt(q, 10),
-            nome_pdm_ou_classe: isServ ? `CATSER ${q} (Inserção Direta por Código)` : `CATMAT ${q} (Inserção Direta por Código)`,
-            descricao: isServ ? `SERVIÇO CATALOGADO CÓDIGO ${q} - BASE OFICIAL COMPRAS.GOV.BR` : `MATERIAL CATALOGADO CÓDIGO ${q} - BASE OFICIAL COMPRAS.GOV.BR`,
-            nome_grupo: "INCLUSÃO DIRETA",
-            nome_classe: "CATÁLOGO OFICIAL GOV.BR",
-            unidade: "UN"
-          });
-          totalFound += 1;
-        }
-
-        stats.textContent = `Encontrados ${totalFound} itens para "${q}"`;
-
-        if (results.length === 0) {
-          list.innerHTML = `<div class="p-8 text-center text-xs text-slate-500">Nenhum item localizado no catálogo oficial para "${q}". Tente palavras simples (ex: pneu, bateria, caneta, serviço).</div>`;
-          return;
-        }
-
-        window.modalCatalogSearchResults = results;
-        renderModalCatalogList();
-        verifyCatalogDemandInBackground(results);
-      } catch (err) {
-        // Fallback inteligente: se for código numérico, permite adicionar diretamente mesmo se a API estiver indisponível
-        if (/^\d{4,8}$/.test(q)) {
-          const isServ = type === "SERVICO";
-          window.modalCatalogSearchResults = [{
-            item_type: isServ ? "SERVICO" : "MATERIAL",
-            codigo: parseInt(q, 10),
-            nome_pdm_ou_classe: isServ ? `CATSER ${q} (Inclusão Direta)` : `CATMAT ${q} (Inclusão Direta)`,
-            descricao: isServ ? `SERVIÇO CÓDIGO ${q} - ADICIONADO DIRETAMENTE AO LOTE` : `MATERIAL CÓDIGO ${q} - ADICIONADO DIRETAMENTE AO LOTE`,
-            nome_grupo: "INCLUSÃO DIRETA",
-            nome_classe: "CÓDIGO OFICIAL",
-            unidade: "UN"
-          }];
-          stats.textContent = `Código oficial identificado: ${q}`;
-          renderModalCatalogList();
-          return;
-        }
-
-        list.innerHTML = `
-          <div class="p-6 text-center space-y-2">
-            <div class="text-xs text-rose-600 font-bold">⚠️ Conexão com o Catálogo: ${err.message}</div>
-            <p class="text-[11px] text-slate-500">Dica: Se souber o código numérico do CATMAT/CATSER (ex: 621988), digite-o no campo de busca para adicioná-lo diretamente.</p>
-            <button onclick="searchModalCatalogKeywords()" class="px-3 py-1.5 rounded-lg bg-[#27394d] hover:bg-[#334960] text-white text-xs font-bold transition">
-              🔄 Tentar Novamente
-            </button>
-          </div>
-        `;
-      }
-    }
-
-    let hideModalZeroDemand = false;
-    function toggleModalHideZeroDemand() {
-      hideModalZeroDemand = !hideModalZeroDemand;
-      const btn = document.getElementById("btnModalFilterZeroDemand");
-      if (btn) {
-        btn.textContent = hideModalZeroDemand ? "✅ Exibindo com Demanda" : "🔍 Ocultar Itens Sem Compras (12m)";
-        btn.className = hideModalZeroDemand
-          ? "px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] transition"
-          : "px-2 py-0.5 rounded bg-slate-200 hover:bg-slate-300 text-slate-800 text-[10px] transition";
-      }
-      renderModalCatalogList();
-    }
-
-    function renderModalCatalogList() {
-      const list = document.getElementById("modalCatalogResultsList");
-      if (!list) return;
-      const results = window.modalCatalogSearchResults || [];
-      const demandMap = window.catalogDemandMap || {};
-
-      const rows = results.map((item, idx) => {
-        const key = `${(item.item_type || 'MATERIAL').toUpperCase()}:${item.codigo}`;
-        const dem = demandMap[key];
-        if (hideModalZeroDemand && dem && !dem.has_demand) return "";
-
-        const isServ = item.item_type === "SERVICO";
-        const noDem = dem && !dem.has_demand;
-        let badge = `<span class="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-500 font-bold animate-pulse">⏳ Checando compras...</span>`;
-        let borderCls = "border-slate-200 hover:border-[#1a6fab] hover:bg-blue-50/40";
-
-        if (dem) {
-          if (noDem) {
-            badge = `<span class="text-[10px] px-2 py-0.5 rounded bg-rose-600 text-white font-black">🚫 Sem compras (12m)</span>`;
-            borderCls = "border-rose-300 bg-rose-50/50";
-          } else if (dem.total_quotes_12m < 3) {
-            badge = `<span class="text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 font-black">⚠️ ${dem.total_quotes_12m} compra(s) (12m)</span>`;
-            borderCls = "border-amber-300 bg-amber-50/40";
-          } else {
-            badge = `<span class="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-300 font-black">✅ ${dem.total_quotes_12m} compras (12m)</span>`;
-            borderCls = "border-emerald-300 bg-emerald-50/30";
-          }
-        }
-
-        return `
-          <div onclick="selectItemInModal(${idx})" class="p-3 rounded-xl border ${borderCls} transition cursor-pointer flex items-center justify-between gap-3">
-            <div class="space-y-1">
-              <div class="flex items-center gap-2">
-                <span class="text-[10px] font-black px-2 py-0.5 rounded ${isServ ? 'bg-purple-100 text-purple-900' : 'bg-sky-100 text-sky-900'}">
-                  ${isServ ? 'CATSER' : 'CATMAT'} • ${item.codigo}
-                </span>
-                <strong class="text-xs text-slate-800">${item.nome_pdm_ou_classe || item.nome_classe || ''}</strong>
-                ${badge}
-              </div>
-              <p class="text-xs text-slate-700 leading-snug">${item.descricao}</p>
-            </div>
-            <button class="bg-[#27394d] hover:bg-[#334960] text-white font-bold px-3 py-1.5 rounded-lg text-xs shrink-0">
-              Selecionar ➔
-            </button>
-          </div>
-        `;
-      }).filter(Boolean);
-
-      list.innerHTML = rows.length > 0 ? rows.join("") : `<div class="p-6 text-center text-xs text-slate-500 font-bold">Nenhum item com compras nos últimos 12 meses.</div>`;
-    }
-
-    function selectItemInModal(idx) {
-      const results = window.modalCatalogSearchResults || [];
-      const item = results[idx];
-      if (!item) return;
-
-      currentSelectedModalItem = item;
-      const bar = document.getElementById("modalSelectedItemBar");
-      bar.classList.remove("hidden");
-
-      const isServ = item.item_type === "SERVICO";
-      document.getElementById("modalSelTypeLabel").textContent = isServ ? "SERVIÇO (CATSER):" : "MATERIAL (CATMAT):";
-      document.getElementById("modalSelTitle").textContent = item.nome_pdm_ou_classe || item.descricao;
-      document.getElementById("modalSelCode").textContent = `Código: ${item.codigo} | Grupo: ${item.nome_grupo || '—'}`;
-
-      const key = `${(item.item_type || 'MATERIAL').toUpperCase()}:${item.codigo}`;
-      const dem = (window.catalogDemandMap || {})[key];
-      const recUnit = (dem && dem.predominant_unit) ? dem.predominant_unit : (item.unidade || "UN");
-      document.getElementById("modalSelUnit").value = recUnit;
-      document.getElementById("modalSelQty").value = 1;
-    }
-
-    async function saveModalItemToBatch(runImmediate = false) {
-      if (!currentSelectedModalItem) return;
-      const it = currentSelectedModalItem;
-      const qty = parseFloat(document.getElementById("modalSelQty").value) || 1;
-      const unit = document.getElementById("modalSelUnit").value.trim().toUpperCase() || "UN";
-
-      await addItemToBatchTray(it.item_type, it.codigo, it.descricao, unit, qty);
-      closeCatalogSearchModal();
-
-      if (runImmediate) {
-        selectCatalogItem(it.item_type, it.codigo, qty, unit);
-      } else {
-        showAppNotification(`Item ${it.item_type === 'SERVICO' ? 'CATSER' : 'CATMAT'} ${it.codigo} incluído com sucesso no lote.`, "success");
-      }
-    }
-
-    function toggleBatchItemSelect(idx) {
-      if (!batchTrayItems[idx]) return;
-      batchTrayItems[idx].selected = !batchTrayItems[idx].selected;
-      renderBatchTray();
-    }
-
-    function toggleAllBatchTrayItems(checked) {
-      batchTrayItems.forEach(it => it.selected = checked);
-      renderBatchTray();
-    }
-
-    // Modal de Geração de Documentos em Lote
-    function openBatchDocsModal() {
-      if (!batchTrayItems || batchTrayItems.length === 0) {
-        showAppNotification("Adicione pelo menos 1 CATMAT ou CATSER ao lote antes de gerar documentos.", "warn");
-        return;
-      }
-      const list = document.getElementById("modalBatchItemsCheckList");
-      list.innerHTML = batchTrayItems.map((it, idx) => {
-        const isChecked = it.selected !== false ? "checked" : "";
-        return `
-          <label class="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl hover:border-amber-400 cursor-pointer text-xs">
-            <div class="flex items-center gap-2.5">
-              <input type="checkbox" id="chkBatchItem_${idx}" ${isChecked} class="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 cursor-pointer" />
-              <div>
-                <span class="font-black text-slate-900">${it.type === 'SERVICO' ? 'CATSER' : 'CATMAT'} ${it.code}:</span>
-                <span class="text-slate-700 ml-1 font-medium">${(it.description || '').slice(0, 70)}...</span>
-              </div>
-            </div>
-            <span class="font-mono font-bold text-slate-500 shrink-0 ml-2">${it.qty} ${it.unit}</span>
-          </label>
-        `;
-      }).join("");
-
-      document.getElementById("modalBatchDocsSelection").classList.remove("hidden");
-    }
-
-    function closeBatchDocsModal() {
-      document.getElementById("modalBatchDocsSelection").classList.add("hidden");
-    }
-
-    function setAllBatchDocChecks(val) {
-      batchTrayItems.forEach((_, idx) => {
-        const chk = document.getElementById(`chkBatchItem_${idx}`);
-        if (chk) chk.checked = val;
-      });
-    }
-
-    async function executeSelectedBatchGeneration() {
-      const selectedIndices = [];
-      batchTrayItems.forEach((it, idx) => {
-        const chk = document.getElementById(`chkBatchItem_${idx}`);
-        if (chk && chk.checked) {
-          selectedIndices.push(idx);
-          it.selected = true;
-        } else {
-          it.selected = false;
-        }
-      });
-
-      if (selectedIndices.length === 0) {
-        showAppNotification("Selecione pelo menos 1 CATMAT ou CATSER para gerar a documentação.", "warn");
-        return;
-      }
-
-      closeBatchDocsModal();
-      showAppNotification(`Processando pesquisas e gerando documentação para os ${selectedIndices.length} itens selecionados... Aguarde alguns instantes.`, "warn");
-
-      // Executa as pesquisas dos itens selecionados
-      const targetItems = selectedIndices.map(idx => batchTrayItems[idx]);
-      try {
-        const resp = await fetch("/api/v1/prices/execute-batch-research", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ items: targetItems })
-        });
-        const data = await resp.json();
-        if (data.status === "SUCCESS") {
-          const validResults = (data.results || []).filter(r => r.has_data && r.report);
-          if (validResults.length === 0) {
-            showAppNotification("Nenhum dos itens selecionados retornou cotações válidas nos últimos 12 meses.", "error");
-            return;
-          }
-
-          // Dispara o download do ZIP consolidado dos itens selecionados
-          const zipResp = await fetch("/api/v1/prices/export-batch-zip", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ items: validResults })
-          });
-          const blob = await zipResp.blob();
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = `Pacote_Consolidado_IN65_${selectedIndices.length}_Itens.zip`;
-          a.click();
-
-          showAppNotification(`Pacote consolidado (.ZIP) gerado e baixado com sucesso para os ${selectedIndices.length} itens!`, "success");
-        } else {
-          showAppNotification("Erro ao processar lote: " + (data.error || "falha desconhecida"), "error");
-        }
-      } catch (err) {
-        showAppNotification("Erro ao gerar documentos: " + err.message, "error");
-      }
-    }
-
-    // Modal de Parser de Demanda
-    function openDemandParserModal() {
-      document.getElementById("modalDemandParser").classList.remove("hidden");
-    }
-
-    function closeDemandParserModal() {
-      document.getElementById("modalDemandParser").classList.add("hidden");
-    }
-
-    async function runModalBatchDemandParser() {
-      const text = document.getElementById("modalDemandRawText").value.trim();
-      const out = document.getElementById("modalDemandResultsList");
-      if (!text) {
-        out.innerHTML = `<div class="p-4 text-xs text-rose-600 font-bold">Cole o texto da sua demanda acima.</div>`;
-        return;
-      }
-      out.innerHTML = `<div class="p-4 text-center text-xs text-slate-500 font-bold animate-pulse">⏳ Analisando itens e consultando base CNBS...</div>`;
-      try {
-        const resp = await fetch("/api/v1/catalog/parse-demand", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text })
-        });
-        const data = await resp.json();
-        const items = data.parsed_items || [];
-        window.lastModalParsedItems = items;
-        out.innerHTML = items.map(row => {
-          const topMatches = (row.matches || []).slice(0, 2);
-          return `
-            <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1 text-xs">
-              <div class="flex items-center justify-between">
-                <strong class="text-[#1e2d3d] font-mono">${row.quantity} ${row.unit || 'UN'} • "${row.raw_line}"</strong>
-              </div>
-              <div class="space-y-1">
-                ${topMatches.map(m => `
-                  <div class="flex items-center justify-between p-2 bg-white rounded border border-slate-200">
-                    <div>
-                      <span class="text-[10px] font-black px-1.5 py-0.5 rounded bg-blue-100 text-blue-900">${m.item_type} ${m.codigo}</span>
-                      <span class="text-xs text-slate-700 ml-1">${(m.descricao || '').slice(0, 60)}...</span>
-                    </div>
-                  </div>
-                `).join("")}
-              </div>
-            </div>
-          `;
-        }).join("");
-      } catch (err) {
-        out.innerHTML = `<div class="p-3 text-xs text-rose-600">Erro no parser: ${err.message}</div>`;
-      }
-    }
-
-    async function addAllParsedDemandToBatch() {
-      const items = window.lastModalParsedItems || [];
-      if (items.length === 0) {
-        closeDemandParserModal();
-        return;
-      }
-      for (const row of items) {
-        const m = (row.matches && row.matches[0]);
-        if (m) {
-          await addItemToBatchTray(m.item_type || "MATERIAL", m.codigo, m.descricao, row.unit || m.unidade || "UN", row.quantity || 1);
-        }
-      }
-      closeDemandParserModal();
-      showAppNotification(`Itens da demanda convertidos e inseridos no lote com sucesso!`, "success");
-    }
-
-</script>
+  <script src="https://cdn.tailwindcss.com"></script>
   <style>
+    html, body { overflow-x: hidden !important; max-width: 100vw !important; }
     /* Rolagem suave e elegante para painéis independentes */
     .custom-scrollbar::-webkit-scrollbar {
       width: 6px;
@@ -485,167 +95,151 @@
   <!-- ===================================================================== -->
   <main id="viewPrices" class="max-w-7xl w-full mx-auto p-6 space-y-6 flex-1 no-print">
 
-    <!-- PAINEL DE CONTROLE MESTRE DO LOTE DE PESQUISAS (TELA SANITIZADA) -->
-    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-      <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
+    <!-- ================= FLUXO OFICIAL EM 3 PASSOS ================= -->
+    <section class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+      <div class="flex flex-wrap items-end justify-between gap-2 border-b border-slate-100 pb-3">
         <div>
-          <div class="flex items-center gap-2">
-            <span class="text-xl">💼</span>
-            <h2 class="text-lg font-extrabold text-[#1e2d3d]">
-              Painel de Pesquisa de Preços em Lote (IN SEGES/ME Nº 65/2021)
-            </h2>
-          </div>
-          <p class="text-xs text-slate-500 mt-1">
-            Selecione múltiplos CATMATs/CATSERs. Abra a <strong>janela de pesquisa no catálogo</strong> para incluir novos itens, selecione quais deseja pesquisar ou gere todos os relatórios consolidados em 1 clique.
+          <h2 class="text-lg font-extrabold text-[#1e2d3d] flex items-center gap-2">
+            <span>💼</span> Pesquisa de Preços em Lote — IN SEGES/ME nº 65/2021
+          </h2>
+          <p class="text-xs text-slate-500 mt-0.5">
+            Fonte única dos preços: <strong>compras homologadas no Compras.gov.br (dados abertos oficiais)</strong> dos últimos 12 meses, com links de auditoria no PNCP.
           </p>
         </div>
-        
-        <!-- BOTÕES DE ABERTURA DE JANELAS DEDICADAS (SANIFICAÇÃO VISUAL) -->
-        <div class="flex flex-wrap items-center gap-2">
-          <button onclick="openCatalogSearchModal()" class="bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-4 py-2.5 rounded-xl text-xs shadow-md border border-[#c9962b] transition flex items-center gap-1.5">
-            <span class="text-sm">➕</span> Inserir / Pesquisar Novo Item
-          </button>
-          <button onclick="openDemandParserModal()" class="bg-[#27394d] hover:bg-[#334960] text-white font-bold px-3.5 py-2.5 rounded-xl text-xs shadow transition flex items-center gap-1.5">
-            <span>📋</span> Colar Lista (DFD/TR)
-          </button>
-          <button onclick="openBatchDocsModal()" class="bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-extrabold px-3.5 py-2.5 rounded-xl text-xs shadow transition flex items-center gap-1.5 border border-[#c9962b]">
-            <span>📦</span> Gerar Todos os Documentos de Uma Vez
-          </button>
-        </div>
+        <span class="text-[11px] font-bold text-slate-500 flex items-center gap-1.5">
+          <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span> Sem custo de IA nas consultas
+        </span>
       </div>
-        <button onclick="toggleDemandParser()" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 font-extrabold px-3.5 py-2 rounded-xl text-xs transition">
-          📋 Colar Lista de Itens do DFD/TR (Parser em Lote)
-        </button>
-      </div>
-      <!-- BARRA DE GESTÃO E ATALHOS SANITIZADOS -->
-      <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs">
-        <div class="flex items-center gap-2.5">
-          <span class="text-xl">💡</span>
-          <div>
-            <strong class="text-[#1e2d3d] text-xs block">Para sanitizar sua visualização, a pesquisa e inserção ocorrem em janelas modais dedicadas.</strong>
-            <span class="text-slate-500 text-[11px]">Clique em <strong>"➕ Inserir / Pesquisar Novo Item"</strong> para abrir o catálogo CNBS, escolher o material/serviço, salvar e retornar com o lote carregado.</span>
-          </div>
-        </div>
-        <div class="flex items-center gap-2">
-          <button onclick="openCatalogSearchModal()" class="bg-[#27394d] hover:bg-[#334960] text-white font-black px-3.5 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5">
-            <span>🔍</span> Abrir Catálogo CNBS ↗
-          </button>
-        </div>
-      </div>
-      
-      <!-- CAMPOS OCULTOS PARA COMPATIBILIDADE COM SCRIPTS INTERNOS -->
-      <div class="hidden">
-        <select id="catalogTypeFilter"><option value="ALL">ALL</option></select>
-        <input id="keywordInput" type="text" />
-        <div id="catalogResultsBox"><div id="catalogResultsList"></div><span id="catalogParsedTokens"></span></div>
-        <div id="demandBatchBox"><textarea id="demandRawText"></textarea><div id="demandBatchResults"></div></div>
-        <select id="inputItemType"><option value="MATERIAL">MATERIAL</option><option value="SERVICO">SERVICO</option></select>
-        <input id="inputCatmat" type="number" />
-        <input id="inputUnit" type="text" />
-        <input id="inputQty" type="number" value="1" />
-      </div>
-    
-      <!-- CESTA DE ITENS DO LOTE PARA PESQUISAS AUTOMATIZADAS -->
-      <div id="batchTraySection" class="mt-5 bg-[#1e2d3d] text-white rounded-2xl p-5 border border-slate-700/60 space-y-4 shadow-md">
-        <!-- CABEÇALHO DO LOTE -->
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-700/60 pb-3">
-          <div class="flex items-center gap-2.5">
-            <span class="text-2xl">📦</span>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <!-- PASSO 1 -->
+        <div id="stepCard1" class="rounded-2xl border-2 border-[#c5a365] bg-amber-50/40 p-4 flex flex-col gap-3">
+          <div class="flex items-center gap-2">
+            <span class="w-7 h-7 rounded-full bg-[#1e2d3d] text-white text-xs font-black flex items-center justify-center">1</span>
             <div>
-              <h3 class="text-xs font-black uppercase text-[#c5a365] tracking-wider">
-                Lote de Itens para Pesquisa Automatizada (<span id="batchCountBadge">0</span> itens incluídos)
-              </h3>
-              <p class="text-[11px] text-slate-300">
-                Gerencie múltiplos CATMATs e CATSERs com regras de negócio, filtragem categorizada e ações em massa.
-              </p>
+              <h3 class="text-sm font-black text-[#1e2d3d]">Montar o Lote</h3>
+              <p class="text-[11px] text-slate-500 leading-snug">Identifique os códigos CATMAT/CATSER no catálogo oficial. <em>Aqui ainda não há consulta de preços.</em></p>
             </div>
           </div>
-          <div class="flex flex-wrap items-center gap-2">
-            <button onclick="togglePasteBatchModal()" class="bg-[#3b5b7c] hover:bg-[#2e4761] text-white font-bold px-3 py-1.5 rounded-xl text-xs transition flex items-center gap-1 shadow-sm">
-              <span>📋</span> Colar Lista em Lote
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-auto">
+            <button onclick="openCatalogSearchModal()" class="h-10 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-3 rounded-xl text-xs shadow-sm border border-[#c9962b] transition flex items-center justify-center gap-1.5">
+              <span>➕</span> Adicionar Item
             </button>
-            <button onclick="clearBatchTray()" class="bg-slate-800 hover:bg-[#9e4747] text-slate-300 hover:text-white font-bold px-3 py-1.5 rounded-xl text-xs transition">
-              🗑️ Limpar Lote
-            </button>
-            <button id="btnProcessBatch" onclick="processBatchResearch()" class="bg-[#3b6e5c] hover:bg-[#2d5849] text-white font-black px-4 py-2 rounded-xl text-xs shadow-md transition flex items-center gap-1.5">
-              <span>🚀</span> Processar Pesquisas do Lote
+            <button onclick="openDemandParserModal()" class="h-10 bg-[#27394d] hover:bg-[#334960] text-white font-bold px-3 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5">
+              <span>📋</span> Colar Lista (DFD/TR)
             </button>
           </div>
+          <span id="step1Status" class="text-[11px] font-bold text-slate-600">Lote vazio.</span>
         </div>
 
-        <!-- ABAS CATEGORIZADAS (TODOS, CATMAT, CATSER) + BARRA CONTEXTUAL DE AÇÕES SOBRE SELECIONADOS -->
-        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-700/40 pb-2.5">
-          <!-- ABAS DE NAVEGAÇÃO -->
-          <div class="flex items-center gap-1.5" id="batchTabsContainer">
-            <button onclick="setBatchCategoryFilter('ALL')" id="tabBatchAll" class="px-3 py-1 rounded-lg text-xs font-bold transition bg-[#c5a365] text-[#1e2d3d] shadow-sm">
-              Todos (<span id="batchCountAll">0</span>)
+        <!-- PASSO 2 -->
+        <div id="stepCard2" class="rounded-2xl border-2 border-slate-200 bg-white p-4 flex flex-col gap-3">
+          <div class="flex items-center gap-2">
+            <span class="w-7 h-7 rounded-full bg-[#3b6e5c] text-white text-xs font-black flex items-center justify-center">2</span>
+            <div>
+              <h3 class="text-sm font-black text-[#1e2d3d]">Pesquisar Preços no Governo</h3>
+              <p class="text-[11px] text-slate-500 leading-snug">Única consulta ao Compras.gov.br: coleta, saneia outliers e calcula o preço de referência de cada item marcado.</p>
+            </div>
+          </div>
+          <button id="btnProcessBatch" onclick="processBatchResearch()" class="mt-auto h-10 bg-[#3b6e5c] hover:bg-[#2d5849] disabled:opacity-40 disabled:cursor-not-allowed text-white font-black px-3 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-[#4d8571]/50">
+            <span>🚀</span> <span id="btnProcessBatchLabel">Pesquisar Preços no Compras.gov.br</span>
+          </button>
+          <span id="step2Status" class="text-[11px] font-bold text-slate-500">Adicione itens no passo 1.</span>
+        </div>
+
+        <!-- PASSO 3 -->
+        <div id="stepCard3" class="rounded-2xl border-2 border-slate-200 bg-white p-4 flex flex-col gap-3 opacity-60">
+          <div class="flex items-center gap-2">
+            <span class="w-7 h-7 rounded-full bg-[#3b5b7c] text-white text-xs font-black flex items-center justify-center">3</span>
+            <div>
+              <h3 class="text-sm font-black text-[#1e2d3d]">Analisar e Gerar Processo</h3>
+              <p class="text-[11px] text-slate-500 leading-snug">Revise as cotações de cada item, ajuste a cesta e emita Word, PDF, Excel ou o pacote completo.</p>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-auto">
+            <button id="btnOpenResults" onclick="switchBatchWorkflowView('results')" disabled class="h-10 bg-white hover:bg-slate-50 disabled:cursor-not-allowed text-[#1e2d3d] font-black px-3 rounded-xl text-xs border border-slate-300 transition flex items-center justify-center gap-1.5">
+              <span>📊</span> Ver Resultados
             </button>
-            <button onclick="setBatchCategoryFilter('MATERIAL')" id="tabBatchMaterial" class="px-3 py-1 rounded-lg text-xs font-bold transition bg-slate-800/80 text-slate-300 hover:text-white">
-              📦 CATMAT - Materiais (<span id="batchCountMaterial">0</span>)
-            </button>
-            <button onclick="setBatchCategoryFilter('SERVICO')" id="tabBatchService" class="px-3 py-1 rounded-lg text-xs font-bold transition bg-slate-800/80 text-slate-300 hover:text-white">
-              🛠️ CATSER - Serviços (<span id="batchCountService">0</span>)
+            <button id="btnGenerateProcess" onclick="openBatchDocsModal()" disabled class="h-10 bg-[#3b5b7c] hover:bg-[#2e4761] disabled:cursor-not-allowed text-white font-black px-3 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5">
+              <span>📦</span> Gerar Processo Completo
             </button>
           </div>
-
-          <!-- BARRA CONTEXTUAL DE AÇÕES DE NEGÓCIO SOBRE ITENS SELECIONADOS -->
-          <div id="batchSelectedActionsBar" class="flex flex-wrap items-center gap-2">
-            <span class="text-[11px] text-slate-300 font-bold">
-              <span id="batchSelectedCount" class="text-[#c5a365] font-extrabold">0</span> selecionado(s):
-            </span>
-            <button onclick="processBatchResearch(true)" class="bg-[#3b6e5c] hover:bg-[#2d5849] text-white font-bold px-2.5 py-1 rounded-lg text-[11px] transition flex items-center gap-1 shadow-sm" title="Pesquisar apenas os itens marcados com checkbox">
-              <span>🚀</span> Pesquisar Marcados
-            </button>
-            <button onclick="downloadSelectedBatchZip()" class="bg-[#3b5b7c] hover:bg-[#2e4761] text-white font-bold px-2.5 py-1 rounded-lg text-[11px] transition flex items-center gap-1" title="Gerar pacote ZIP dos itens selecionados">
-              <span>📦</span> Gerar ZIP
-            </button>
-            <button onclick="downloadSelectedBatchXlsx()" class="bg-emerald-800 hover:bg-emerald-700 text-white font-bold px-2.5 py-1 rounded-lg text-[11px] transition flex items-center gap-1" title="Baixar planilha Excel com os itens selecionados">
-              <span>📊</span> Planilha Excel
-            </button>
-            <button onclick="removeSelectedBatchItems()" class="bg-[#9e4747] hover:bg-[#853939] text-white font-bold px-2.5 py-1 rounded-lg text-[11px] transition flex items-center gap-1" title="Remover os itens marcados da cesta do lote">
-              <span>🗑️</span> Excluir Marcados
-            </button>
-          </div>
+          <span id="step3Status" class="text-[11px] font-bold text-slate-500">Disponível após o passo 2.</span>
         </div>
+      </div>
+    </section>
 
-        <div id="batchEmptyMessage" class="py-6 text-center text-slate-400 text-xs italic">
-          Nenhum item incluído no lote ainda. Pesquise no catálogo acima e clique em "➕ Incluir no Lote" ou cole sua lista no botão acima.
+    <!-- CAMPOS OCULTOS PARA COMPATIBILIDADE COM SCRIPTS INTERNOS -->
+    <div class="hidden">
+      <select id="catalogTypeFilter"><option value="ALL">ALL</option></select>
+      <input id="keywordInput" type="text" />
+      <div id="catalogResultsBox"><div id="catalogResultsList"></div><span id="catalogParsedTokens"></span></div>
+      <div id="demandBatchBox"><textarea id="demandRawText"></textarea><div id="demandBatchResults"></div></div>
+      <select id="inputItemType"><option value="MATERIAL">MATERIAL</option><option value="SERVICO">SERVICO</option></select>
+      <input id="inputCatmat" type="number" />
+      <input id="inputUnit" type="text" />
+      <input id="inputQty" type="number" value="1" />
+      <div id="priceEmptyState"></div>
+    </div>
+
+    <!-- ================= ITENS DO LOTE (PASSO 1) ================= -->
+    <section id="batchTraySection" class="bg-[#1e2d3d] text-white rounded-2xl p-5 border border-slate-700/60 space-y-3 shadow-md">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-700/60 pb-3">
+        <div>
+          <h3 class="text-xs font-black uppercase text-[#c5a365] tracking-wider">
+            📦 Itens do Lote (<span id="batchCountBadge">0</span>)
+          </h3>
+          <p class="text-[11px] text-slate-300">
+            Somente os itens <strong class="text-white">marcados ☑</strong> serão pesquisados no passo 2. Ajuste unidade e quantidade antes de pesquisar.
+          </p>
         </div>
-
-        <div id="batchTableContainer" class="hidden overflow-x-auto">
-          <table class="w-full text-left text-xs text-slate-200 border-collapse">
-            <thead>
-              <tr class="border-b border-slate-700 text-[10px] uppercase text-slate-400 font-bold">
-                <th class="py-2.5 px-3 text-center w-10">
-                  <input type="checkbox" id="selectAllBatchCheck" onchange="toggleAllBatchTrayItems(this.checked)" checked title="Selecionar Todos desta aba" class="w-4 h-4 rounded text-[#c5a365] cursor-pointer" />
-                </th>
-                <th class="py-2.5 px-3">Item</th>
-                <th class="py-2.5 px-3">Tipo & Código</th>
-                <th class="py-2.5 px-3">Descrição do Objeto</th>
-                <th class="py-2.5 px-3 text-center">Unidade</th>
-                <th class="py-2.5 px-3 text-center">Quantidade</th>
-                <th class="py-2.5 px-3 text-center">Ação</th>
-              </tr>
-            </thead>
-            <tbody id="batchTrayBody" class="divide-y divide-slate-800 font-mono text-xs">
-            </tbody>
-          </table>
+        <div class="flex flex-wrap items-center gap-2" id="batchSelectedActionsBar">
+          <span class="text-[11px] text-slate-300 font-bold"><span id="batchSelectedCount" class="text-[#c5a365] font-extrabold">0</span> marcado(s)</span>
+          <button onclick="removeSelectedBatchItems()" class="bg-slate-800 hover:bg-[#9e4747] text-slate-200 hover:text-white font-bold px-3 py-1.5 rounded-lg text-xs transition border border-slate-700">🗑️ Excluir marcados</button>
+          <button onclick="clearBatchTray()" class="bg-slate-800 hover:bg-[#9e4747] text-slate-200 hover:text-white font-bold px-3 py-1.5 rounded-lg text-xs transition border border-slate-700">Limpar lote</button>
         </div>
       </div>
 
+      <div class="flex items-center gap-1.5 flex-wrap" id="batchTabsContainer">
+        <button onclick="setBatchCategoryFilter('ALL')" id="tabBatchAll" class="px-3 py-1 rounded-lg text-xs font-bold transition bg-[#c5a365] text-[#1e2d3d] shadow-sm">Todos (<span id="batchCountAll">0</span>)</button>
+        <button onclick="setBatchCategoryFilter('MATERIAL')" id="tabBatchMaterial" class="px-3 py-1 rounded-lg text-xs font-bold transition bg-slate-800/80 text-slate-300 hover:text-white">📦 Materiais (<span id="batchCountMaterial">0</span>)</button>
+        <button onclick="setBatchCategoryFilter('SERVICO')" id="tabBatchService" class="px-3 py-1 rounded-lg text-xs font-bold transition bg-slate-800/80 text-slate-300 hover:text-white">🛠️ Serviços (<span id="batchCountService">0</span>)</button>
+      </div>
 
-    <div id="priceEmptyState" class="bg-white p-8 rounded-2xl border border-dashed border-slate-300 text-center space-y-2">
-      <div class="text-3xl">🔎</div>
-      <h3 class="text-sm font-extrabold text-slate-800">Pronto para pesquisar — digite no buscador acima</h3>
-      <p class="text-xs text-slate-500 max-w-xl mx-auto">
-        Pesquise por qualquer palavra-chave nas bases oficiais <code>catmat.csv</code> e <code>catser.csv</code>, selecione o item desejado e o sistema calcula o preço da IN 65/2021, permitindo baixar o <strong>Excel Oficial</strong> ou emitir o <strong>Relatório Formal da Marinha (PDF)</strong> com trilha de auditoria.
-      </p>
-    </div>
+      <div id="batchEmptyMessage" class="py-8 text-center text-slate-300 text-xs space-y-2">
+        <div class="text-3xl">🗂️</div>
+        <p class="font-bold text-white">Nenhum item no lote ainda.</p>
+        <p class="text-slate-400">Use <strong class="text-[#c5a365]">➕ Adicionar Item</strong> ou <strong class="text-[#c5a365]">📋 Colar Lista</strong> no passo 1.</p>
+      </div>
+
+      <div id="batchTableContainer" class="hidden overflow-x-auto custom-scrollbar">
+        <table class="w-full text-left text-xs text-slate-200 border-collapse">
+          <thead>
+            <tr class="border-b border-slate-700 text-[10px] uppercase text-slate-400 font-bold">
+              <th class="py-2.5 px-2 text-center w-10">
+                <input type="checkbox" id="selectAllBatchCheck" onchange="toggleAllBatchTrayItems(this.checked)" checked title="Marcar/desmarcar todos desta aba" class="w-4 h-4 rounded text-[#c5a365] cursor-pointer" />
+              </th>
+              <th class="py-2.5 px-2">#</th>
+              <th class="py-2.5 px-2">Código</th>
+              <th class="py-2.5 px-2">Descrição / Disponibilidade no Gov</th>
+              <th class="py-2.5 px-2 text-center">Unid.</th>
+              <th class="py-2.5 px-2 text-center">Qtd.</th>
+              <th class="py-2.5 px-2 text-center">Ação</th>
+            </tr>
+          </thead>
+          <tbody id="batchTrayBody" class="divide-y divide-slate-800 font-mono text-xs"></tbody>
+        </table>
+      </div>
+    </section>
 
     <!-- RESULTADO DA PESQUISA COM AÇÕES CONTEXTUAIS EMBUTIDAS -->
     
     <!-- PAINEL CONSOLIDADO DE RESULTADOS DO LOTE (SPLIT VIEW MASTER-DETAIL) -->
     <div id="batchResultsSection" class="hidden space-y-6">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <button onclick="switchBatchWorkflowView('tray')" class="bg-white hover:bg-slate-50 text-[#1e2d3d] font-bold px-3.5 py-2 rounded-xl text-xs border border-slate-300 shadow-sm transition flex items-center gap-1.5">↩ Voltar aos Itens do Lote</button>
+        <div id="batchStaleWarning" class="hidden text-[11px] font-bold text-amber-900 bg-amber-100 border border-amber-300 rounded-lg px-3 py-1.5">⚠️ O lote foi alterado depois desta pesquisa. Volte e clique em “Pesquisar Preços” para atualizar.</div>
+      </div>
       <!-- BARRA SUPERIOR DO LOTE: TOTAIS E BOTÕES MESTRES -->
       <div class="bg-[#1e2d3d] text-white p-5 rounded-2xl shadow-md border border-[#27394d]">
         <div class="flex flex-wrap items-center justify-between gap-4">
@@ -766,7 +360,7 @@
       </div>
 
       <!-- CARTÕES DE RESUMO ESTATÍSTICO -->
-      <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 w-full">
         <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
           <span class="text-xs font-bold uppercase text-slate-500">Coeficiente Variação (CV)</span>
           <div class="mt-2 flex items-baseline gap-2">
@@ -865,6 +459,19 @@
           <span id="arpsBadgeCount" class="text-[10px] font-black px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-900 border border-emerald-300">
             0 atas ativas
           </span>
+        </div>
+        <!-- ESCLARECIMENTO METODOLÓGICO DA IN 65/2021 E ART. 86 DA LEI 14.133/2021 -->
+        <div class="bg-amber-500/10 border border-amber-300 rounded-xl p-3 text-xs text-slate-800 space-y-1">
+          <div class="flex items-center gap-1.5">
+            <span class="text-sm">💡</span>
+            <strong class="text-amber-950 font-bold uppercase tracking-wide text-[11px]">
+              Metodologia Oficial: Adesão / Carona (Art. 86) vs. Cesta de Preços (Art. 6º da IN 65/2021)
+            </strong>
+          </div>
+          <p class="text-[11px] text-slate-700 leading-relaxed">
+            As atas abaixo são <strong>oportunidades legais de Adesão Direta (Carona)</strong>: se seu órgão aderir a uma ata com saldo disponível, pode contratar diretamente sem realizar nova licitação.
+            <strong>Por padrão, essas atas NÃO entram na mediana estatística</strong> para não contaminar a amostra de contratos executados. Se desejar usar o preço registrado nesta ata para compor a cesta de referência, clique em <strong>"➕ Usar na Cesta"</strong>.
+          </p>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-left text-xs border-collapse">
@@ -1061,6 +668,46 @@
   <!-- ===================================================================== -->
   <!-- MODAL DE RELATÓRIO EXECUTIVO OFICIAL (MODELO MARINHA DO BRASIL / PDF) -->
   <!-- ===================================================================== -->
+    <!-- ===================================================================== -->
+  <!-- MODAL: CONTADOR REGRESSIVO E PROGRESSO VISUAL REAL (3s ~ 5s)         -->
+  <!-- ===================================================================== -->
+  <div id="progressCountdownModal" class="hidden fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm p-4 flex items-center justify-center no-print">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-slate-200 text-center animate-in fade-in zoom-in duration-200">
+      <div class="w-16 h-16 bg-amber-50 border-2 border-amber-300 rounded-2xl mx-auto flex items-center justify-center text-3xl shadow-xs">
+        <span id="countdownModalIcon" class="animate-bounce">⏳</span>
+      </div>
+      <div>
+        <h3 id="countdownModalTitle" class="text-base font-black text-[#1e2d3d]">
+          Gerando Extrato e Dossiê Oficial do PNCP
+        </h3>
+        <p id="countdownModalSubtitle" class="text-xs text-slate-500 mt-1">
+          Coletando editais, lista de materiais e termos homologados...
+        </p>
+      </div>
+
+      <!-- BARRA DE PROGRESSO COM PORCENTAGEM -->
+      <div class="space-y-1.5 text-left">
+        <div class="flex justify-between text-xs font-mono font-bold text-slate-600">
+          <span id="countdownProgressStep">Conectando ao PNCP / Compras.gov...</span>
+          <span id="countdownProgressPercent" class="text-[#c5a365]">0%</span>
+        </div>
+        <div class="w-full bg-slate-100 rounded-full h-3 overflow-hidden border border-slate-200">
+          <div id="countdownProgressBar" class="bg-gradient-to-r from-[#c5a365] via-amber-500 to-[#3b6e5c] h-full w-0 transition-all duration-300 rounded-full"></div>
+        </div>
+      </div>
+
+      <!-- CONTADOR DE TEMPO ESTIMADO -->
+      <div class="bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-600 flex items-center justify-center gap-2">
+        <span class="text-sm">⏱️</span>
+        <span>Tempo estimado restante: <strong id="countdownSecondsText" class="text-slate-900 font-mono text-sm">~4s</strong></span>
+      </div>
+
+      <div class="text-[11px] text-slate-400 italic">
+        Aguarde, a requisição está sendo processada pelas APIs oficiais do Governo Federal.
+      </div>
+    </div>
+  </div>
+
   <div id="formalReportModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm overflow-y-auto p-4 md:p-8 flex items-center justify-center no-print">
     <div class="bg-white rounded-3xl shadow-2xl max-w-5xl w-full border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
       <!-- BARRA DE FERRAMENTAS DO RELATÓRIO -->
@@ -1514,11 +1161,12 @@
       }
       // Se houver backend personalizado configurado no navegador
       const custom = localStorage.getItem("GOVTECH_BACKEND_URL");
-      if (custom && custom.trim().startsWith("http")) {
+      // Túneis temporários antigos (trycloudflare) expiram: ignorar valores salvos desse tipo
+      if (custom && custom.trim().startsWith("http") && !custom.includes("trycloudflare.com")) {
         return custom.trim().replace(/\/+$/, "");
       }
       // Padrão ao acessar via Firebase Hosting (govtech-cfj.web.app):
-      return "https://penguin-frequent-maryland-refined.trycloudflare.com";
+      return "https://connecticut-properties-chevy-gold.trycloudflare.com";
     }
 
     function apiUrl(path) {
@@ -2183,14 +1831,17 @@
               <td class="py-2.5 px-3 text-center text-emerald-800 font-mono font-bold text-[11px]">
                 ${Number(arp.saldo_adesao || 0).toLocaleString('pt-BR')}
               </td>
-              <td class="py-2.5 px-3 text-center whitespace-nowrap">
+              <td class="py-2.5 px-3 text-center whitespace-nowrap space-x-1">
                 ${arp.pncp_ata_uri ? `
-                  <a href="${arp.pncp_ata_uri}" target="_blank" class="bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-bold px-2 py-1 rounded text-[10px] transition inline-block">
+                  <a href="${arp.pncp_ata_uri}" target="_blank" class="bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-bold px-2 py-1 rounded text-[10px] transition inline-block" title="Abrir Ata Oficial no PNCP">
                     🌐 Ver Ata PNCP ↗
                   </a>
                 ` : `
                   <span class="text-[10px] text-slate-400">Ativa no Comprasnet</span>
                 `}
+                <button onclick="addArpToQuotationBasket(${arps.indexOf(arp)})" class="bg-[#3b6e5c] hover:bg-[#2d5849] text-white font-bold px-2 py-1 rounded text-[10px] transition inline-block" title="Incluir este preço registrado como cotação da IN 65/2021">
+                  ➕ Usar na Cesta
+                </button>
               </td>
             </tr>
           `).join("");
@@ -2235,9 +1886,9 @@
               <p class="text-[11px] text-slate-600 mt-0.5 leading-tight">${q.purge_justification || ''}</p>
             </td>
             <td class="py-3 px-3 text-center space-y-1.5 whitespace-nowrap">
-              <a href="/api/v1/pncp/page-pdf?chave=${encodeURIComponent(q.purchase_key || '')}&url=${encodeURIComponent(q.pncp_or_compras_uri || '')}" target="_blank" class="bg-[#27394d] hover:bg-[#334960] text-white font-bold px-2.5 py-1.5 rounded-lg text-[10px] shadow-xs transition flex items-center justify-center gap-1 w-full" title="Capturar e Baixar PDF Real da Página do Edital no Portal PNCP">
+              <button onclick="openPncpPagePdfWithCountdown(${idx})" class="bg-[#27394d] hover:bg-[#334960] text-white font-bold px-2.5 py-1.5 rounded-lg text-[10px] shadow-xs transition flex items-center justify-center gap-1 w-full" title="Capturar e Baixar PDF Real da Página do Edital no Portal PNCP">
                 <span class="text-xs">📄</span> PDF da Página PNCP (Gov)
-              </a>
+              </button>
               <div class="grid grid-cols-2 gap-1">
                 <button onclick="openPncpPortalByQuote(${idx})" class="bg-[#3b5b7c] hover:bg-[#2e4761] text-white font-bold px-1.5 py-1 rounded text-[10px] transition text-center" title="Abrir Edital Oficial no Portal PNCP">
                   🌐 Ver no PNCP ↗
@@ -2345,20 +1996,35 @@
               }
               const files = data.arquivos || [];
               if (files.length > 0) {
-                filesList.innerHTML = files.map(f => {
-                  const dlUrl = `/api/v1/pncp/download-file?cnpj=${encodeURIComponent(c.orgaoEntidadeCnpj || '')}&ano=${c.anoCompraPncp || ''}&seq=${c.sequencialCompraPncp || ''}&doc_seq=${f.sequencialDocumento || ''}&filename=${encodeURIComponent(f.titulo || 'termo_pncp.pdf')}`;
-                  return `
-                    <div class="flex items-center justify-between p-2.5 bg-white border border-slate-200 rounded-xl shadow-sm text-xs hover:border-[#c5a365] transition">
-                      <div class="space-y-0.5 pr-2">
-                        <span class="text-[10px] font-bold uppercase text-[#334960] block">${f.tipoDocumentoNome || 'Termo Oficial'}</span>
-                        <strong class="text-slate-800 text-[11px] block line-clamp-1">${f.titulo || 'Documento Oficial'}</strong>
-                      </div>
-                      <a href="${dlUrl}" target="_blank" class="bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-extrabold px-3 py-1.5 rounded-lg text-[10px] shadow transition shrink-0 flex items-center gap-1">
-                        <span>📥</span> Baixar PDF
-                      </a>
-                    </div>
-                  `;
-                }).join("");
+                filesList.innerHTML = `
+                  <div class="overflow-x-auto rounded-xl border border-slate-200">
+                    <table class="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr class="text-[10px] uppercase text-white bg-[#1e2d3d] border-b border-slate-700">
+                          <th class="py-2.5 px-3">TIPO DO DOCUMENTO</th>
+                          <th class="py-2.5 px-3">TÍTULO / IDENTIFICAÇÃO DO ARQUIVO</th>
+                          <th class="py-2.5 px-3 text-center">ACESSO OFICIAL</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-slate-100 font-mono text-xs">
+                        ${files.map(f => {
+                          const dlUrl = `/api/v1/pncp/download-file?cnpj=${encodeURIComponent(c.orgaoEntidadeCnpj || '')}&ano=${c.anoCompraPncp || ''}&seq=${c.sequencialCompraPncp || ''}&doc_seq=${f.sequencialDocumento || ''}&filename=${encodeURIComponent(f.titulo || 'termo_pncp.pdf')}`;
+                          return `
+                            <tr class="hover:bg-slate-50">
+                              <td class="py-2.5 px-3 font-bold text-slate-800">${f.tipoDocumentoNome || 'Edital'}</td>
+                              <td class="py-2.5 px-3 text-slate-700 font-mono text-[11px]">${f.titulo || q.purchase_key || 'Documento Oficial'}</td>
+                              <td class="py-2.5 px-3 text-center">
+                                <a href="${dlUrl}" target="_blank" class="text-blue-700 hover:text-blue-900 font-bold inline-flex items-center gap-1 text-[11px]">
+                                  📥 Baixar no PNCP
+                                </a>
+                              </td>
+                            </tr>
+                          `;
+                        }).join("")}
+                      </tbody>
+                    </table>
+                  </div>
+                `;
               } else {
                 filesList.innerHTML = `
                   <div class="p-3 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 space-y-2">
@@ -2430,60 +2096,86 @@
       document.getElementById("justificativaModal").classList.add("hidden");
     }
 
-    function downloadLiveJustificativaWord() {
-      const p = getReportParams();
-      if (!p.code) {
-        alert("Realize uma pesquisa de preços antes de baixar a justificativa em Word.");
-        return;
-      }
-      const orden = (document.getElementById("justSigNome") ? document.getElementById("justSigNome").value.trim() : "") || p.orden;
-      window.location.href = apiUrl(`/api/v1/prices/export-justificativa-docx/${p.code}?item_type=${encodeURIComponent(p.itemType)}&supply_unit=${encodeURIComponent(p.unit)}&qty=${encodeURIComponent(p.qty)}&ordenador=${encodeURIComponent(orden)}`);
-    }
-
-    function downloadLiveJustificativaPdf() {
-      const p = getReportParams();
-      if (!p.code) {
-        alert("Realize uma pesquisa de preços antes de baixar a justificativa em PDF.");
-        return;
-      }
-      const orden = (document.getElementById("justSigNome") ? document.getElementById("justSigNome").value.trim() : "") || p.orden;
-      window.location.href = apiUrl(`/api/v1/prices/export-justificativa-pdf/${p.code}?item_type=${encodeURIComponent(p.itemType)}&supply_unit=${encodeURIComponent(p.unit)}&qty=${encodeURIComponent(p.qty)}&ordenador=${encodeURIComponent(orden)}`);
-    }
-
     function getReportParams() {
-      const code = document.getElementById("inputCatmat").value.trim();
-      const itemType = document.getElementById("inputItemType").value || "MATERIAL";
-      const unit = document.getElementById("inputUnit").value.trim().toUpperCase() || "UN";
-      const qty = document.getElementById("inputQty").value.trim() || "1";
       const elabInput = document.getElementById("sig1Nome");
       const ordenInput = document.getElementById("sig2Nome");
-      const elab = elabInput ? elabInput.value.trim() : "ENCARREGADO DO SETOR DE OBTENÇÃO";
-      const orden = ordenInput ? ordenInput.value.trim() : "ORDENADOR DE DESPESAS";
-      return { code, itemType, unit, qty, elab, orden };
+      const elab = (elabInput && elabInput.value.trim()) || "ENCARREGADO DO SETOR DE OBTENÇÃO";
+      const orden = (ordenInput && ordenInput.value.trim()) || "ORDENADOR DE DESPESAS";
+      return { elab, orden };
     }
 
-    function downloadLiveExcel() {
-      const p = getReportParams();
-      if (!p.code) return;
-      window.location.href = apiUrl(`/api/v1/prices/export-xlsx/${p.code}?item_type=${encodeURIComponent(p.itemType)}&supply_unit=${encodeURIComponent(p.unit)}&qty=${encodeURIComponent(p.qty)}`);
+    async function downloadFromPost(path, payload, fallbackName, label) {
+      showCountdownProgress({
+        title: label || "Gerando documento oficial",
+        subtitle: "Montando o arquivo com os dados já pesquisados e curados (sem nova consulta ao Governo).",
+        estimatedSeconds: 3,
+        steps: ["Preparando dados da cesta de preços...", "Gerando o arquivo...", "Finalizando download..."]
+      });
+      try {
+        const resp = await fetch(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+          let msg = `Erro HTTP ${resp.status}`;
+          try { const j = await resp.json(); msg = j.error || msg; } catch (e) {}
+          hideCountdownProgress();
+          showAppNotification(msg, "error");
+          return;
+        }
+        const blob = await resp.blob();
+        const cd = resp.headers.get("Content-Disposition") || "";
+        const m = cd.match(/filename="?([^";]+)"?/i);
+        const name = (m && m[1]) || fallbackName;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = name;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        hideCountdownProgress();
+      } catch (e) {
+        hideCountdownProgress();
+        showAppNotification("Falha ao gerar o arquivo: " + e.message, "error");
+      }
     }
 
-    function downloadLiveWord() {
-      const p = getReportParams();
-      if (!p.code) {
-        alert("Realize uma pesquisa de preços antes de baixar o relatório em Word.");
+    function exportReport(report, qty, itemType, fmt) {
+      if (!report || !report.sanitized_metrics) {
+        showAppNotification("Este item ainda não possui pesquisa válida. Execute o passo 2 (Pesquisar Preços no Compras.gov.br).", "warn");
         return;
       }
-      window.location.href = apiUrl(`/api/v1/prices/export-docx/${p.code}?item_type=${encodeURIComponent(p.itemType)}&supply_unit=${encodeURIComponent(p.unit)}&qty=${encodeURIComponent(p.qty)}&elaborador=${encodeURIComponent(p.elab)}&ordenador=${encodeURIComponent(p.orden)}`);
+      const p = getReportParams();
+      const labels = { pdf: "Relatório em PDF", docx: "Relatório em Word", xlsx: "Mapa Comparativo em Excel", "just-docx": "Justificativa em Word", "just-pdf": "Justificativa em PDF" };
+      const ext = fmt === "xlsx" ? "xlsx" : (fmt.endsWith("docx") ? "docx" : "pdf");
+      downloadFromPost("/api/v1/prices/export-report", {
+        report, qty: qty || 1, item_type: itemType || "MATERIAL", format: fmt,
+        om_name: getGlobalOrgName(), elaborador: p.elab, ordenador: p.orden
+      }, `Pesquisa_IN65_${report.catmat_catser_code}.${ext}`, `Gerando ${labels[fmt] || "documento"}`);
     }
 
-    function downloadLivePdf() {
-      const p = getReportParams();
-      if (!p.code) {
-        alert("Realize uma pesquisa de preços antes de baixar o relatório em PDF.");
-        return;
-      }
-      window.location.href = apiUrl(`/api/v1/prices/export-pdf/${p.code}?item_type=${encodeURIComponent(p.itemType)}&supply_unit=${encodeURIComponent(p.unit)}&qty=${encodeURIComponent(p.qty)}&elaborador=${encodeURIComponent(p.elab)}&ordenador=${encodeURIComponent(p.orden)}`);
+    function exportActiveReport(fmt) {
+      exportReport(activePriceReport, activeQuantity, activeItemType, fmt);
+    }
+
+    function exportBatchItemReport(idx, fmt) {
+      const r = batchResearchResults[idx];
+      if (!r) return;
+      exportReport(r.report, r.qty, r.type, fmt);
+    }
+
+    function downloadLiveExcel() { exportActiveReport("xlsx"); }
+    function downloadLiveWord() { exportActiveReport("docx"); }
+    function downloadLivePdf() { exportActiveReport("pdf"); }
+    function downloadLiveJustificativaWord() {
+      const n = document.getElementById("justSigNome");
+      if (n && n.value.trim() && document.getElementById("sig2Nome")) document.getElementById("sig2Nome").value = n.value.trim();
+      exportActiveReport("just-docx");
+    }
+    function downloadLiveJustificativaPdf() {
+      const n = document.getElementById("justSigNome");
+      if (n && n.value.trim() && document.getElementById("sig2Nome")) document.getElementById("sig2Nome").value = n.value.trim();
+      exportActiveReport("just-pdf");
     }
 
     // =========================================================================
@@ -3071,8 +2763,120 @@
       }
     }
 
+
+    // =========================================================================
+    // NAVEGAÇÃO ENTRE PASSOS (ITENS DO LOTE <-> RESULTADOS)
+    // =========================================================================
+    function switchBatchWorkflowView(view) {
+      const tray = document.getElementById("batchTraySection");
+      const results = document.getElementById("batchResultsSection");
+      if (view === "results" && !(batchResearchResults || []).length) {
+        showAppNotification("Execute primeiro o passo 2 (Pesquisar Preços).", "warn");
+        return;
+      }
+      if (tray) tray.classList.toggle("hidden", view !== "tray");
+      if (results) results.classList.toggle("hidden", view !== "results");
+      updateWorkflowStepper();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    // =========================================================================
+    // CONTADOR REGRESSIVO COM TEMPO ESTIMADO (FEEDBACK IMEDIATO AO USUÁRIO)
+    // =========================================================================
+    let countdownInterval = null;
+    function showCountdownProgress(options) {
+      const modal = document.getElementById("progressCountdownModal");
+      if (!modal) return;
+      const icon = document.getElementById("countdownModalIcon");
+      const title = document.getElementById("countdownModalTitle");
+      const subtitle = document.getElementById("countdownModalSubtitle");
+      const step = document.getElementById("countdownProgressStep");
+      const pct = document.getElementById("countdownProgressPercent");
+      const bar = document.getElementById("countdownProgressBar");
+      const secText = document.getElementById("countdownSecondsText");
+      const steps = options.steps || ["Consultando dados oficiais...", "Processando...", "Finalizando..."];
+      const totalMs = (options.estimatedSeconds || 4) * 1000;
+      let elapsedMs = 0;
+      if (title) title.textContent = options.title || "Processando solicitação";
+      if (subtitle) subtitle.textContent = options.subtitle || "";
+      if (icon) icon.textContent = options.icon || "⏳";
+      if (bar) bar.style.width = "0%";
+      if (pct) pct.textContent = "0%";
+      if (secText) secText.textContent = `~${options.estimatedSeconds || 4}s`;
+      if (step) step.textContent = "Iniciando comunicação com servidores oficiais...";
+      modal.classList.remove("hidden");
+      clearInterval(countdownInterval);
+      countdownInterval = setInterval(() => {
+        elapsedMs += 100;
+        const remaining = Math.ceil((totalMs - elapsedMs) / 1000);
+        if (secText) secText.textContent = remaining > 0 ? `${remaining}s` : "finalizando...";
+        const p = Math.min(95, Math.round((elapsedMs / totalMs) * 90));
+        if (bar) bar.style.width = `${p}%`;
+        if (pct) pct.textContent = `${p}%`;
+        if (step && elapsedMs >= 600) {
+          const k = Math.min(steps.length - 1, Math.floor((elapsedMs / totalMs) * steps.length));
+          step.textContent = steps[k];
+        }
+      }, 100);
+    }
+    function hideCountdownProgress() {
+      const modal = document.getElementById("progressCountdownModal");
+      const bar = document.getElementById("countdownProgressBar");
+      const pct = document.getElementById("countdownProgressPercent");
+      const step = document.getElementById("countdownProgressStep");
+      clearInterval(countdownInterval);
+      if (bar) bar.style.width = "100%";
+      if (pct) pct.textContent = "100%";
+      if (step) step.textContent = "Concluído!";
+      setTimeout(() => { if (modal) modal.classList.add("hidden"); }, 350);
+    }
+
+    // PDF do edital no PNCP (gerado a partir do extrato oficial) com contador
+    function openPncpPagePdfWithCountdown(idx) {
+      const q = (window.currentAllQuotes || [])[idx];
+      if (!q) return;
+      downloadFromPost("/api/v1/pncp/page-pdf-post", {
+        chave: q.purchase_key || "", url: q.pncp_or_compras_uri || ""
+      }, `PNCP_Edital_${q.purchase_key || "documento"}.pdf`, "Gerando extrato do Edital no PNCP (PDF)");
+    }
+
+    // Inclusão opcional de uma Ata SRP como cotação da cesta (Art. 5º, II da IN 65/2021)
+    function addArpToQuotationBasket(arpIdx) {
+      if (!activePriceReport || !(activePriceReport.arp_atas_vigentes || [])[arpIdx]) return;
+      const arp = activePriceReport.arp_atas_vigentes[arpIdx];
+      const newQuote = {
+        id_compra_item: `ARP-${arp.numero_ata || arpIdx}`,
+        buyer_uasg: arp.uasg_codigo || "",
+        buyer_org_name: arp.uasg_nome || "Órgão Gerenciador",
+        buyer_uf: "BR",
+        purchase_number_year: `Ata SRP ${arp.numero_ata || ''}`,
+        supplier_name: arp.fornecedor_nome || "Fornecedor Registrado",
+        supplier_cnpj: arp.fornecedor_cnpj || "",
+        supply_unit: activePriceReport.target_supply_unit || "UN",
+        quantity_homologated: 1,
+        purchase_date: arp.vigencia_inicio || "",
+        unit_price: Number(arp.preco_unitario || 0),
+        is_outlier: false,
+        is_selected: true,
+        purge_status: "VALIDA",
+        purge_justification: `Preço registrado em Ata SRP vigente (${arp.uasg_nome}), incluído pelo analista (Art. 5º, II da IN 65/2021).`,
+        pncp_or_compras_uri: arp.pncp_ata_uri || "https://pncp.gov.br/app/atas",
+        purchase_key: `ARP-${arp.numero_ata || arpIdx}`
+      };
+      window.currentAllQuotes = window.currentAllQuotes || [];
+      if (window.currentAllQuotes.some(q => q.purchase_key === newQuote.purchase_key)) {
+        showAppNotification("Esta ata já está na cesta.", "warn");
+        return;
+      }
+      window.currentAllQuotes.push(newQuote);
+      recalculateCuratedQuotes();
+    }
+
     function renderBatchTray() {
       const countBadge = document.getElementById("batchCountBadge");
+      const wfBadge = document.getElementById("wfBatchBadge");
+      if (wfBadge) wfBadge.textContent = batchTrayItems.length;
+      setTimeout(updateWorkflowStepper, 0);
       const emptyMsg = document.getElementById("batchEmptyMessage");
       const tableCont = document.getElementById("batchTableContainer");
       const tbody = document.getElementById("batchTrayBody");
@@ -3133,10 +2937,10 @@
         const dem = demandMap[key];
         const noDemand = dem && !dem.has_demand;
         const rowCls = noDemand ? "bg-rose-950/70 border-l-4 border-l-rose-500" : "hover:bg-slate-800/60";
-        let statusPill = `<span class="text-[10px] text-slate-400 ml-1">⏳ Verificando 12m...</span>`;
+        let statusPill = `<span class="text-[10px] text-slate-400 ml-1">⏳ Verificando compras no Gov...</span>`;
         if (dem) {
           statusPill = noDemand
-            ? `<span class="inline-block ml-1.5 px-1.5 py-0.5 rounded bg-[#9e4747] text-white text-[10px] font-bold">🚫 Sem demanda 12m (Não converge)</span>`
+            ? `<span class="inline-block ml-1.5 px-1.5 py-0.5 rounded bg-[#9e4747] text-white text-[10px] font-bold">🚫 Sem compras em 12 meses — será ignorado</span>`
             : `<span class="inline-block ml-1.5 px-1.5 py-0.5 rounded bg-[#3b6e5c]/30 text-emerald-200 border border-[#3b6e5c]/50 text-[10px] font-bold">✅ ${dem.total_quotes_12m} compras (12m)</span>`;
         }
 
@@ -3174,21 +2978,34 @@
       }).join("");
     }
 
+    function batchSignature(items) {
+      return items.map(it => `${it.type}:${it.code}:${it.unit}:${it.qty}`).sort().join("|");
+    }
+
     async function processBatchResearch() {
-      const selectedItems = batchTrayItems.filter(it => it.selected !== false);
+      const demandMap = window.catalogDemandMap || {};
+      const marked = batchTrayItems.filter(it => it.selected !== false);
+      if (marked.length === 0) {
+        showAppNotification("Nenhum item marcado. Marque ☑ os itens do lote que deseja pesquisar.", "warn");
+        return;
+      }
+      const skipped = marked.filter(it => { const d = demandMap[`${it.type}:${it.code}`]; return d && !d.has_demand; });
+      const selectedItems = marked.filter(it => !skipped.includes(it));
       if (selectedItems.length === 0) {
-        showAppNotification("Nenhum item selecionado no lote! Marque a caixa de seleção dos itens que deseja pesquisar.", "warn");
+        showAppNotification("Todos os itens marcados estão sem compras no Compras.gov.br nos últimos 12 meses. Troque os códigos em vermelho.", "error");
         return;
       }
 
       const btn = document.getElementById("btnProcessBatch");
-      const loading = document.getElementById("priceLoadingBar");
-      const origText = btn ? btn.innerHTML : "";
-      if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = `⏳ Processando (${selectedItems.length} itens)...`;
-      }
-      if (loading) loading.classList.remove("hidden");
+      if (btn) btn.disabled = true;
+      const est = Math.max(4, Math.ceil(selectedItems.length / 6) * 6);
+      showCountdownProgress({
+        title: `Pesquisando ${selectedItems.length} item(ns) no Compras.gov.br`,
+        subtitle: "Coletando compras homologadas (12 meses), saneando outliers (IN 65/2021) e consultando Atas SRP vigentes.",
+        icon: "🏛️",
+        estimatedSeconds: est,
+        steps: ["Conectando à API oficial do Compras.gov.br...", "Coletando compras homologadas dos últimos 12 meses...", "Saneando outliers e calculando média/mediana...", "Consultando Atas de Registro de Preços vigentes..."]
+      });
 
       try {
         const resp = await fetch("/api/v1/prices/batch-research", {
@@ -3206,35 +3023,83 @@
           })
         });
         const data = await resp.json();
-        if (loading) loading.classList.add("hidden");
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = origText;
-        }
+        hideCountdownProgress();
+        if (btn) btn.disabled = false;
 
         if (!resp.ok || data.status !== "SUCCESS") {
-          showAppNotification(data.message || data.error || "Erro ao processar lote de pesquisas.", "error");
+          showAppNotification(data.message || data.error || "Erro ao processar a pesquisa do lote.", "error");
           return;
         }
 
         batchResearchResults = data.results || [];
+        window.lastResearchSignature = batchSignature(marked);
+        activeBatchItemIndex = Math.max(0, batchResearchResults.findIndex(r => r.has_data && r.report && r.report.sanitized_metrics));
         renderBatchResults(data);
+        updateWorkflowStepper();
 
-        // Inspeciona automaticamente o primeiro item que convergiu (com cotações válidas)
-        const firstValidIdx = batchResearchResults.findIndex(r => r.has_data && r.report && r.report.sanitized_metrics);
-        if (firstValidIdx >= 0) {
-          inspectBatchItem(firstValidIdx, false);
-        } else {
-          showAppNotification("Nenhum dos itens do lote teve compras homologadas nos últimos 12 meses. Remova os itens em vermelho e selecione códigos com selo verde.", "error");
+        const okCount = batchResearchResults.filter(r => r.has_data).length;
+        if (okCount === 0) {
+          showAppNotification("Nenhum item teve compras homologadas nos últimos 12 meses. Troque os códigos e pesquise novamente.", "error");
+          return;
         }
+        switchBatchWorkflowView("results");
+        inspectBatchItem(activeBatchItemIndex, false);
+        const msgSkip = skipped.length ? ` ${skipped.length} item(ns) sem compras em 12 meses foram ignorados.` : "";
+        showAppNotification(`Pesquisa concluída: ${okCount} de ${batchResearchResults.length} item(ns) com preço de referência.${msgSkip}`, okCount === batchResearchResults.length ? "success" : "warn");
       } catch (e) {
-        if (loading) loading.classList.add("hidden");
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = origText;
-        }
+        hideCountdownProgress();
+        if (btn) btn.disabled = false;
         showAppNotification("Erro na pesquisa em lote: " + e.message, "error");
       }
+    }
+
+    function removeResearchedItem(idx) {
+      const r = batchResearchResults[idx];
+      if (!r) return;
+      batchTrayItems = batchTrayItems.filter(it => !(it.code === r.code && (it.type || "MATERIAL") === (r.type || "MATERIAL")));
+      batchResearchResults.splice(idx, 1);
+      if (activeBatchItemIndex >= batchResearchResults.length) activeBatchItemIndex = 0;
+      window.lastResearchSignature = batchSignature(batchTrayItems.filter(it => it.selected !== false));
+      renderBatchTray();
+      renderBatchResults();
+    }
+
+    function updateWorkflowStepper() {
+      const total = batchTrayItems.length;
+      const marked = batchTrayItems.filter(it => it.selected !== false);
+      const dm = window.catalogDemandMap || {};
+      const noDem = marked.filter(it => { const d = dm[`${it.type}:${it.code}`]; return d && !d.has_demand; }).length;
+      const hasResults = (batchResearchResults || []).some(r => r.has_data);
+      const stale = hasResults && window.lastResearchSignature && window.lastResearchSignature !== batchSignature(marked);
+
+      const s1 = document.getElementById("step1Status");
+      const s2 = document.getElementById("step2Status");
+      const s3 = document.getElementById("step3Status");
+      const lbl = document.getElementById("btnProcessBatchLabel");
+      const btn = document.getElementById("btnProcessBatch");
+      const c1 = document.getElementById("stepCard1"), c2 = document.getElementById("stepCard2"), c3 = document.getElementById("stepCard3");
+      const bRes = document.getElementById("btnOpenResults"), bGen = document.getElementById("btnGenerateProcess");
+      const stl = document.getElementById("batchStaleWarning");
+
+      if (s1) s1.textContent = total === 0 ? "Lote vazio." : `✅ ${total} item(ns) no lote • ${marked.length} marcado(s)`;
+      if (lbl) lbl.textContent = marked.length ? `Pesquisar Preços (${marked.length - noDem} ${marked.length - noDem === 1 ? "item" : "itens"})` : "Pesquisar Preços no Compras.gov.br";
+      if (btn) btn.disabled = marked.length === 0;
+      if (s2) {
+        if (total === 0) s2.textContent = "Adicione itens no passo 1.";
+        else if (stale) s2.textContent = "⚠️ Lote alterado — pesquise novamente para atualizar.";
+        else if (hasResults) s2.textContent = `✅ Pesquisa concluída (${batchResearchResults.filter(r => r.has_data).length}/${batchResearchResults.length} com preço).`;
+        else s2.textContent = noDem ? `Pronto. ${noDem} item(ns) sem compras em 12m serão ignorados.` : "Pronto para pesquisar.";
+      }
+      if (s3) s3.textContent = hasResults ? (stale ? "Resultados desatualizados em relação ao lote." : "✅ Resultados prontos para análise e emissão.") : "Disponível após o passo 2.";
+      if (bRes) bRes.disabled = !hasResults;
+      if (bGen) bGen.disabled = !hasResults;
+      if (stl) stl.classList.toggle("hidden", !stale);
+
+      const on = "rounded-2xl border-2 border-[#c5a365] bg-amber-50/40 p-4 flex flex-col gap-3";
+      const off = "rounded-2xl border-2 border-slate-200 bg-white p-4 flex flex-col gap-3";
+      if (c1) c1.className = (total === 0) ? on : off;
+      if (c2) c2.className = (total > 0 && (!hasResults || stale)) ? on : off;
+      if (c3) c3.className = (hasResults && !stale) ? on : off + (hasResults ? "" : " opacity-60");
     }
 
     let activeBatchItemIndex = 0;
@@ -3264,7 +3129,6 @@
       const totalEl = document.getElementById("batchGrandTotal");
       const listEl = document.getElementById("batchItemsListMaster");
 
-      if (sec) sec.classList.remove("hidden");
       const totalItems = (data && data.total_items) || batchResearchResults.length;
       if (countEl) countEl.textContent = totalItems;
       if (totalEl) {
@@ -3337,7 +3201,7 @@
                 <strong class="block text-xs text-rose-950 line-clamp-2">${rep.item_description || `Item ${code}`}</strong>
                 <div class="flex items-center justify-between pt-1 border-t border-rose-200/60">
                   <span class="text-[10px] font-bold text-[#9e4747]">🚫 Sem compras nos últimos 12m</span>
-                  <button onclick="event.stopPropagation(); removeBatchItem(${idx}); batchResearchResults.splice(${idx}, 1); renderBatchResults();"
+                  <button onclick="event.stopPropagation(); removeResearchedItem(${idx});"
                     class="text-[#9e4747] hover:text-white hover:bg-[#9e4747] font-bold text-[10px] px-2 py-0.5 rounded border border-[#9e4747]/40 transition">
                     🗑️ Remover
                   </button>
@@ -3380,15 +3244,9 @@
                   👁️ Clique para inspecionar cotações
                 </span>
                 <div class="flex items-center gap-1">
-                  <a href="/api/v1/prices/export-docx/${code}?${queryParams}" onclick="event.stopPropagation()" class="bg-[#3b5b7c] hover:bg-[#2e4761] text-white font-bold px-2 py-0.5 rounded text-[10px]" title="Baixar Relatório em Word (.DOCX)">
-                    📝 Word
-                  </a>
-                  <a href="/api/v1/prices/export-pdf/${code}?${queryParams}" onclick="event.stopPropagation()" class="bg-[#9e4747] hover:bg-[#853939] text-white font-bold px-2 py-0.5 rounded text-[10px]" title="Baixar Relatório em PDF">
-                    📄 PDF
-                  </a>
-                  <a href="/api/v1/prices/export-xlsx/${code}?${queryParams}" onclick="event.stopPropagation()" class="bg-[#3b6e5c] hover:bg-[#2d5849] text-white font-bold px-2 py-0.5 rounded text-[10px]" title="Baixar Mapa Comparativo em Excel (.XLSX)">
-                    📊 Excel
-                  </a>
+                  <button onclick="event.stopPropagation(); exportBatchItemReport(${idx}, 'docx')" class="bg-[#3b5b7c] hover:bg-[#2e4761] text-white font-bold px-2 py-0.5 rounded text-[10px]">📝 Word</button>
+                  <button onclick="event.stopPropagation(); exportBatchItemReport(${idx}, 'pdf')" class="bg-[#9e4747] hover:bg-[#853939] text-white font-bold px-2 py-0.5 rounded text-[10px]">📄 PDF</button>
+                  <button onclick="event.stopPropagation(); exportBatchItemReport(${idx}, 'xlsx')" class="bg-[#3b6e5c] hover:bg-[#2d5849] text-white font-bold px-2 py-0.5 rounded text-[10px]">📊 Excel</button>
                 </div>
               </div>
             </div>
@@ -3692,19 +3550,20 @@
       document.getElementById("modalSelQty").value = 1;
     }
 
-    async function saveModalItemToBatch(runImmediate = false) {
+    async function saveModalItemToBatch(keepOpen = false) {
       if (!currentSelectedModalItem) return;
       const it = currentSelectedModalItem;
       const qty = parseFloat(document.getElementById("modalSelQty").value) || 1;
       const unit = document.getElementById("modalSelUnit").value.trim().toUpperCase() || "UN";
-
       await addItemToBatchTray(it.item_type, it.codigo, it.descricao, unit, qty);
-      closeCatalogSearchModal();
-
-      if (runImmediate) {
-        selectCatalogItem(it.item_type, it.codigo, qty, unit);
+      showAppNotification(`${it.item_type === 'SERVICO' ? 'CATSER' : 'CATMAT'} ${it.codigo} adicionado ao lote. Quando terminar, clique em “🚀 Pesquisar Preços” (passo 2).`, "success");
+      if (keepOpen) {
+        currentSelectedModalItem = null;
+        document.getElementById("modalSelectedItemBar").classList.add("hidden");
+        const inp = document.getElementById("modalKeywordInput");
+        if (inp) { inp.value = ""; inp.focus(); }
       } else {
-        showAppNotification(`Item ${it.item_type === 'SERVICO' ? 'CATSER' : 'CATMAT'} ${it.codigo} incluído com sucesso no lote.`, "success");
+        closeCatalogSearchModal();
       }
     }
 
@@ -3721,27 +3580,23 @@
 
     // Modal de Geração de Documentos em Lote
     function openBatchDocsModal() {
-      if (!batchTrayItems || batchTrayItems.length === 0) {
-        showAppNotification("Adicione pelo menos 1 CATMAT ou CATSER ao lote antes de gerar documentos.", "warn");
+      const valid = (batchResearchResults || []).map((r, idx) => ({ r, idx })).filter(x => x.r.has_data && x.r.report && x.r.report.sanitized_metrics);
+      if (valid.length === 0) {
+        showAppNotification("Execute primeiro o passo 2 (Pesquisar Preços no Compras.gov.br).", "warn");
         return;
       }
       const list = document.getElementById("modalBatchItemsCheckList");
-      list.innerHTML = batchTrayItems.map((it, idx) => {
-        const isChecked = it.selected !== false ? "checked" : "";
-        return `
-          <label class="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl hover:border-amber-400 cursor-pointer text-xs">
-            <div class="flex items-center gap-2.5">
-              <input type="checkbox" id="chkBatchItem_${idx}" ${isChecked} class="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 cursor-pointer" />
-              <div>
-                <span class="font-black text-slate-900">${it.type === 'SERVICO' ? 'CATSER' : 'CATMAT'} ${it.code}:</span>
-                <span class="text-slate-700 ml-1 font-medium">${(it.description || '').slice(0, 70)}...</span>
+      list.innerHTML = valid.map(({ r, idx }) => `
+          <label class="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl hover:border-amber-400 cursor-pointer text-xs gap-2">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <input type="checkbox" id="chkBatchItem_${idx}" checked class="w-4 h-4 rounded text-amber-500 cursor-pointer shrink-0" />
+              <div class="min-w-0">
+                <span class="font-black text-slate-900">${r.type === 'SERVICO' ? 'CATSER' : 'CATMAT'} ${r.code}</span>
+                <span class="text-slate-600 ml-1 truncate">${(r.report.item_description || '').slice(0, 70)}</span>
               </div>
             </div>
-            <span class="font-mono font-bold text-slate-500 shrink-0 ml-2">${it.qty} ${it.unit}</span>
-          </label>
-        `;
-      }).join("");
-
+            <span class="font-mono font-bold text-emerald-700 shrink-0">R$ ${Number(r.total_price || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+          </label>`).join("");
       document.getElementById("modalBatchDocsSelection").classList.remove("hidden");
     }
 
@@ -3750,68 +3605,29 @@
     }
 
     function setAllBatchDocChecks(val) {
-      batchTrayItems.forEach((_, idx) => {
+      (batchResearchResults || []).forEach((_, idx) => {
         const chk = document.getElementById(`chkBatchItem_${idx}`);
         if (chk) chk.checked = val;
       });
     }
 
     async function executeSelectedBatchGeneration() {
-      const selectedIndices = [];
-      batchTrayItems.forEach((it, idx) => {
+      const picked = [];
+      (batchResearchResults || []).forEach((r, idx) => {
         const chk = document.getElementById(`chkBatchItem_${idx}`);
-        if (chk && chk.checked) {
-          selectedIndices.push(idx);
-          it.selected = true;
-        } else {
-          it.selected = false;
-        }
+        if (chk && chk.checked) picked.push(r);
       });
-
-      if (selectedIndices.length === 0) {
-        showAppNotification("Selecione pelo menos 1 CATMAT ou CATSER para gerar a documentação.", "warn");
+      if (picked.length === 0) {
+        showAppNotification("Selecione pelo menos 1 item com preço de referência.", "warn");
         return;
       }
-
       closeBatchDocsModal();
-      showAppNotification(`Processando pesquisas e gerando documentação para os ${selectedIndices.length} itens selecionados... Aguarde alguns instantes.`, "warn");
-
-      // Executa as pesquisas dos itens selecionados
-      const targetItems = selectedIndices.map(idx => batchTrayItems[idx]);
-      try {
-        const resp = await fetch("/api/v1/prices/execute-batch-research", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ items: targetItems })
-        });
-        const data = await resp.json();
-        if (data.status === "SUCCESS") {
-          const validResults = (data.results || []).filter(r => r.has_data && r.report);
-          if (validResults.length === 0) {
-            showAppNotification("Nenhum dos itens selecionados retornou cotações válidas nos últimos 12 meses.", "error");
-            return;
-          }
-
-          // Dispara o download do ZIP consolidado dos itens selecionados
-          const zipResp = await fetch("/api/v1/prices/export-batch-zip", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ items: validResults })
-          });
-          const blob = await zipResp.blob();
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = `Pacote_Consolidado_IN65_${selectedIndices.length}_Itens.zip`;
-          a.click();
-
-          showAppNotification(`Pacote consolidado (.ZIP) gerado e baixado com sucesso para os ${selectedIndices.length} itens!`, "success");
-        } else {
-          showAppNotification("Erro ao processar lote: " + (data.error || "falha desconhecida"), "error");
-        }
-      } catch (err) {
-        showAppNotification("Erro ao gerar documentos: " + err.message, "error");
-      }
+      await downloadFromPost("/api/v1/prices/export-batch-zip", {
+        items: picked,
+        om_name: getGlobalOrgName(),
+        elaborador: getReportParams().elab,
+        ordenador: getReportParams().orden
+      }, `Processo_Completo_IN65_${picked.length}_itens.zip`, `Gerando Processo Completo (${picked.length} itens)`);
     }
 
     // Modal de Parser de Demanda
@@ -3840,25 +3656,24 @@
         const data = await resp.json();
         const items = data.parsed_items || [];
         window.lastModalParsedItems = items;
-        out.innerHTML = items.map(row => {
-          const topMatches = (row.matches || []).slice(0, 2);
+        if (items.length === 0) {
+          out.innerHTML = `<div class="p-4 text-xs text-slate-500">Nenhuma linha reconhecida. Use uma linha por item (ex.: 10 UN - Pneu 205/55 R16).</div>`;
+          return;
+        }
+        out.innerHTML = `<p class="text-[11px] text-slate-500 px-1">Confira o código sugerido para cada linha. Escolha outro na lista ou “Ignorar”.</p>` + items.map((row, i) => {
+          const opts = (row.matches || []).slice(0, 6);
           return `
-            <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1 text-xs">
-              <div class="flex items-center justify-between">
-                <strong class="text-[#1e2d3d] font-mono">${row.quantity} ${row.unit || 'UN'} • "${row.raw_line}"</strong>
+            <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1.5 text-xs">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <strong class="text-[#1e2d3d]">“${row.raw_line}”</strong>
+                <span class="font-mono text-slate-600">${row.quantity || 1} ${row.unit || 'UN'}</span>
               </div>
-              <div class="space-y-1">
-                ${topMatches.map(m => `
-                  <div class="flex items-center justify-between p-2 bg-white rounded border border-slate-200">
-                    <div>
-                      <span class="text-[10px] font-black px-1.5 py-0.5 rounded bg-blue-100 text-blue-900">${m.item_type} ${m.codigo}</span>
-                      <span class="text-xs text-slate-700 ml-1">${(m.descricao || '').slice(0, 60)}...</span>
-                    </div>
-                  </div>
-                `).join("")}
-              </div>
-            </div>
-          `;
+              ${opts.length ? `
+                <select id="parsedPick_${i}" class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white">
+                  ${opts.map((m, k) => `<option value="${k}">${m.item_type === 'SERVICO' ? 'CATSER' : 'CATMAT'} ${m.codigo} — ${(m.descricao || '').slice(0, 90)}</option>`).join("")}
+                  <option value="-1">— Ignorar esta linha —</option>
+                </select>` : `<div class="text-[11px] text-rose-600 font-bold">Nenhum código encontrado. Adicione manualmente em “➕ Adicionar Item”.</div>`}
+            </div>`;
         }).join("");
       } catch (err) {
         out.innerHTML = `<div class="p-3 text-xs text-rose-600">Erro no parser: ${err.message}</div>`;
@@ -3867,18 +3682,19 @@
 
     async function addAllParsedDemandToBatch() {
       const items = window.lastModalParsedItems || [];
-      if (items.length === 0) {
-        closeDemandParserModal();
-        return;
-      }
-      for (const row of items) {
-        const m = (row.matches && row.matches[0]);
+      let added = 0;
+      for (let i = 0; i < items.length; i++) {
+        const row = items[i];
+        const sel = document.getElementById(`parsedPick_${i}`);
+        const k = sel ? parseInt(sel.value, 10) : -1;
+        const m = k >= 0 && row.matches ? row.matches[k] : null;
         if (m) {
           await addItemToBatchTray(m.item_type || "MATERIAL", m.codigo, m.descricao, row.unit || m.unidade || "UN", row.quantity || 1);
+          added++;
         }
       }
       closeDemandParserModal();
-      showAppNotification(`Itens da demanda convertidos e inseridos no lote com sucesso!`, "success");
+      if (added) showAppNotification(`${added} item(ns) adicionados ao lote. Agora clique em “🚀 Pesquisar Preços” (passo 2).`, "success");
     }
 
 </script>
@@ -3892,8 +3708,8 @@
         <div class="flex items-center gap-2.5">
           <span class="text-2xl">🔍</span>
           <div>
-            <h3 class="text-base font-black text-[#1e2d3d]">Janela de Inserção e Pesquisa de CATMAT / CATSER</h3>
-            <p class="text-xs text-slate-500">Localize itens no catálogo oficial, veja a demanda nos últimos 12 meses e adicione ao lote.</p>
+            <h3 class="text-base font-black text-[#1e2d3d]">Passo 1 • Adicionar Item ao Lote (Catálogo CATMAT / CATSER)</h3>
+            <p class="text-xs text-slate-500">Localize o código oficial do item. A consulta de preços acontece somente no passo 2, para todo o lote de uma vez.</p>
           </div>
         </div>
         <button onclick="closeCatalogSearchModal()" class="text-slate-400 hover:text-slate-800 text-xl font-bold px-2">✕</button>
@@ -3927,7 +3743,7 @@
 
           <div class="md:col-span-2">
             <button onclick="searchModalCatalogKeywords()" class="w-full bg-[#27394d] hover:bg-[#334960] text-white font-extrabold py-2.5 px-4 rounded-xl text-xs shadow transition">
-              🔍 Buscar
+              🔎 Localizar
             </button>
           </div>
         </div>
@@ -3967,11 +3783,11 @@
           </div>
         </div>
         <div class="flex items-center justify-end gap-2.5">
-          <button onclick="saveModalItemToBatch(false)" class="bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-4 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5 border border-[#c9962b]">
-            <span>💾</span> Salvar e Incluir no Lote (Voltar)
+          <button onclick="saveModalItemToBatch(true)" class="bg-white/10 hover:bg-white/20 text-white font-bold px-4 py-2 rounded-xl text-xs transition flex items-center gap-1.5 border border-white/20">
+            <span>➕</span> Adicionar e continuar localizando
           </button>
-          <button onclick="saveModalItemToBatch(true)" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-4 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5">
-            <span>⚡</span> Pesquisar e Carregar Agora
+          <button onclick="saveModalItemToBatch(false)" class="bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-4 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5 border border-[#c9962b]">
+            <span>✅</span> Adicionar ao Lote e Fechar
           </button>
         </div>
       </div>
@@ -4078,7 +3894,7 @@
           Voltar
         </button>
         <button onclick="addAllParsedDemandToBatch()" class="bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-5 py-2.5 rounded-xl text-xs shadow transition border border-[#c9962b]">
-          💾 Inserir Todos no Lote e Voltar
+          ✅ Adicionar Itens Escolhidos ao Lote
         </button>
       </div>
     </div>

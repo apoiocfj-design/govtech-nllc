@@ -277,6 +277,7 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Expose-Headers", "Content-Disposition")
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
         self.wfile.write(content)
@@ -726,10 +727,10 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
             chave = qs.get("chave", qs.get("idCompra", qs.get("codigo", [""])))[0]
             req_url = qs.get("url", [""])[0]
             pncp_url = req_url or resolve_pncp_webpage_url(chave)
-            if pncp_url:
-                page_pdf = capture_pncp_page_pdf(pncp_url)
+            if pncp_url or chave:
+                page_pdf = capture_pncp_page_pdf(pncp_url, chave_or_id=chave)
                 if page_pdf:
-                    clean_id = re.sub(r"\W", "_", pncp_url.split("editais/")[-1] if "editais/" in pncp_url else "edital")
+                    clean_id = re.sub(r"\W", "_", pncp_url.split("editais/")[-1] if (pncp_url and "editais/" in pncp_url) else (chave or "edital"))
                     self._send_binary(page_pdf, "application/pdf", f"PNCP_Pagina_Oficial_{clean_id}.pdf")
                     return
             # Fallback se a captura headless não puder ser gerada imediatamente
@@ -833,51 +834,47 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 months_back = int(data.get("months_back", 12))
                 uf = data.get("uf") or None
 
-                results = []
-                total_lote = 0.0
+                import concurrent.futures
 
-                for idx, it in enumerate(items_in, start=1):
+                def _research_one(idx_it):
+                    idx, it = idx_it
                     code_raw = it.get("code")
-                    catalog_code = int(code_raw) if str(code_raw).isdigit() else 475109
+                    catalog_code = int(code_raw) if str(code_raw).isdigit() else 0
                     unit = str(it.get("unit", "")).strip().upper()
                     item_type = str(it.get("type", "MATERIAL")).strip().upper()
-                    qty = int(it.get("qty", 1) or 1)
+                    try:
+                        qty = float(it.get("qty", 1) or 1)
+                    except (TypeError, ValueError):
+                        qty = 1.0
                     desc_fallback = str(it.get("description") or "").strip()
-
-                    res = price_controller.execute_in65_research(
-                        catalog_code=catalog_code,
-                        target_supply_unit=unit,
-                        item_type=item_type,
-                        months_back=months_back,
-                        uf=uf,
-                    )
+                    try:
+                        res = price_controller.execute_in65_research(
+                            catalog_code=catalog_code,
+                            target_supply_unit=unit,
+                            item_type=item_type,
+                            months_back=months_back,
+                            uf=uf,
+                        ) if catalog_code else {"status": "NO_DATA", "message": "Código inválido."}
+                    except Exception as exc_one:
+                        res = {"status": "API_ERROR", "message": f"Falha na API do Compras.gov.br: {exc_one}"}
                     rep = res.get("report")
                     has_data = bool(res.get("status") == "SUCCESS" and rep and rep.get("sanitized_metrics"))
-
                     if has_data:
                         unit_est = float(rep.get("final_estimated_unit_price", 0.0))
-                        total_est = qty * unit_est
-                        total_lote += total_est
                         resolved_unit = rep.get("target_supply_unit") or unit or "UN"
                     else:
                         unit_est = 0.0
-                        total_est = 0.0
                         resolved_unit = unit or "UN"
-                        if not desc_fallback:
-                            cat_hit = catalog_engine.search(str(catalog_code), item_type=item_type, limit=1)
-                            hit_rows = cat_hit.get("results") or []
-                            desc_fallback = hit_rows[0].get("descricao") if hit_rows else f"Item {catalog_code}"
                         rep = {
                             "catmat_catser_code": catalog_code,
-                            "item_description": desc_fallback,
+                            "item_description": desc_fallback or f"Item {catalog_code}",
                             "target_supply_unit": resolved_unit,
                             "valid_quotes": [],
                             "purged_quotes": [],
                             "sanitized_metrics": None,
                             "raw_metrics": None,
                         }
-
-                    results.append({
+                    return {
                         "item_index": idx,
                         "code": catalog_code,
                         "type": item_type,
@@ -885,11 +882,15 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                         "qty": qty,
                         "has_data": has_data,
                         "status": res.get("status", "SUCCESS" if has_data else "NO_DATA"),
-                        "message": res.get("message", "Pesquisa homologada com sucesso" if has_data else "Sem demanda nos últimos 12m (Não converge)"),
+                        "message": res.get("message", "Pesquisa homologada com sucesso" if has_data else "Sem compras homologadas nos últimos 12 meses"),
                         "unit_price": unit_est,
-                        "total_price": total_est,
+                        "total_price": qty * unit_est,
                         "report": rep,
-                    })
+                    }
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+                    results = list(pool.map(_research_one, list(enumerate(items_in, start=1))))
+                total_lote = sum(r["total_price"] for r in results)
 
                 self._send_json(200, {
                     "status": "SUCCESS",
@@ -897,6 +898,76 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                     "total_lote": total_lote,
                     "results": results,
                 })
+            except Exception as exc:
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        # 0.012 Captura da página oficial do PNCP em PDF (POST com {chave, url})
+        if parsed.path == "/api/v1/pncp/page-pdf-post":
+            try:
+                data = json.loads(raw_body or "{}")
+                chave = str(data.get("chave") or "").strip()
+                pncp_url = str(data.get("url") or "").strip() or resolve_pncp_webpage_url(chave)
+                if not (pncp_url or chave):
+                    self._send_json(400, {"error": "Informe a chave da compra ou a URL do PNCP."})
+                    return
+                page_pdf = capture_pncp_page_pdf(pncp_url, chave_or_id=chave)
+                if page_pdf:
+                    clean_id = re.sub(r"\W", "_", pncp_url.split("editais/")[-1] if (pncp_url and "editais/" in pncp_url) else (chave or "edital"))
+                    self._send_binary(page_pdf, "application/pdf", f"PNCP_Pagina_Oficial_{clean_id}.pdf")
+                    return
+                compra = resolve_pncp_compra(chave) if chave else None
+                arquivos = []
+                if compra:
+                    cnpj = compra.get("orgaoEntidadeCnpj")
+                    ano = compra.get("anoCompraPncp")
+                    seq = compra.get("sequencialCompraPncp")
+                    if cnpj and ano and seq:
+                        arquivos = fetch_pncp_arquivos(cnpj, int(ano), int(seq))
+                pdf_bytes = generate_pncp_dossier_pdf(compra, arquivos, data.get("quote_info") or {})
+                clean_name = re.sub(r"\D", "", chave) if chave else "Avulsa"
+                self._send_binary(pdf_bytes, "application/pdf", f"Relatorio_Contratacao_PNCP_{clean_name}.pdf")
+            except Exception as exc:
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        # 0.015 Exportar documento de UM item a partir do relatório já pesquisado/curado (sem nova consulta ao Gov)
+        if parsed.path == "/api/v1/prices/export-report":
+            try:
+                data = json.loads(raw_body)
+                rep = data.get("report") or {}
+                if not rep.get("sanitized_metrics"):
+                    self._send_json(400, {"error": "Relatório sem cotações válidas. Pesquise o item no Compras.gov.br primeiro."})
+                    return
+                fmt = str(data.get("format", "pdf")).lower()
+                try:
+                    quantity = float(data.get("qty", 1) or 1)
+                except (TypeError, ValueError):
+                    quantity = 1.0
+                if quantity.is_integer():
+                    quantity = int(quantity)
+                item_type = str(data.get("item_type", "MATERIAL")).upper()
+                om_name = str(data.get("om_name") or "MARINHA DO BRASIL")
+                elaborador = str(data.get("elaborador") or "ENCARREGADO DO SETOR DE OBTENÇÃO")
+                ordenador = str(data.get("ordenador") or "ORDENADOR DE DESPESAS")
+                code = rep.get("catmat_catser_code", "item")
+                prefix = "CATSER" if item_type == "SERVICO" else "CATMAT"
+                if fmt == "xlsx":
+                    content = build_in65_excel_bytes(rep, quantity=quantity)
+                    ctype, fname = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", f"Mapa_Comparativo_IN65_{prefix}_{code}.xlsx"
+                elif fmt == "docx":
+                    content = build_in65_docx_bytes(rep, quantity=quantity, om_name=om_name, elaborador_nome=elaborador, ordenador_nome=ordenador)
+                    ctype, fname = "application/vnd.openxmlformats-officedocument.wordprocessingml.document", f"Relatorio_Pesquisa_Precos_{prefix}_{code}.docx"
+                elif fmt == "just-docx":
+                    content = build_in65_justificativa_docx_bytes(rep, quantity=quantity, om_name=om_name, ordenador_nome=ordenador)
+                    ctype, fname = "application/vnd.openxmlformats-officedocument.wordprocessingml.document", f"Justificativa_Art6_IN65_{prefix}_{code}.docx"
+                elif fmt == "just-pdf":
+                    content = build_in65_justificativa_pdf_bytes(rep, quantity=quantity, om_name=om_name, ordenador_nome=ordenador)
+                    ctype, fname = "application/pdf", f"Justificativa_Art6_IN65_{prefix}_{code}.pdf"
+                else:
+                    content = build_in65_pdf_bytes(rep, quantity=quantity, om_name=om_name, elaborador_nome=elaborador, ordenador_nome=ordenador)
+                    ctype, fname = "application/pdf", f"Relatorio_Pesquisa_Precos_{prefix}_{code}.pdf"
+                self._send_binary(content, ctype, fname)
             except Exception as exc:
                 self._send_json(500, {"error": str(exc)})
             return
@@ -915,7 +986,7 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 items_results = []
                 for idx, it in enumerate(items_in, start=1):
                     rep = it.get("report")
-                    qty = int(it.get("qty", 1) or 1)
+                    qty = float(it.get("qty", 1) or 1)
                     if not rep or not rep.get("sanitized_metrics"):
                         code_raw = it.get("code")
                         catalog_code = int(code_raw) if str(code_raw).isdigit() else 475109
@@ -969,7 +1040,7 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 items_results = []
                 for idx, it in enumerate(items_in, start=1):
                     rep = it.get("report")
-                    qty = int(it.get("qty", 1) or 1)
+                    qty = float(it.get("qty", 1) or 1)
                     if not rep or not rep.get("sanitized_metrics"):
                         code_raw = it.get("code")
                         catalog_code = int(code_raw) if str(code_raw).isdigit() else 475109
@@ -1166,7 +1237,11 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8080"))
     lan_ip = get_primary_lan_ip()
-    server = HTTPServer(("0.0.0.0", port), GovTechAppHandler)
+    try:
+        from http.server import ThreadingHTTPServer as _Srv
+    except ImportError:
+        _Srv = HTTPServer
+    server = _Srv(("0.0.0.0", port), GovTechAppHandler)
     print("=" * 72)
     print("🚀 SISTEMA GOVTECH NLLC ONLINE (LEI 14.133/2021 & IN 65/2021)")
     print("=" * 72)

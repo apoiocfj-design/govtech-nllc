@@ -28,6 +28,9 @@ CHROME_PATHS = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
     r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/google-chrome",
 ]
 
 CACHE_DIR = os.path.join(tempfile.gettempdir(), "pncp_pdf_cache")
