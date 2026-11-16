@@ -10,8 +10,20 @@ database/cnbs_catalog.db
 database/catmat.csv
 database/catmat.csv.gz
 
-# Temporários
-_tmp*
+# Scripts temporários na raiz
+patch_*.py
+apply_*.py
+update_*.py
+add_*.py
+fix_*.py
+replace_*.py
+verify_*.py
+validate_*.js
+*.txt
+*.pdf
 *.log
+_tmp*
+.firebase/
 .system_generated/
 .user_uploaded/
+sample_*.html

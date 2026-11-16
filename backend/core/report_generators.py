@@ -82,7 +82,7 @@ def set_cell_margins(cell, top=100, bottom=100, left=150, right=150):
 def build_in65_docx_bytes(
     report: Dict[str, Any],
     quantity: int,
-    om_name: str = "CAPITANIA FLUVIAL DE JUAZEIRO",
+    om_name: str = "MARINHA DO BRASIL",
     elaborador_nome: str = "ENCARREGADO DO SETOR DE OBTENÇÃO",
     ordenador_nome: str = "ORDENADOR DE DESPESAS",
 ) -> bytes:
@@ -306,7 +306,7 @@ def build_in65_docx_bytes(
     # SEÇÃO 5: ASSINATURAS E FECHAMENTO
     today = datetime.now()
     mes_nome = _get_mes_extenso(today.month)
-    data_str = f"Juazeiro, BA, {today.day} de {mes_nome} de {today.year}."
+    data_str = f"{today.day} de {mes_nome} de {today.year}."
 
     p_dt = doc.add_paragraph()
     p_dt.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -358,7 +358,7 @@ def build_in65_docx_bytes(
 def build_in65_pdf_bytes(
     report: Dict[str, Any],
     quantity: int,
-    om_name: str = "CAPITANIA FLUVIAL DE JUAZEIRO",
+    om_name: str = "MARINHA DO BRASIL",
     elaborador_nome: str = "ENCARREGADO DO SETOR DE OBTENÇÃO",
     ordenador_nome: str = "ORDENADOR DE DESPESAS",
 ) -> bytes:
@@ -647,7 +647,7 @@ def build_in65_pdf_bytes(
     # SEÇÃO 5: ASSINATURAS
     today = datetime.now()
     mes_nome = _get_mes_extenso(today.month)
-    data_str = f"Juazeiro, BA, {today.day} de {mes_nome} de {today.year}."
+    data_str = f"{today.day} de {mes_nome} de {today.year}."
 
     sig_data = [
         [Paragraph(f"<i>{data_str}</i>", st_sig_sub), Paragraph("", st_sig_sub)],
@@ -688,7 +688,7 @@ def build_in65_pdf_bytes(
 def build_in65_justificativa_docx_bytes(
     report: Dict[str, Any],
     quantity: int,
-    om_name: str = "CAPITANIA FLUVIAL DE JUAZEIRO",
+    om_name: str = "MARINHA DO BRASIL",
     ordenador_nome: str = "ORDENADOR DE DESPESAS",
     motivo_custom: str = None,
 ) -> bytes:
@@ -883,7 +883,7 @@ def build_in65_justificativa_docx_bytes(
     # FECHAMENTO E ASSINATURA
     today = datetime.now()
     mes_nome = _get_mes_extenso(today.month)
-    data_str = f"Juazeiro, BA, {today.day} de {mes_nome} de {today.year}."
+    data_str = f"{today.day} de {mes_nome} de {today.year}."
 
     p_dt = doc.add_paragraph()
     p_dt.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -917,7 +917,7 @@ def build_in65_justificativa_docx_bytes(
 def build_in65_justificativa_pdf_bytes(
     report: Dict[str, Any],
     quantity: int,
-    om_name: str = "CAPITANIA FLUVIAL DE JUAZEIRO",
+    om_name: str = "MARINHA DO BRASIL",
     ordenador_nome: str = "ORDENADOR DE DESPESAS",
     motivo_custom: str = None,
 ) -> bytes:
@@ -1171,7 +1171,7 @@ def build_in65_justificativa_pdf_bytes(
     # ASSINATURA
     today = datetime.now()
     mes_nome = _get_mes_extenso(today.month)
-    data_str = f"Juazeiro, BA, {today.day} de {mes_nome} de {today.year}."
+    data_str = f"{today.day} de {mes_nome} de {today.year}."
 
     sig_data = [
         [Paragraph(f"<i>{data_str}</i>", st_sig_sub)],
@@ -1204,7 +1204,7 @@ import zipfile
 
 def build_consolidated_in65_excel_bytes(
     items_results: list,
-    uasg_name: str = "MARINHA DO BRASIL - CAPITANIA FLUVIAL DE JUAZEIRO",
+    uasg_name: str = "MARINHA DO BRASIL",
 ) -> bytes:
     """Gera planilha Excel consolidada contendo aba de Resumo Geral e abas individuais por item."""
     wb = openpyxl.Workbook()
@@ -1314,7 +1314,7 @@ def build_consolidated_in65_excel_bytes(
 
 def build_batch_zip_bytes(
     items_results: list,
-    om_name: str = "CAPITANIA FLUVIAL DE JUAZEIRO",
+    om_name: str = "MARINHA DO BRASIL",
     ordenador_nome: str = "ORDENADOR DE DESPESAS",
     elaborador_nome: str = "ENCARREGADO DO SETOR DE OBTENÇÃO",
 ) -> bytes:
@@ -1323,7 +1323,7 @@ def build_batch_zip_bytes(
 
     with zipfile.ZipFile(z_buf, "w", zipfile.ZIP_DEFLATED) as zf:
         # 1. Planilha Consolidada
-        xlsx_consolidada = build_consolidated_in65_excel_bytes(items_results, uasg_name=f"MARINHA DO BRASIL - {om_name}")
+        xlsx_consolidada = build_consolidated_in65_excel_bytes(items_results, uasg_name=(f"{om_name}" if "MARINHA" in om_name.upper() else f"MARINHA DO BRASIL - {om_name}"))
         zf.writestr("00_Mapa_Comparativo_Consolidado_Lote.xlsx", xlsx_consolidada)
 
         # 2. Itens individuais
@@ -1349,5 +1349,22 @@ def build_batch_zip_bytes(
                 zf.writestr(f"{folder}/Justificativa_Circunstanciada_Art6_IN65_{prefix}_{code}.docx", just_docx)
                 just_pdf = build_in65_justificativa_pdf_bytes(rep, qty, om_name=om_name, ordenador_nome=ordenador_nome)
                 zf.writestr(f"{folder}/Justificativa_Circunstanciada_Art6_IN65_{prefix}_{code}.pdf", just_pdf)
+
+            # PDF Oficial do Edital PNCP com Lista Completa de Materiais de cada cotação
+            try:
+                from pncp_extractor import capture_pncp_page_pdf
+                quotes = rep.get("valid_quotes", [])
+                seen_compras = set()
+                for q in quotes:
+                    p_key = q.get("purchase_key") or ""
+                    c_num = str(q.get("purchase_number_year") or "compra").replace("/", "_")
+                    if p_key and p_key not in seen_compras:
+                        seen_compras.add(p_key)
+                        pncp_pdf = capture_pncp_page_pdf(q.get("pncp_or_compras_uri"), chave_or_id=p_key)
+                        if pncp_pdf and len(pncp_pdf) > 1000:
+                            zf.writestr(f"{folder}/PNCP_Edital_Lista_Materiais_{c_num}.pdf", pncp_pdf)
+                            zf.writestr(f"01_Editais_PNCP_Lista_Materiais/PNCP_Edital_Compra_{c_num}.pdf", pncp_pdf)
+            except Exception as e:
+                print(f"[ZIP PNCP export error] {e}")
 
     return z_buf.getvalue()

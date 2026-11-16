@@ -1,5 +1,15 @@
 {
   "projects": {
     "default": "govtech-nllc-app"
-  }
+  },
+  "targets": {
+    "admin-cfj": {
+      "hosting": {
+        "govtech": [
+          "govtech-cfj"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

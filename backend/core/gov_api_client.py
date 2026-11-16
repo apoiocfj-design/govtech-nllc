@@ -242,6 +242,13 @@ class GovProcurementAPIClient:
             audit_uri = self.build_audit_uri(chave_17, pncp_ctrl)
             raw_date = str(rec.get("dataCompra") or rec.get("dataResultado") or "")[:10]
 
+            supply_u = str(
+                rec.get("siglaUnidadeFornecimento")
+                or rec.get("siglaUnidadeMedida")
+                or rec.get("nomeUnidadeMedida")
+                or ("SV" if not is_material else "UN")
+            ).strip().upper()
+
             quotes_out.append(
                 RawQuoteInput(
                     id_compra_item=id_compra_item or chave_17,
@@ -251,17 +258,70 @@ class GovProcurementAPIClient:
                     buyer_uf=str(rec.get("estado") or "").strip(),
                     supplier_cnpj=str(rec.get("niFornecedor") or "").strip(),
                     supplier_name=str(rec.get("nomeFornecedor") or "").strip(),
-                    supply_unit=str(rec.get("siglaUnidadeFornecimento") or "").strip(),
+                    supply_unit=supply_u,
                     quantity_homologated=float(rec.get("quantidade") or 0.0),
                     unit_price=float(rec.get("precoUnitario") or 0.0),
                     purchase_date=raw_date,
                     pncp_or_compras_uri=audit_uri,
                     brand=str(rec.get("marca") or "").strip() or None,
                     pncp_control_number=pncp_ctrl,
+                    purchase_key=chave_17,
+                    forma_compra=str(rec.get("formaCompra") or rec.get("nomeModalidadeCompra") or "").strip() or None,
+                    modalidade_codigo=str(rec.get("codigoModalidadeCompra") or "").strip() or None,
+                    codigo_pdm=str(rec.get("codigoPdm") or "").strip() or None,
+                    nome_pdm=str(rec.get("nomePdm") or "").strip() or None,
+                    municipio=str(rec.get("municipio") or "").strip() or None,
+                    nome_uasg=str(rec.get("nomeUasg") or "").strip() or None,
+                    objeto_compra=str(rec.get("objetoCompra") or "").strip() or None,
                 )
             )
 
         return item_description, quotes_out
+
+    def fetch_active_arps(
+        self,
+        catalog_code: int,
+        item_type: str = "MATERIAL",
+    ) -> List[Dict[str, Any]]:
+        """
+        Consulta Atas de Registro de Preços (SRP) vigentes no Compras.gov.br (OAS 3.1).
+        Endpoint: /modulo-arp/2_consultarARPItem
+        Permite ao órgão verificar oportunidade de adesão (carona) sob o Art. 86 da Lei 14.133/2021.
+        """
+        url = f"{self.COMPRAS_GOV_BASE_URL}/modulo-arp/2_consultarARPItem"
+        today = date.today()
+        one_year_ago = today - timedelta(days=365)
+        params = {
+            "codigoItem": int(catalog_code),
+            "dataVigenciaInicialMin": one_year_ago.isoformat(),
+            "dataVigenciaInicialMax": today.isoformat(),
+            "tamanhoPagina": 15,
+        }
+        try:
+            payload = self._get_with_retry(url, params)
+            rows = payload.get("resultado") or []
+            out = []
+            for row in rows:
+                ctrl_ata = row.get("numeroControlePncpAta")
+                out.append({
+                    "numero_ata": row.get("numeroAtaRegistroPreco"),
+                    "uasg_codigo": str(row.get("codigoUnidadeGerenciadora") or ""),
+                    "uasg_nome": str(row.get("nomeUnidadeGerenciadora") or "").strip(),
+                    "vigencia_inicio": str(row.get("dataVigenciaInicial") or "")[:10],
+                    "vigencia_fim": str(row.get("dataVigenciaFinal") or "")[:10],
+                    "fornecedor_cnpj": str(row.get("niFornecedor") or "").strip(),
+                    "fornecedor_nome": str(row.get("nomeRazaoSocialFornecedor") or "").strip(),
+                    "preco_unitario": float(row.get("valorUnitario") or 0.0),
+                    "saldo_adesao": float(row.get("maximoAdesao") or 0.0),
+                    "modalidade": str(row.get("nomeModalidadeCompra") or "").strip(),
+                    "pncp_ata_uri": f"https://pncp.gov.br/app/atas/{ctrl_ata}" if ctrl_ata else None,
+                    "codigo_pdm": row.get("codigoPdm"),
+                    "nome_pdm": row.get("nomePdm"),
+                })
+            return out
+        except Exception as exc:
+            logger.debug(f"Não foi possível obter ARPs vigentes para o item {catalog_code}: {exc}")
+            return []
 
 
 # ==============================================================================
@@ -416,10 +476,65 @@ class PriceResearchController:
                 "message": str(exc),
             }
 
+        # Consulta Atas de Registro de Preços (SRP) vigentes (Art. 86 da Lei 14.133/2021)
+        try:
+            arps = self.api_client.fetch_active_arps(catalog_code, item_type)
+            report.arp_atas_vigentes = arps
+        except Exception as exc:
+            logger.debug(f"Não foi possível consultar ARPs para {catalog_code}: {exc}")
+
+        # Consulta PDM e Classe CNBS no banco local para não fracionamento (Art. 75, § 1º)
+        try:
+            import sqlite3
+            import os
+            db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "database", "cnbs_catalog.db"))
+            if os.path.exists(db_path):
+                with sqlite3.connect(db_path) as conn:
+                    cur = conn.cursor()
+                    cur.execute("SELECT nome_pdm_ou_classe, nome_classe FROM catalog_items WHERE codigo=? LIMIT 1", (catalog_code,))
+                    row = cur.fetchone()
+                    if row:
+                        report.nome_pdm = row[0] or None
+                        report.nome_classe = row[1] or None
+        except Exception as exc:
+            logger.debug(f"Não foi possível consultar PDM/Classe local para {catalog_code}: {exc}")
+
         return {
             "status": "SUCCESS",
             "api_source": "Compras.gov.br OAS 3.1 + PNCP Link Resolver",
             "report": report.to_dict(),
+        }
+
+    def recalculate_custom(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Recalcula a cesta de preços com base na curadoria manual do usuário
+        (seleção de cotações, cotações complementares e parâmetro adotado).
+        """
+        catmat_code = int(payload.get("catmat_catser_code") or 0)
+        desc = str(payload.get("item_description") or "")
+        unit = str(payload.get("target_supply_unit") or "UN")
+        quotes = payload.get("quotes") or []
+        override_param = payload.get("adopted_parameter_override")
+        note = payload.get("manual_curation_note")
+        pdm = payload.get("nome_pdm")
+        classe = payload.get("nome_classe")
+        arps = payload.get("arp_atas_vigentes")
+
+        rep_dict = self.stat_engine.recalculate_curated_quotes(
+            catmat_code=catmat_code,
+            item_description=desc,
+            target_unit=unit,
+            quotes=quotes,
+            adopted_parameter_override=override_param,
+            manual_curation_note=note,
+            nome_pdm=pdm,
+            nome_classe=classe,
+            arp_atas_vigentes=arps,
+        )
+        return {
+            "status": "SUCCESS",
+            "api_source": "Curadoria do Analista (Art. 6º, § 2º IN 65/2021)",
+            "report": rep_dict,
         }
 
 

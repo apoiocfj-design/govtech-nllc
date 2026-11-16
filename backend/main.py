@@ -14,10 +14,12 @@ Centraliza TODAS as funções em um único link estilo App Web (http://127.0.0.1
 """
 
 import base64
+import gzip
 import html
 import io
 import json
 import os
+import re
 import socket
 import sys
 import zipfile
@@ -43,6 +45,14 @@ from report_generators import (
     build_in65_justificativa_pdf_bytes,
     build_consolidated_in65_excel_bytes,
     build_batch_zip_bytes,
+)
+from pncp_extractor import (
+    resolve_pncp_compra,
+    fetch_pncp_arquivos,
+    download_pncp_file_bytes,
+    generate_pncp_dossier_pdf,
+    resolve_pncp_webpage_url,
+    capture_pncp_page_pdf,
 )
 
 price_controller = PriceResearchController()
@@ -77,7 +87,7 @@ PREBUILT_FILES = {
 }
 
 
-def build_in65_excel_bytes(report: dict, quantity: int, uasg_name: str = "MARINHA DO BRASIL - CAPITANIA FLUVIAL DE JUAZEIRO") -> bytes:
+def build_in65_excel_bytes(report: dict, quantity: int, uasg_name: str = "MARINHA DO BRASIL") -> bytes:
     """Gera em memória a planilha Excel Oficial do Mapa Comparativo de Preços (IN 65/2021)."""
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -173,7 +183,7 @@ def build_in65_excel_bytes(report: dict, quantity: int, uasg_name: str = "MARINH
     return buf.getvalue()
 
 
-def build_highlighted_docx_bytes(title: str, clauses: list, org_name: str = "MARINHA DO BRASIL - CAPITANIA FLUVIAL DE JUAZEIRO") -> bytes:
+def build_highlighted_docx_bytes(title: str, clauses: list, org_name: str = "MARINHA DO BRASIL") -> bytes:
     """Gera em memória um arquivo Word (.DOCX) oficial com Brasão da República e cláusulas editadas em AMARELO."""
     doc = docx.Document()
     for section in doc.sections:
@@ -271,6 +281,19 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content)
 
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+        self.end_headers()
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
@@ -279,12 +302,41 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
         # 1. Interface Unificada do Aplicativo
         if path in ("/", "/index.html"):
             with open(FRONTEND_HTML_PATH, "rb") as f:
-                content = f.read()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(content)))
-            self.end_headers()
-            self.wfile.write(content)
+                raw_content = f.read()
+            accept_enc = self.headers.get("Accept-Encoding", "")
+            if "gzip" in accept_enc:
+                gz_content = gzip.compress(raw_content, compresslevel=6)
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Encoding", "gzip")
+                self.send_header("Content-Length", str(len(gz_content)))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(gz_content)
+            else:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(raw_content)))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(raw_content)
+            return
+
+        # 1.1 Ícone Oficial Transparente do Aplicativo
+        if path == "/app_logo_transparent.png":
+            logo_path = os.path.join(BASE_DIR, "..", "frontend", "app_logo_transparent.png")
+            if os.path.exists(logo_path):
+                with open(logo_path, "rb") as f:
+                    data = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "image/png")
+                self.send_header("Cache-Control", "public, max-age=86400")
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            self._send_json(404, {"error": "Logo não encontrado."})
             return
 
         # 2. Healthcheck
@@ -329,6 +381,87 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                     f"diretamente no navegador pelo endereço: http://{lan_ip}:8080"
                 )
             })
+            return
+
+        # 2.5 Perfil do Fornecedor e Prevenção de Conluio (CNPJ, CNAE, QSA e Certidões Oficiais)
+        if path == "/api/v1/supplier/cnpj-info":
+            cnpj_raw = qs.get("cnpj", [""])[0]
+            clean_digits = re.sub(r"\D", "", str(cnpj_raw))
+            if len(clean_digits) != 14:
+                self._send_json(400, {"error": "CNPJ deve conter 14 dígitos numéricos."})
+                return
+
+            info = {
+                "cnpj": f"{clean_digits[:2]}.{clean_digits[2:5]}.{clean_digits[5:8]}/{clean_digits[8:12]}-{clean_digits[12:]}",
+                "razao_social": "Razão Social Não Localizada",
+                "nome_fantasia": "",
+                "situacao_cadastral": "INDISPONÍVEL",
+                "data_situacao_cadastral": "",
+                "porte": "N/I",
+                "cnae_codigo": "",
+                "cnae_descricao": "",
+                "cnaes_secundarios": [],
+                "qsa": [],
+                "municipio": "",
+                "uf": "",
+                "links_certidoes": {
+                    "sicaf": "https://www3.comprasnet.gov.br/sicaf-web/",
+                    "cndt": "https://cndt-certidao.tst.jus.br/",
+                    "fgts": "https://consulta-crf.caixa.gov.br/consultacrf/pages/consultaEmpregador.jsf",
+                    "receita_federal": "https://solucoes.receita.fazenda.gov.br/Servicos/certidaointernet/pj/consultar/",
+                    "tcu_inidoneos": "https://contas.tcu.gov.br/certidao/pesquisa/",
+                    "portal_transparencia": f"https://portaldatransparencia.gov.br/pessoa-juridica/{clean_digits}"
+                }
+            }
+
+            import requests
+            # Provedor 1: minhareceita.org
+            try:
+                r = requests.get(f"https://minhareceita.org/{clean_digits}", timeout=5)
+                if r.status_code == 200:
+                    d = r.json()
+                    info["razao_social"] = d.get("razao_social") or ""
+                    info["nome_fantasia"] = d.get("nome_fantasia") or ""
+                    info["situacao_cadastral"] = d.get("descricao_situacao_cadastral") or "ATIVA"
+                    info["data_situacao_cadastral"] = d.get("data_situacao_cadastral") or ""
+                    info["porte"] = d.get("porte") or ""
+                    info["cnae_codigo"] = str(d.get("cnae_fiscal") or "")
+                    info["cnae_descricao"] = d.get("cnae_fiscal_descricao") or ""
+                    info["municipio"] = d.get("municipio") or ""
+                    info["uf"] = d.get("uf") or ""
+                    info["cnaes_secundarios"] = d.get("cnaes_secundarios") or []
+                    info["qsa"] = [
+                        {"nome": s.get("nome_socio"), "qualificacao": s.get("qualificacao_socio")}
+                        for s in d.get("qsa", []) if s.get("nome_socio")
+                    ]
+                    self._send_json(200, {"status": "SUCCESS", "supplier": info})
+                    return
+            except Exception:
+                pass
+
+            # Provedor 2 (Fallback): receitaws.com.br
+            try:
+                r = requests.get(f"https://receitaws.com.br/v1/cnpj/{clean_digits}", timeout=5)
+                if r.status_code == 200:
+                    d = r.json()
+                    info["razao_social"] = d.get("nome") or ""
+                    info["nome_fantasia"] = d.get("fantasia") or ""
+                    info["situacao_cadastral"] = d.get("situacao") or "ATIVA"
+                    info["porte"] = d.get("porte") or ""
+                    info["cnae_codigo"] = d.get("atividade_principal", [{}])[0].get("code", "")
+                    info["cnae_descricao"] = d.get("atividade_principal", [{}])[0].get("text", "")
+                    info["municipio"] = d.get("municipio") or ""
+                    info["uf"] = d.get("uf") or ""
+                    info["qsa"] = [
+                        {"nome": s.get("nome"), "qualificacao": s.get("qual")}
+                        for s in d.get("qsa", []) if s.get("nome")
+                    ]
+                    self._send_json(200, {"status": "SUCCESS", "supplier": info})
+                    return
+            except Exception:
+                pass
+
+            self._send_json(200, {"status": "PARTIAL", "supplier": info, "message": "Dados cadastrais resumidos."})
             return
 
         # 3. Download de Arquivos Prontos da Capitania
@@ -412,7 +545,7 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
             uf = qs.get("uf", [None])[0] or None
             elaborador = qs.get("elaborador", ["ENCARREGADO DO SETOR DE OBTENÇÃO"])[0]
             ordenador = qs.get("ordenador", ["ORDENADOR DE DESPESAS"])[0]
-            om_name = qs.get("om_name", ["CAPITANIA FLUVIAL DE JUAZEIRO"])[0]
+            om_name = qs.get("om_name", ["MARINHA DO BRASIL"])[0]
 
             try:
                 res = price_controller.execute_in65_research(
@@ -453,7 +586,7 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
             uf = qs.get("uf", [None])[0] or None
             elaborador = qs.get("elaborador", ["ENCARREGADO DO SETOR DE OBTENÇÃO"])[0]
             ordenador = qs.get("ordenador", ["ORDENADOR DE DESPESAS"])[0]
-            om_name = qs.get("om_name", ["CAPITANIA FLUVIAL DE JUAZEIRO"])[0]
+            om_name = qs.get("om_name", ["MARINHA DO BRASIL"])[0]
 
             try:
                 res = price_controller.execute_in65_research(
@@ -493,7 +626,7 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
             months_back = int(qs.get("months_back", ["12"])[0])
             uf = qs.get("uf", [None])[0] or None
             ordenador = qs.get("ordenador", ["ORDENADOR DE DESPESAS"])[0]
-            om_name = qs.get("om_name", ["CAPITANIA FLUVIAL DE JUAZEIRO"])[0]
+            om_name = qs.get("om_name", ["MARINHA DO BRASIL"])[0]
 
             try:
                 res = price_controller.execute_in65_research(
@@ -532,7 +665,7 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
             months_back = int(qs.get("months_back", ["12"])[0])
             uf = qs.get("uf", [None])[0] or None
             ordenador = qs.get("ordenador", ["ORDENADOR DE DESPESAS"])[0]
-            om_name = qs.get("om_name", ["CAPITANIA FLUVIAL DE JUAZEIRO"])[0]
+            om_name = qs.get("om_name", ["MARINHA DO BRASIL"])[0]
 
             try:
                 res = price_controller.execute_in65_research(
@@ -557,6 +690,97 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                     "application/pdf",
                     f"Justificativa_Circunstanciada_Art6_IN65_{prefix}_{catalog_code}.pdf",
                 )
+            except Exception as exc:
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        # 10. Resolução de Contratação no PNCP + Lista Oficial de Arquivos (Edital, TR, Termos)
+        if path == "/api/v1/pncp/compra-info":
+            chave = qs.get("chave", qs.get("idCompra", qs.get("codigo", [""])))[0]
+            if not chave:
+                self._send_json(400, {"error": "Informe o parâmetro chave ou idCompra."})
+                return
+            try:
+                compra = resolve_pncp_compra(chave)
+                arquivos = []
+                pncp_webpage_url = resolve_pncp_webpage_url(chave)
+                if compra:
+                    cnpj = compra.get("orgaoEntidadeCnpj")
+                    ano = compra.get("anoCompraPncp")
+                    seq = compra.get("sequencialCompraPncp")
+                    if cnpj and ano and seq:
+                        arquivos = fetch_pncp_arquivos(cnpj, int(ano), int(seq))
+                self._send_json(200, {
+                    "status": "SUCCESS",
+                    "chave": chave,
+                    "compra": compra,
+                    "arquivos": arquivos,
+                    "pncp_webpage_url": pncp_webpage_url
+                })
+            except Exception as exc:
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        # 11. Captura Literal da Página do Edital no Portal PNCP em PDF A4 (Chrome Headless)
+        if path == "/api/v1/pncp/page-pdf" or path == "/api/v1/pncp/export-report-pdf":
+            chave = qs.get("chave", qs.get("idCompra", qs.get("codigo", [""])))[0]
+            req_url = qs.get("url", [""])[0]
+            pncp_url = req_url or resolve_pncp_webpage_url(chave)
+            if pncp_url:
+                page_pdf = capture_pncp_page_pdf(pncp_url)
+                if page_pdf:
+                    clean_id = re.sub(r"\W", "_", pncp_url.split("editais/")[-1] if "editais/" in pncp_url else "edital")
+                    self._send_binary(page_pdf, "application/pdf", f"PNCP_Pagina_Oficial_{clean_id}.pdf")
+                    return
+            # Fallback se a captura headless não puder ser gerada imediatamente
+            quote_info = {
+                "supplier_name": qs.get("supplier_name", [""])[0],
+                "supplier_cnpj": qs.get("supplier_cnpj", [""])[0],
+                "unit_price": float(qs.get("unit_price", ["0"])[0] or 0),
+                "supply_unit": qs.get("supply_unit", ["UN"])[0],
+                "buyer_uasg": qs.get("buyer_uasg", [""])[0],
+                "buyer_name": qs.get("buyer_name", [""])[0],
+                "purchase_number_year": qs.get("purchase_number_year", [""])[0],
+                "item_description": qs.get("item_description", [""])[0],
+                "homologation_date": qs.get("homologation_date", [""])[0],
+                "purge_status": qs.get("purge_status", ["VALIDA"])[0],
+            }
+            try:
+                compra = resolve_pncp_compra(chave) if chave else None
+                arquivos = []
+                if compra:
+                    cnpj = compra.get("orgaoEntidadeCnpj")
+                    ano = compra.get("anoCompraPncp")
+                    seq = compra.get("sequencialCompraPncp")
+                    if cnpj and ano and seq:
+                        arquivos = fetch_pncp_arquivos(cnpj, int(ano), int(seq))
+                pdf_bytes = generate_pncp_dossier_pdf(compra, arquivos, quote_info)
+                clean_name = re.sub(r"\D", "", chave) if chave else "Avulsa"
+                self._send_binary(
+                    pdf_bytes,
+                    "application/pdf",
+                    f"Relatorio_Contratacao_PNCP_{clean_name}.pdf",
+                )
+            except Exception as exc:
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        # 12. Download Direto de Arquivo Binário do PNCP (Termos, Edital, Pareceres)
+        if path == "/api/v1/pncp/download-file":
+            cnpj = qs.get("cnpj", [""])[0]
+            ano = qs.get("ano", [""])[0]
+            seq = qs.get("seq", [""])[0]
+            doc_seq = qs.get("doc_seq", [""])[0]
+            fname = qs.get("filename", ["documento_pncp.pdf"])[0]
+            if not (cnpj and ano and seq and doc_seq):
+                self._send_json(400, {"error": "Informe cnpj, ano, seq e doc_seq."})
+                return
+            try:
+                content, ctype = download_pncp_file_bytes(cnpj, int(ano), int(seq), int(doc_seq))
+                if content:
+                    self._send_binary(content, ctype or "application/pdf", fname)
+                else:
+                    self._send_json(404, {"error": "Arquivo não encontrado no PNCP."})
             except Exception as exc:
                 self._send_json(500, {"error": str(exc)})
             return
@@ -591,8 +815,18 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 self._send_json(500, {"error": str(exc)})
             return
 
+        # 0.008 Recálculo Interativo da Cesta de Preços (Art. 6º, § 2º da IN 65/2021)
+        if parsed.path == "/api/v1/prices/recalculate-custom":
+            try:
+                data = json.loads(raw_body)
+                res = price_controller.recalculate_custom(data)
+                self._send_json(200, res)
+            except Exception as exc:
+                self._send_json(400, {"error": str(exc)})
+            return
+
         # 0.01 Pesquisa Automatizada de Preços em Lote (Múltiplos CATMAT/CATSER)
-        if parsed.path == "/api/v1/prices/batch-research":
+        if parsed.path in ["/api/v1/prices/batch-research", "/api/v1/prices/execute-batch-research", "/api/v1/prices/batch"]:
             try:
                 data = json.loads(raw_body)
                 items_in = data.get("items", [])
@@ -650,8 +884,8 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                         "unit": resolved_unit,
                         "qty": qty,
                         "has_data": has_data,
-                        "status": res.get("status", "NO_DATA"),
-                        "message": res.get("message", "Sem demanda nos últimos 12m (Não converge)"),
+                        "status": res.get("status", "SUCCESS" if has_data else "NO_DATA"),
+                        "message": res.get("message", "Pesquisa homologada com sucesso" if has_data else "Sem demanda nos últimos 12m (Não converge)"),
                         "unit_price": unit_est,
                         "total_price": total_est,
                         "report": rep,
@@ -672,7 +906,7 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
             try:
                 data = json.loads(raw_body)
                 items_in = data.get("items", [])
-                om_name = str(data.get("om_name", "CAPITANIA FLUVIAL DE JUAZEIRO"))
+                om_name = str(data.get("om_name", "MARINHA DO BRASIL"))
                 ordenador = str(data.get("ordenador", "ORDENADOR DE DESPESAS"))
                 elaborador = str(data.get("elaborador", "ENCARREGADO DO SETOR DE OBTENÇÃO"))
                 months_back = int(data.get("months_back", 12))
@@ -728,7 +962,7 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
             try:
                 data = json.loads(raw_body)
                 items_in = data.get("items", [])
-                om_name = str(data.get("om_name", "MARINHA DO BRASIL - CAPITANIA FLUVIAL DE JUAZEIRO"))
+                om_name = str(data.get("om_name", "MARINHA DO BRASIL"))
                 months_back = int(data.get("months_back", 12))
                 uf = data.get("uf") or None
 
@@ -783,7 +1017,7 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 qty = float(data.get("qty", 1) or 1)
                 unit_price = float(data.get("unit_price", 0.0) or 0.0)
                 total_price = qty * unit_price
-                org_name = str(data.get("org_name", "MARINHA DO BRASIL - CAPITANIA FLUVIAL DE JUAZEIRO")).strip()
+                org_name = str(data.get("org_name", "MARINHA DO BRASIL")).strip()
 
                 clauses = []
                 findings = []

@@ -60,6 +60,17 @@ class RawQuoteInput:
     pncp_or_compras_uri: str
     brand: Optional[str] = None
     pncp_control_number: Optional[str] = None
+    purchase_key: Optional[str] = None
+    forma_compra: Optional[str] = None
+    modalidade_codigo: Optional[str] = None
+    codigo_pdm: Optional[str] = None
+    nome_pdm: Optional[str] = None
+    codigo_classe: Optional[str] = None
+    nome_classe: Optional[str] = None
+    municipio: Optional[str] = None
+    nome_uasg: Optional[str] = None
+    objeto_compra: Optional[str] = None
+    source_inciso: str = "Inciso I - Compras.gov.br"
 
 
 @dataclass
@@ -79,6 +90,17 @@ class AuditedQuoteOutput:
     pncp_or_compras_uri: str
     brand: Optional[str] = None
     pncp_control_number: Optional[str] = None
+    purchase_key: Optional[str] = None
+    forma_compra: Optional[str] = None
+    modalidade_codigo: Optional[str] = None
+    codigo_pdm: Optional[str] = None
+    nome_pdm: Optional[str] = None
+    codigo_classe: Optional[str] = None
+    nome_classe: Optional[str] = None
+    municipio: Optional[str] = None
+    nome_uasg: Optional[str] = None
+    objeto_compra: Optional[str] = None
+    source_inciso: str = "Inciso I - Compras.gov.br"
     is_outlier: bool = False
     purge_status: str = "VALIDA"  # VALIDA | EXPURGADA_UNIDADE_DIVERGENTE | EXPURGADA_INEXEQUIVEL | EXPURGADA_ACIMA_LIMITE
     purge_justification: Optional[str] = None
@@ -115,6 +137,11 @@ class IN65ResearchReport:
     legal_methodology_justification: str
     valid_quotes: List[AuditedQuoteOutput] = field(default_factory=list)
     purged_quotes: List[AuditedQuoteOutput] = field(default_factory=list)
+    codigo_pdm: Optional[str] = None
+    nome_pdm: Optional[str] = None
+    codigo_classe: Optional[str] = None
+    nome_classe: Optional[str] = None
+    arp_atas_vigentes: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -428,6 +455,113 @@ class IN65StatisticalEngine:
             valid_quotes=valid_list,
             purged_quotes=purged_list,
         )
+
+    def recalculate_curated_quotes(
+        self,
+        catmat_code: int,
+        item_description: str,
+        target_unit: str,
+        quotes: List[Dict[str, Any]],
+        adopted_parameter_override: Optional[str] = None,
+        manual_curation_note: Optional[str] = None,
+        codigo_pdm: Optional[str] = None,
+        nome_pdm: Optional[str] = None,
+        codigo_classe: Optional[str] = None,
+        nome_classe: Optional[str] = None,
+        arp_atas_vigentes: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Recalcula instantaneamente as métricas da IN 65/2021 após curadoria manual do usuário
+        (seleção/desmarcar cotações na tabela, adição de cotações complementares ou troca do parâmetro).
+        Fundamento: Art. 6º, § 2º e § 5º da IN SEGES/ME nº 65/2021.
+        """
+        valid_list: List[Dict[str, Any]] = []
+        purged_list: List[Dict[str, Any]] = []
+
+        for q in quotes:
+            is_sel = q.get("is_selected", True)
+            u_price = float(q.get("unit_price") or 0.0)
+            status = q.get("purge_status") or "VALIDA"
+            if not is_sel or status != "VALIDA" or q.get("is_outlier", False):
+                if status == "VALIDA" and not is_sel:
+                    status = "EXPURGADA_MANUAL"
+                just = q.get("purge_justification") or manual_curation_note or "Cotação desmarcada manualmente pelo analista técnico com fundamento no Art. 6º, § 2º da IN 65/2021."
+                q_copy = dict(q)
+                q_copy["is_outlier"] = True
+                q_copy["purge_status"] = status
+                q_copy["purge_justification"] = just
+                purged_list.append(q_copy)
+            else:
+                q_copy = dict(q)
+                q_copy["is_outlier"] = False
+                q_copy["purge_status"] = "VALIDA"
+                if not q_copy.get("purge_justification"):
+                    q_copy["purge_justification"] = "Cotação validada para a composição do preço de referência."
+                valid_list.append(q_copy)
+
+        valid_prices = [float(q.get("unit_price") or 0.0) for q in valid_list if float(q.get("unit_price") or 0.0) > 0]
+        if not valid_prices:
+            raise ValueError("Nenhuma cotação válida selecionada para compor a cesta de preços.")
+
+        all_positive_prices = [float(q.get("unit_price") or 0.0) for q in quotes if float(q.get("unit_price") or 0.0) > 0]
+        raw_metrics = self._compute_metrics(all_positive_prices, self.std_dev_multiplier)
+        sanitized_metrics = self._compute_metrics(valid_prices, self.std_dev_multiplier)
+
+        cv_final = sanitized_metrics.cv_percent or 0.0
+        is_homogeneous = cv_final <= self.cv_threshold_percent
+        has_min_three = sanitized_metrics.sample_size >= 3
+
+        if adopted_parameter_override and adopted_parameter_override.upper() in ("MEDIA", "MEDIANA", "MENOR_PRECO"):
+            adopted_param = adopted_parameter_override.upper()
+            if adopted_param == "MEDIA":
+                final_price = round_2(sanitized_metrics.mean or 0.0)
+                param_reason = f"Parâmetro adotado: MÉDIA ARITMÉTICA (R$ {final_price:.2f})."
+            elif adopted_param == "MEDIANA":
+                final_price = round_2(sanitized_metrics.median or 0.0)
+                param_reason = f"Parâmetro adotado: MEDIANA (R$ {final_price:.2f})."
+            else:
+                final_price = round_2(sanitized_metrics.min_price or 0.0)
+                param_reason = f"Parâmetro adotado: MENOR PREÇO (R$ {final_price:.2f}), em consonância com o Art. 6º, § 1º da IN 65/2021."
+        else:
+            if is_homogeneous:
+                adopted_param = "MEDIA"
+                final_price = round_2(sanitized_metrics.mean or 0.0)
+                param_reason = f"Amostra homogênea (CV {cv_final:.2f}% <= {self.cv_threshold_percent:.0f}%), adotando-se a MÉDIA (R$ {final_price:.2f})."
+            else:
+                adopted_param = "MEDIANA"
+                final_price = round_2(sanitized_metrics.median or 0.0)
+                param_reason = f"Amostra heterogênea (CV {cv_final:.2f}% > {self.cv_threshold_percent:.0f}%), adotando-se a MEDIANA (R$ {final_price:.2f})."
+
+        min_quotes_note = (
+            f"Atendido o requisito mínimo de 3 preços válidos ({sanitized_metrics.sample_size} cotações), conforme Art. 6º, § 5º da IN 65/2021."
+            if has_min_three
+            else f"ATENÇÃO AUDITORIA: Amostra com {sanitized_metrics.sample_size} cotação(ões) válida(s), exigindo despacho circunstanciado da autoridade (Art. 6º, § 5º da IN 65/2021)."
+        )
+
+        curation_desc = "Cesta de preços processada com curadoria analítica (Art. 6º, § 2º da IN 65/2021). "
+        justification = f"{curation_desc}{param_reason} {min_quotes_note}"
+
+        return {
+            "catmat_catser_code": catmat_code,
+            "item_description": item_description,
+            "target_supply_unit": target_unit,
+            "cv_homogeneity_threshold_percent": self.cv_threshold_percent,
+            "std_dev_multiplier": self.std_dev_multiplier,
+            "raw_metrics": asdict(raw_metrics),
+            "sanitized_metrics": asdict(sanitized_metrics),
+            "is_homogeneous": is_homogeneous,
+            "has_minimum_three_quotes": has_min_three,
+            "adopted_parameter": adopted_param,
+            "final_estimated_unit_price": final_price,
+            "legal_methodology_justification": justification,
+            "valid_quotes": valid_list,
+            "purged_quotes": purged_list,
+            "codigo_pdm": codigo_pdm,
+            "nome_pdm": nome_pdm,
+            "codigo_classe": codigo_classe,
+            "nome_classe": nome_classe,
+            "arp_atas_vigentes": arp_atas_vigentes or [],
+        }
 
 
 # ==============================================================================
