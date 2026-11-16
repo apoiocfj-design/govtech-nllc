@@ -51,10 +51,38 @@
       stats.textContent = "Buscando...";
 
       try {
-        const resp = await fetch(`/api/v1/catalog/search?q=${encodeURIComponent(q)}&type=${encodeURIComponent(type)}&limit=30`);
-        const data = await resp.json();
-        const results = data.results || [];
-        stats.textContent = `Encontrados ${data.total_found} itens para "${q}"`;
+        const endpoint = `/api/v1/catalog/search?q=${encodeURIComponent(q)}&type=${encodeURIComponent(type)}&limit=30`;
+        const resp = await fetch(endpoint);
+        const ct = resp.headers.get("content-type") || "";
+        
+        let results = [];
+        let totalFound = 0;
+
+        if (ct.includes("application/json")) {
+          const data = await resp.json();
+          results = data.results || [];
+          totalFound = data.total_found || results.length;
+        } else {
+          // Servidor retornou HTML ou erro de conexão
+          throw new Error(`O servidor retornou uma resposta não-JSON (${resp.status} ${resp.statusText}).`);
+        }
+
+        // Se for um código numérico e a busca não trouxe ou trouxe poucos, garante opção direta
+        if (/^\d{4,8}$/.test(q) && !results.some(r => String(r.codigo) === q)) {
+          const isServ = type === "SERVICO";
+          results.unshift({
+            item_type: isServ ? "SERVICO" : "MATERIAL",
+            codigo: parseInt(q, 10),
+            nome_pdm_ou_classe: isServ ? `CATSER ${q} (Inserção Direta por Código)` : `CATMAT ${q} (Inserção Direta por Código)`,
+            descricao: isServ ? `SERVIÇO CATALOGADO CÓDIGO ${q} - BASE OFICIAL COMPRAS.GOV.BR` : `MATERIAL CATALOGADO CÓDIGO ${q} - BASE OFICIAL COMPRAS.GOV.BR`,
+            nome_grupo: "INCLUSÃO DIRETA",
+            nome_classe: "CATÁLOGO OFICIAL GOV.BR",
+            unidade: "UN"
+          });
+          totalFound += 1;
+        }
+
+        stats.textContent = `Encontrados ${totalFound} itens para "${q}"`;
 
         if (results.length === 0) {
           list.innerHTML = `<div class="p-8 text-center text-xs text-slate-500">Nenhum item localizado no catálogo oficial para "${q}". Tente palavras simples (ex: pneu, bateria, caneta, serviço).</div>`;
@@ -65,7 +93,32 @@
         renderModalCatalogList();
         verifyCatalogDemandInBackground(results);
       } catch (err) {
-        list.innerHTML = `<div class="p-6 text-center text-xs text-rose-600 font-bold">Erro ao consultar catálogo: ${err.message}</div>`;
+        // Fallback inteligente: se for código numérico, permite adicionar diretamente mesmo se a API estiver indisponível
+        if (/^\d{4,8}$/.test(q)) {
+          const isServ = type === "SERVICO";
+          window.modalCatalogSearchResults = [{
+            item_type: isServ ? "SERVICO" : "MATERIAL",
+            codigo: parseInt(q, 10),
+            nome_pdm_ou_classe: isServ ? `CATSER ${q} (Inclusão Direta)` : `CATMAT ${q} (Inclusão Direta)`,
+            descricao: isServ ? `SERVIÇO CÓDIGO ${q} - ADICIONADO DIRETAMENTE AO LOTE` : `MATERIAL CÓDIGO ${q} - ADICIONADO DIRETAMENTE AO LOTE`,
+            nome_grupo: "INCLUSÃO DIRETA",
+            nome_classe: "CÓDIGO OFICIAL",
+            unidade: "UN"
+          }];
+          stats.textContent = `Código oficial identificado: ${q}`;
+          renderModalCatalogList();
+          return;
+        }
+
+        list.innerHTML = `
+          <div class="p-6 text-center space-y-2">
+            <div class="text-xs text-rose-600 font-bold">⚠️ Conexão com o Catálogo: ${err.message}</div>
+            <p class="text-[11px] text-slate-500">Dica: Se souber o código numérico do CATMAT/CATSER (ex: 621988), digite-o no campo de busca para adicioná-lo diretamente.</p>
+            <button onclick="searchModalCatalogKeywords()" class="px-3 py-1.5 rounded-lg bg-[#27394d] hover:bg-[#334960] text-white text-xs font-bold transition">
+              🔄 Tentar Novamente
+            </button>
+          </div>
+        `;
       }
     }
 
@@ -1444,6 +1497,58 @@
   <!-- ===================================================================== -->
   <script>
     // =========================================================================
+    // CAMADA DE COMUNICAÇÃO RESILIENTE COM BACKEND (LOCAL, TÚNEL E NUVEM)
+    // =========================================================================
+    function getApiBaseUrl() {
+      const h = window.location.hostname;
+      const p = window.location.port;
+      // Se estiver na mesma origem do backend (localhost, porta 8080, túnel direto ou render)
+      if (
+        h === "localhost" ||
+        h === "127.0.0.1" ||
+        p === "8080" ||
+        h.endsWith("trycloudflare.com") ||
+        h.endsWith("onrender.com")
+      ) {
+        return "";
+      }
+      // Se houver backend personalizado configurado no navegador
+      const custom = localStorage.getItem("GOVTECH_BACKEND_URL");
+      if (custom && custom.trim().startsWith("http")) {
+        return custom.trim().replace(/\/+$/, "");
+      }
+      // Padrão ao acessar via Firebase Hosting (govtech-cfj.web.app):
+      return "https://penguin-frequent-maryland-refined.trycloudflare.com";
+    }
+
+    function apiUrl(path) {
+      if (!path) return "";
+      if (path.startsWith("http://") || path.startsWith("https://")) return path;
+      const base = getApiBaseUrl();
+      const cleanPath = path.startsWith("/") ? path : `/${path}`;
+      return base ? `${base}${cleanPath}` : cleanPath;
+    }
+
+    // Interceptador global e transparente de fetch para /api/
+    (function setupApiInterceptor() {
+      if (window._govtechApiInterceptorInstalled) return;
+      window._govtechApiInterceptorInstalled = true;
+      const origFetch = window.fetch;
+      window.fetch = async function(input, init) {
+        let url = typeof input === "string" ? input : (input && input.url ? input.url : "");
+        if (typeof url === "string" && url.startsWith("/api/")) {
+          const resolved = apiUrl(url);
+          if (typeof input === "string") {
+            input = resolved;
+          } else if (input && typeof Request !== "undefined" && input instanceof Request) {
+            input = new Request(resolved, input);
+          }
+        }
+        return origFetch.call(this, input, init);
+      };
+    })();
+
+    // =========================================================================
     // CONFIGURAÇÃO GLOBAL DA ORGANIZAÇÃO MILITAR (OM) / ÓRGÃO PÚBLICO
     // =========================================================================
     function getGlobalOrgName() {
@@ -2332,7 +2437,7 @@
         return;
       }
       const orden = (document.getElementById("justSigNome") ? document.getElementById("justSigNome").value.trim() : "") || p.orden;
-      window.location.href = `/api/v1/prices/export-justificativa-docx/${p.code}?item_type=${encodeURIComponent(p.itemType)}&supply_unit=${encodeURIComponent(p.unit)}&qty=${encodeURIComponent(p.qty)}&ordenador=${encodeURIComponent(orden)}`;
+      window.location.href = apiUrl(`/api/v1/prices/export-justificativa-docx/${p.code}?item_type=${encodeURIComponent(p.itemType)}&supply_unit=${encodeURIComponent(p.unit)}&qty=${encodeURIComponent(p.qty)}&ordenador=${encodeURIComponent(orden)}`);
     }
 
     function downloadLiveJustificativaPdf() {
@@ -2342,7 +2447,7 @@
         return;
       }
       const orden = (document.getElementById("justSigNome") ? document.getElementById("justSigNome").value.trim() : "") || p.orden;
-      window.location.href = `/api/v1/prices/export-justificativa-pdf/${p.code}?item_type=${encodeURIComponent(p.itemType)}&supply_unit=${encodeURIComponent(p.unit)}&qty=${encodeURIComponent(p.qty)}&ordenador=${encodeURIComponent(orden)}`;
+      window.location.href = apiUrl(`/api/v1/prices/export-justificativa-pdf/${p.code}?item_type=${encodeURIComponent(p.itemType)}&supply_unit=${encodeURIComponent(p.unit)}&qty=${encodeURIComponent(p.qty)}&ordenador=${encodeURIComponent(orden)}`);
     }
 
     function getReportParams() {
@@ -2360,7 +2465,7 @@
     function downloadLiveExcel() {
       const p = getReportParams();
       if (!p.code) return;
-      window.location.href = `/api/v1/prices/export-xlsx/${p.code}?item_type=${encodeURIComponent(p.itemType)}&supply_unit=${encodeURIComponent(p.unit)}&qty=${encodeURIComponent(p.qty)}`;
+      window.location.href = apiUrl(`/api/v1/prices/export-xlsx/${p.code}?item_type=${encodeURIComponent(p.itemType)}&supply_unit=${encodeURIComponent(p.unit)}&qty=${encodeURIComponent(p.qty)}`);
     }
 
     function downloadLiveWord() {
@@ -2369,7 +2474,7 @@
         alert("Realize uma pesquisa de preços antes de baixar o relatório em Word.");
         return;
       }
-      window.location.href = `/api/v1/prices/export-docx/${p.code}?item_type=${encodeURIComponent(p.itemType)}&supply_unit=${encodeURIComponent(p.unit)}&qty=${encodeURIComponent(p.qty)}&elaborador=${encodeURIComponent(p.elab)}&ordenador=${encodeURIComponent(p.orden)}`;
+      window.location.href = apiUrl(`/api/v1/prices/export-docx/${p.code}?item_type=${encodeURIComponent(p.itemType)}&supply_unit=${encodeURIComponent(p.unit)}&qty=${encodeURIComponent(p.qty)}&elaborador=${encodeURIComponent(p.elab)}&ordenador=${encodeURIComponent(p.orden)}`);
     }
 
     function downloadLivePdf() {
@@ -2378,7 +2483,7 @@
         alert("Realize uma pesquisa de preços antes de baixar o relatório em PDF.");
         return;
       }
-      window.location.href = `/api/v1/prices/export-pdf/${p.code}?item_type=${encodeURIComponent(p.itemType)}&supply_unit=${encodeURIComponent(p.unit)}&qty=${encodeURIComponent(p.qty)}&elaborador=${encodeURIComponent(p.elab)}&ordenador=${encodeURIComponent(p.orden)}`;
+      window.location.href = apiUrl(`/api/v1/prices/export-pdf/${p.code}?item_type=${encodeURIComponent(p.itemType)}&supply_unit=${encodeURIComponent(p.unit)}&qty=${encodeURIComponent(p.qty)}&elaborador=${encodeURIComponent(p.elab)}&ordenador=${encodeURIComponent(p.orden)}`);
     }
 
     // =========================================================================
@@ -3431,10 +3536,38 @@
       stats.textContent = "Buscando...";
 
       try {
-        const resp = await fetch(`/api/v1/catalog/search?q=${encodeURIComponent(q)}&type=${encodeURIComponent(type)}&limit=30`);
-        const data = await resp.json();
-        const results = data.results || [];
-        stats.textContent = `Encontrados ${data.total_found} itens para "${q}"`;
+        const endpoint = `/api/v1/catalog/search?q=${encodeURIComponent(q)}&type=${encodeURIComponent(type)}&limit=30`;
+        const resp = await fetch(endpoint);
+        const ct = resp.headers.get("content-type") || "";
+        
+        let results = [];
+        let totalFound = 0;
+
+        if (ct.includes("application/json")) {
+          const data = await resp.json();
+          results = data.results || [];
+          totalFound = data.total_found || results.length;
+        } else {
+          // Servidor retornou HTML ou erro de conexão
+          throw new Error(`O servidor retornou uma resposta não-JSON (${resp.status} ${resp.statusText}).`);
+        }
+
+        // Se for um código numérico e a busca não trouxe ou trouxe poucos, garante opção direta
+        if (/^\d{4,8}$/.test(q) && !results.some(r => String(r.codigo) === q)) {
+          const isServ = type === "SERVICO";
+          results.unshift({
+            item_type: isServ ? "SERVICO" : "MATERIAL",
+            codigo: parseInt(q, 10),
+            nome_pdm_ou_classe: isServ ? `CATSER ${q} (Inserção Direta por Código)` : `CATMAT ${q} (Inserção Direta por Código)`,
+            descricao: isServ ? `SERVIÇO CATALOGADO CÓDIGO ${q} - BASE OFICIAL COMPRAS.GOV.BR` : `MATERIAL CATALOGADO CÓDIGO ${q} - BASE OFICIAL COMPRAS.GOV.BR`,
+            nome_grupo: "INCLUSÃO DIRETA",
+            nome_classe: "CATÁLOGO OFICIAL GOV.BR",
+            unidade: "UN"
+          });
+          totalFound += 1;
+        }
+
+        stats.textContent = `Encontrados ${totalFound} itens para "${q}"`;
 
         if (results.length === 0) {
           list.innerHTML = `<div class="p-8 text-center text-xs text-slate-500">Nenhum item localizado no catálogo oficial para "${q}". Tente palavras simples (ex: pneu, bateria, caneta, serviço).</div>`;
@@ -3445,7 +3578,32 @@
         renderModalCatalogList();
         verifyCatalogDemandInBackground(results);
       } catch (err) {
-        list.innerHTML = `<div class="p-6 text-center text-xs text-rose-600 font-bold">Erro ao consultar catálogo: ${err.message}</div>`;
+        // Fallback inteligente: se for código numérico, permite adicionar diretamente mesmo se a API estiver indisponível
+        if (/^\d{4,8}$/.test(q)) {
+          const isServ = type === "SERVICO";
+          window.modalCatalogSearchResults = [{
+            item_type: isServ ? "SERVICO" : "MATERIAL",
+            codigo: parseInt(q, 10),
+            nome_pdm_ou_classe: isServ ? `CATSER ${q} (Inclusão Direta)` : `CATMAT ${q} (Inclusão Direta)`,
+            descricao: isServ ? `SERVIÇO CÓDIGO ${q} - ADICIONADO DIRETAMENTE AO LOTE` : `MATERIAL CÓDIGO ${q} - ADICIONADO DIRETAMENTE AO LOTE`,
+            nome_grupo: "INCLUSÃO DIRETA",
+            nome_classe: "CÓDIGO OFICIAL",
+            unidade: "UN"
+          }];
+          stats.textContent = `Código oficial identificado: ${q}`;
+          renderModalCatalogList();
+          return;
+        }
+
+        list.innerHTML = `
+          <div class="p-6 text-center space-y-2">
+            <div class="text-xs text-rose-600 font-bold">⚠️ Conexão com o Catálogo: ${err.message}</div>
+            <p class="text-[11px] text-slate-500">Dica: Se souber o código numérico do CATMAT/CATSER (ex: 621988), digite-o no campo de busca para adicioná-lo diretamente.</p>
+            <button onclick="searchModalCatalogKeywords()" class="px-3 py-1.5 rounded-lg bg-[#27394d] hover:bg-[#334960] text-white text-xs font-bold transition">
+              🔄 Tentar Novamente
+            </button>
+          </div>
+        `;
       }
     }
 
