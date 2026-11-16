@@ -160,8 +160,8 @@
             <button id="btnOpenResults" onclick="switchBatchWorkflowView('results')" disabled class="h-10 bg-white hover:bg-slate-50 disabled:cursor-not-allowed text-[#1e2d3d] font-black px-3 rounded-xl text-xs border border-slate-300 transition flex items-center justify-center gap-1.5">
               <span>📊</span> Ver Resultados
             </button>
-            <button id="btnGenerateProcess" onclick="openBatchDocsModal()" disabled class="h-10 bg-[#3b5b7c] hover:bg-[#2e4761] disabled:cursor-not-allowed text-white font-black px-3 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5">
-              <span>📦</span> Gerar Processo Completo
+            <button id="btnGenerateProcess" onclick="downloadBatchProcessZip()" disabled class="h-10 bg-[#3b5b7c] hover:bg-[#2e4761] disabled:cursor-not-allowed text-white font-black px-3 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5" title="Baixar todos os relatórios Word, PDF, Excel individuais e Mapa Consolidado em .ZIP">
+              <span>📦</span> Processo Completo (.ZIP)
             </button>
           </div>
           <span id="step3Status" class="text-[11px] font-bold text-slate-500">Disponível após o passo 2.</span>
@@ -254,8 +254,8 @@
               <span id="batchGrandTotal" class="text-xl md:text-2xl font-black text-amber-300">R$ 0,00</span>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <button onclick="downloadBatchZip()" class="h-10 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-4 py-2 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-2 border border-[#d6b77c]" title="Baixar todos os relatórios Word, PDF, Excel e os Editais do PNCP em um arquivo .ZIP">
-                <span>📦</span> <span>Pacote Completo (.ZIP com PNCP)</span>
+              <button onclick="downloadBatchProcessZip()" class="h-10 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-4 py-2 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-2 border border-[#d6b77c]" title="Baixar todos os relatórios Word, PDF, Excel individuais e Mapa Consolidado Geral em .ZIP">
+                <span>📦</span> <span>Processo Completo (.ZIP)</span>
               </button>
               <button onclick="downloadBatchExcel()" class="h-10 bg-[#3b6e5c] hover:bg-[#2d5849] text-white font-black px-4 py-2 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-2 border border-[#4d8571]/50" title="Baixar Planilha Consolidada com todas as abas">
                 <span>📊</span> <span>Planilha Consolidada (.XLSX)</span>
@@ -2103,12 +2103,17 @@
       return { elab, orden };
     }
 
-    async function downloadFromPost(path, payload, fallbackName, label) {
+    async function downloadFromPost(path, payload, fallbackName, label, estimatedSec = 3, customSteps = null) {
       showCountdownProgress({
         title: label || "Gerando documento oficial",
         subtitle: "Montando o arquivo com os dados já pesquisados e curados (sem nova consulta ao Governo).",
-        estimatedSeconds: 3,
-        steps: ["Preparando dados da cesta de preços...", "Gerando o arquivo...", "Finalizando download..."]
+        estimatedSeconds: estimatedSec,
+        steps: customSteps || [
+          "Consolidando dados homologados da IN 65/2021...",
+          "Calculando estatísticas e memórias de cálculo...",
+          "Formatando relatórios oficiais (Word, PDF e Excel)...",
+          "Finalizando download do arquivo..."
+        ]
       });
       try {
         const resp = await fetch(path, {
@@ -2807,12 +2812,12 @@
       clearInterval(countdownInterval);
       countdownInterval = setInterval(() => {
         elapsedMs += 100;
-        const remaining = Math.ceil((totalMs - elapsedMs) / 1000);
-        if (secText) secText.textContent = remaining > 0 ? `${remaining}s` : "finalizando...";
+        const remaining = Math.max(0, Math.ceil((totalMs - elapsedMs) / 1000));
+        if (secText) secText.textContent = remaining > 0 ? `~${remaining}s restantes` : "finalizando download...";
         const p = Math.min(95, Math.round((elapsedMs / totalMs) * 90));
         if (bar) bar.style.width = `${p}%`;
         if (pct) pct.textContent = `${p}%`;
-        if (step && elapsedMs >= 600) {
+        if (step && elapsedMs >= 300) {
           const k = Math.min(steps.length - 1, Math.floor((elapsedMs / totalMs) * steps.length));
           step.textContent = steps[k];
         }
@@ -3238,15 +3243,13 @@
                 </span>
               </div>
 
-              <div class="flex flex-wrap items-center gap-1.5 pt-1 justify-between">
-                <span class="text-[10px] font-bold ${isActive ? 'text-[#c5a365]' : 'text-blue-700'}">
-                  👁️ Clique para inspecionar cotações
+              <div class="flex items-center justify-between pt-1.5 text-[10.5px]">
+                <span class="font-bold flex items-center gap-1 ${isActive ? 'text-[#c5a365]' : 'text-slate-500'}">
+                  ${isActive ? '● Item Selecionado' : '○ Clique para inspecionar'}
                 </span>
-                <div class="flex items-center gap-1">
-                  <button onclick="event.stopPropagation(); exportBatchItemReport(${idx}, 'docx')" class="bg-[#3b5b7c] hover:bg-[#2e4761] text-white font-bold px-2 py-0.5 rounded text-[10px]">📝 Word</button>
-                  <button onclick="event.stopPropagation(); exportBatchItemReport(${idx}, 'pdf')" class="bg-[#9e4747] hover:bg-[#853939] text-white font-bold px-2 py-0.5 rounded text-[10px]">📄 PDF</button>
-                  <button onclick="event.stopPropagation(); exportBatchItemReport(${idx}, 'xlsx')" class="bg-[#3b6e5c] hover:bg-[#2d5849] text-white font-bold px-2 py-0.5 rounded text-[10px]">📊 Excel</button>
-                </div>
+                <span class="font-extrabold ${isActive ? 'text-white' : 'text-[#3b5b7c]'} flex items-center gap-1">
+                  Ver Relatórios ➔
+                </span>
               </div>
             </div>
           `;
@@ -3283,64 +3286,62 @@
       }
     }
 
-    async function downloadBatchZip() {
+    async function downloadBatchProcessZip() {
       const validItems = (batchResearchResults || []).filter(r => r.has_data && r.report && r.report.sanitized_metrics);
       if (validItems.length === 0) {
-        showAppNotification("Processe o lote com pelo menos 1 item válido antes de gerar o pacote ZIP.", "warn");
+        showAppNotification("Processe o lote com pelo menos 1 item válido antes de gerar o Processo Completo.", "warn");
         return;
       }
-      try {
-        const resp = await fetch("/api/v1/prices/export-batch-zip", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ items: validItems, om_name: getGlobalOrgName() })
-        });
-        if (!resp.ok) {
-          showAppNotification("Erro ao gerar pacote ZIP do lote.", "error");
-          return;
-        }
-        const blob = await resp.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "Pacote_Relatorios_Lote_IN65.zip";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-      } catch (e) {
-        showAppNotification("Falha ao baixar ZIP: " + e.message, "error");
-      }
+      const p = getReportParams();
+      const estSec = Math.max(2, Math.ceil(validItems.length * 0.7));
+      await downloadFromPost(
+        "/api/v1/prices/export-batch-zip",
+        {
+          items: validItems,
+          om_name: getGlobalOrgName(),
+          elaborador: p.elab,
+          ordenador: p.orden
+        },
+        `Processo_Completo_IN65_${validItems.length}_itens.zip`,
+        `Gerando Processo Completo (${validItems.length} itens)`,
+        estSec,
+        [
+          "Consolidando dados de todos os itens homologados...",
+          "Gerando memórias e mapas comparativos em Excel...",
+          "Formatando relatórios individuais em Word e PDF...",
+          "Compactando pacote completo do processo (.ZIP)..."
+        ]
+      );
+    }
+
+    function downloadBatchZip() {
+      return downloadBatchProcessZip();
     }
 
     async function downloadBatchExcel() {
       const validItems = (batchResearchResults || []).filter(r => r.has_data && r.report && r.report.sanitized_metrics);
-      if (validItems.length === 0) {
+      const itemsToUse = validItems.length > 0 ? validItems : batchItemsTray.filter(x => x.selected);
+      if (itemsToUse.length === 0) {
         showAppNotification("Processe o lote com pelo menos 1 item válido antes de exportar a planilha consolidada.", "warn");
         return;
       }
-      try {
-        const resp = await fetch("/api/v1/prices/export-batch-xlsx", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ items: validItems, om_name: getGlobalOrgName() })
-        });
-        if (!resp.ok) {
-          showAppNotification("Erro ao gerar Excel consolidado do lote.", "error");
-          return;
-        }
-        const blob = await resp.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "Mapa_Comparativo_Consolidado_Lote_IN65.xlsx";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-      } catch (e) {
-        showAppNotification("Falha ao baixar Excel consolidado: " + e.message, "error");
-      }
+      const estSec = Math.max(2, Math.ceil(itemsToUse.length * 0.5));
+      await downloadFromPost(
+        "/api/v1/prices/export-batch-xlsx",
+        {
+          items: itemsToUse,
+          om_name: getGlobalOrgName()
+        },
+        `Mapa_Comparativo_Consolidado_Lote_${itemsToUse.length}_itens.xlsx`,
+        `Gerando Planilha Consolidada (${itemsToUse.length} itens)`,
+        estSec,
+        [
+          "Consolidando memórias de cálculo do lote...",
+          "Gerando abas de materiais, cotações e resumo...",
+          "Aplicando formatação oficial em Excel...",
+          "Finalizando download da planilha consolidada..."
+        ]
+      );
     }
 
     // Inicialização

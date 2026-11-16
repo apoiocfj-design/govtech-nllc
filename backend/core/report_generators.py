@@ -1350,9 +1350,9 @@ def build_batch_zip_bytes(
                 just_pdf = build_in65_justificativa_pdf_bytes(rep, qty, om_name=om_name, ordenador_nome=ordenador_nome)
                 zf.writestr(f"{folder}/Justificativa_Circunstanciada_Art6_IN65_{prefix}_{code}.pdf", just_pdf)
 
-            # PDF Oficial do Edital PNCP com Lista Completa de Materiais de cada cotação
+            # Inclusão ultrarrápida de editais/documentos PNCP já consultados (via cache local sem travar o download)
             try:
-                from pncp_extractor import capture_pncp_page_pdf
+                from pncp_extractor import CACHE_DIR
                 quotes = rep.get("valid_quotes", [])
                 seen_compras = set()
                 for q in quotes:
@@ -1360,11 +1360,14 @@ def build_batch_zip_bytes(
                     c_num = str(q.get("purchase_number_year") or "compra").replace("/", "_")
                     if p_key and p_key not in seen_compras:
                         seen_compras.add(p_key)
-                        pncp_pdf = capture_pncp_page_pdf(q.get("pncp_or_compras_uri"), chave_or_id=p_key)
-                        if pncp_pdf and len(pncp_pdf) > 1000:
+                        clean_id = re.sub(r"\W", "_", p_key)
+                        c_file = os.path.join(CACHE_DIR, f"pncp_full_{clean_id}.pdf")
+                        if os.path.exists(c_file) and os.path.getsize(c_file) > 1000:
+                            with open(c_file, "rb") as cf:
+                                pncp_pdf = cf.read()
                             zf.writestr(f"{folder}/PNCP_Edital_Lista_Materiais_{c_num}.pdf", pncp_pdf)
                             zf.writestr(f"01_Editais_PNCP_Lista_Materiais/PNCP_Edital_Compra_{c_num}.pdf", pncp_pdf)
             except Exception as e:
-                print(f"[ZIP PNCP export error] {e}")
+                print(f"[ZIP PNCP cache check] {e}")
 
     return z_buf.getvalue()
