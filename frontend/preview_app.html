@@ -1159,14 +1159,13 @@
       ) {
         return "";
       }
-      // Se houver backend personalizado configurado no navegador
+      // Se houver backend personalizado configurado no navegador (ignorar túneis temporários antigos)
       const custom = localStorage.getItem("GOVTECH_BACKEND_URL");
-      // Túneis temporários antigos (trycloudflare) expiram: ignorar valores salvos desse tipo
-      if (custom && custom.trim().startsWith("http") && !custom.includes("trycloudflare.com")) {
+      if (custom && custom.trim().startsWith("http") && !custom.includes("trycloudflare.com") && !custom.includes("localhost")) {
         return custom.trim().replace(/\/+$/, "");
       }
-      // Padrão ao acessar via Firebase Hosting (govtech-cfj.web.app):
-      return "https://connecticut-properties-chevy-gold.trycloudflare.com";
+      // Padrão oficial na Nuvem (Render.com - 100% online 24h/dia sem PC):
+      return "https://govtech-nllc.onrender.com";
     }
 
     function apiUrl(path) {
