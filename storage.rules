@@ -1,0 +1,22 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Upload de minutas (.docx e .pdf) para auditoria assíncrona
+    match /uploads_minutas/{fileName} {
+      // Permite upload de arquivos de até 50MB (DOCX ou PDF)
+      allow write: if request.resource.size < 50 * 1024 * 1024;
+      allow read: if true;
+    }
+
+    // Minutas auditadas finais geradas pelo worker
+    match /minutas_auditadas/{fileName} {
+      allow read: if true;
+      allow write: if false; // Gerado exclusivamente pelo Cloud Functions / Admin SDK
+    }
+
+    // Bloqueio padrão para qualquer outra pasta
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

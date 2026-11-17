@@ -55,6 +55,7 @@ from pncp_extractor import (
     capture_pncp_page_pdf,
 )
 from irp_client import search_irps, get_irp_detail
+from sanctions_checker import check_supplier_sanctions
 
 price_controller = PriceResearchController()
 rag_auditor = RAGLegalAuditor(similarity_threshold=0.45)
@@ -124,6 +125,10 @@ def build_in65_excel_bytes(report: dict, quantity: int, uasg_name: str = "MARINH
 
     sm = report["sanitized_metrics"]
     unit_est = float(report["final_estimated_unit_price"])
+    # Fórmulas estatísticas abertas para auditoria do TCU / Controle Interno
+    adopted_param = str(report.get("adopted_parameter", "")).upper()
+    adopted_formula = "=G5" if "MEDIANA" in adopted_param else "=F5"
+
     row_vals = [
         1,
         report["item_description"],
@@ -132,8 +137,8 @@ def build_in65_excel_bytes(report: dict, quantity: int, uasg_name: str = "MARINH
         quantity,
         float(sm["mean"] or unit_est),
         float(sm["median"] or unit_est),
-        unit_est,
-        quantity * unit_est,
+        adopted_formula,   # Fórmula aberta: aponta para a mediana (=G5) ou média (=F5)
+        "=E5*H5",          # Fórmula aberta: Quantidade x Preço Estimado
     ]
     for col_idx, val in enumerate(row_vals, 1):
         c = ws.cell(5, col_idx, val)
@@ -152,31 +157,60 @@ def build_in65_excel_bytes(report: dict, quantity: int, uasg_name: str = "MARINH
     for col_letter, width in zip("ABCDEFGHI", [8, 48, 15, 9, 10, 16, 16, 18, 20]):
         ws.column_dimensions[col_letter].width = width
 
-    # Aba 2: Trilha de Auditoria das Cotações Válidas e Expurgadas
+    # Aba 2: Trilha de Auditoria das Cotações Válidas e Expurgadas com Fórmulas Abertas
     ws2 = wb.create_sheet("Auditoria PNCP Compras.gov")
-    cols2 = ["Status", "UASG", "Órgão Comprador", "UF", "Nº Compra", "CNPJ Vencedor", "Fornecedor", "Data", "Unid.", "Qtd.", "Preço Unit. (R$)", "Justificativa Estatística", "Link Oficial Auditável"]
+    cols2 = ["Status", "UASG", "Órgão Comprador", "UF", "Nº Compra", "CNPJ Vencedor", "Fornecedor", "Data", "Unid.", "Qtd.", "Preço Unit. (R$)", "Justificativa Estatística", "Link Oficial Auditável", "Rank / Menor Preço"]
     for i, h in enumerate(cols2, 1):
         c = ws2.cell(1, i, h)
         c.font, c.fill, c.alignment, c.border = Font(bold=True), cinza, ctr, B
 
     all_quotes = report.get("valid_quotes", []) + report.get("purged_quotes", [])
+    max_q_row = len(all_quotes) + 1 if all_quotes else 2
     for r_idx, q in enumerate(all_quotes, 2):
         vals = [
             q["purge_status"], q["buyer_uasg"], q["buyer_org_name"], q["buyer_uf"],
             q["purchase_number_year"], q["supplier_cnpj"], q["supplier_name"],
             q["purchase_date"], q["supply_unit"], q["quantity_homologated"],
-            float(q["unit_price"]), q.get("purge_justification") or "", q["pncp_or_compras_uri"]
+            float(q["unit_price"]), q.get("purge_justification") or "", q["pncp_or_compras_uri"],
+            f"=RANK(K{r_idx}, $K$2:$K${max_q_row}, 1)"  # Fórmula aberta de ranqueamento
         ]
         for c_idx, v in enumerate(vals, 1):
             cel = ws2.cell(r_idx, c_idx, v)
             cel.border = B
             if c_idx == 11:
                 cel.number_format = brl
+            elif c_idx == 14:
+                cel.alignment = ctr
+                cel.font = Font(bold=True)
             if c_idx == 13 and v:
                 cel.hyperlink = v
                 cel.style = "Hyperlink"
 
-    for col_letter, width in zip("ABCDEFGHIJKLM", [24, 10, 36, 6, 14, 18, 36, 12, 8, 10, 15, 45, 55]):
+    # Seção Estatística Aberta no Rodapé da Trilha de Auditoria
+    if all_quotes:
+        stat_start = max_q_row + 2
+        ws2.merge_cells(f"A{stat_start}:D{stat_start}")
+        ws2[f"A{stat_start}"] = "DEMONSTRATIVO ESTATÍSTICO DE FÓRMULAS ABERTAS (ART. 6º DA IN 65/2021)"
+        ws2[f"A{stat_start}"].font = Font(bold=True, size=10, color="1E2D3D")
+
+        stat_rows = [
+            ("Média Amostral das Cotações Válidas", f'=AVERAGEIF(A2:A{max_q_row}, "VALIDA", K2:K{max_q_row})', brl),
+            ("Menor Preço Encontrado no Governo", f"=MIN(K2:K{max_q_row})", brl),
+            ("Maior Preço Encontrado no Governo", f"=MAX(K2:K{max_q_row})", brl),
+            ("Desvio Padrão Amostral (s)", f"=STDEV.S(K2:K{max_q_row})", brl),
+            ("Total de Amostras Homologadas", f"=COUNT(K2:K{max_q_row})", "#,##0"),
+            ("Amostras Saneadas Consideradas (Mínimo Legal: 3)", f'=COUNTIF(A2:A{max_q_row}, "VALIDA")', "#,##0"),
+        ]
+        for offset, (lbl, formula, nfmt) in enumerate(stat_rows, 1):
+            curr_r = stat_start + offset
+            ws2.cell(curr_r, 2, lbl).font = Font(bold=True, size=9)
+            val_c = ws2.cell(curr_r, 4, formula)
+            val_c.font = Font(bold=True, size=9)
+            val_c.fill = verde if "Média" in lbl or "Saneadas" in lbl else cinza
+            val_c.border = B
+            val_c.number_format = nfmt
+
+    for col_letter, width in zip("ABCDEFGHIJKLMN", [24, 10, 36, 6, 14, 18, 36, 12, 8, 10, 15, 45, 55, 18]):
         ws2.column_dimensions[col_letter].width = width
 
     buf = io.BytesIO()
@@ -458,12 +492,25 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                         {"nome": s.get("nome"), "qualificacao": s.get("qual")}
                         for s in d.get("qsa", []) if s.get("nome")
                     ]
+                    info["sanctions"] = check_supplier_sanctions(clean_digits)
                     self._send_json(200, {"status": "SUCCESS", "supplier": info})
                     return
             except Exception:
                 pass
 
+            info["sanctions"] = check_supplier_sanctions(clean_digits)
             self._send_json(200, {"status": "PARTIAL", "supplier": info, "message": "Dados cadastrais resumidos."})
+            return
+
+        # 2.6 Inteligência de Risco e Bloqueio Cautelar (CEIS, CNEP, TCU - Art. 14, III e Art. 68 da Lei 14.133/2021)
+        if path == "/api/v1/supplier/sanctions-check":
+            cnpj_raw = qs.get("cnpj", [""])[0]
+            clean_digits = re.sub(r"\D", "", str(cnpj_raw))
+            if not clean_digits:
+                self._send_json(400, {"error": "CNPJ é obrigatório."})
+                return
+            res = check_supplier_sanctions(clean_digits)
+            self._send_json(200, res)
             return
 
         # 3. Download de Arquivos Prontos da Capitania

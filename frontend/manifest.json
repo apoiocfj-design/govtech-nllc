@@ -1,0 +1,26 @@
+{
+  "name": "GovTech NLLC - Sistema Integrado de Compras Públicas",
+  "short_name": "GovTech NLLC",
+  "description": "Sistema de Pesquisa de Preços (IN 65/2021), Auditoria de Minutas (Lei 14.133/2021) e Radar de IRP/SRP",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1e2d3d",
+  "theme_color": "#1e2d3d",
+  "icons": [
+    {
+      "src": "/icon_transparent_96.png",
+      "sizes": "96x96",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon_transparent.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

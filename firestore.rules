@@ -1,0 +1,215 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Este arquivo de regras de segurança protege o processamento assíncrono
+    // de auditorias de minutas jurídicas da Lei nº 14.133/2021 no GovTech NLLC:
+    //
+    // 1. Coleção: jobs_auditoria/{jobId}
+    //    Document ID: {jobId} (deve ser idêntico ao campo job_id)
+    //    Campos Obrigatórios:
+    //      - job_id: string (3..128 chars, idêntico a {jobId})
+    //      - status: string ('pendente' na criação; cliente só pode cancelar)
+    //      - progresso: number (0 na criação; protegido contra alteração pelo cliente)
+    //      - filename / file_name: string (1..255 chars)
+    //      - file_size: number (> 0 e <= 52.428.800 bytes / 50MB)
+    //      - createdAt: timestamp (recente na criação, imutável em updates)
+    //    Campos Opcionais Permitidos:
+    //      - updatedAt: timestamp
+    //      - process_nup / nup: string (<= 60 chars)
+    //      - artifact_type / tipo_documento: string (<= 50 chars)
+    //      - artifact_title / titulo: string (<= 300 chars)
+    //      - orgao_nome / orgao: string (<= 200 chars)
+    //      - file_url: string (<= 1000 chars)
+    //      - file_hash: string (<= 64 chars)
+    //      - cancel_reason: string (<= 500 chars)
+    //      - error_message: string (<= 2000 chars, apenas worker/Admin SDK)
+    //      - total_clauses / total_user_clauses_parsed: number (apenas worker/Admin SDK)
+    //      - compliance_score: number (apenas worker/Admin SDK)
+    //      - resultado: map (apenas worker/Admin SDK, protegido contra injeção pelo cliente)
+    //      - userId / uid: string (<= 128 chars, imutável)
+    //      - metadata: map (<= 25 chaves)
+    //
+    // 2. Coleção: dead_letter_jobs/{jobId}
+    //    Trilha de auditoria e contingência para jobs que falharam após tentativas.
+    //    Acesso estritamente administrativo e de auditoria (Admin SDK tem bypass natural).
+    //
+    // 3. Demais coleções:
+    //    Bloqueio padrão estrito (Deny by default).
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Verifica se o usuário está autenticado no Firebase Auth
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Verifica se o usuário possui papel de administrador
+    function isAdmin() {
+      return isAuthenticated() &&
+        ((request.auth.token.role == 'admin') ||
+         (request.auth.token.email == 'ricardoluizrodriguesgomes@gmail.com' && request.auth.token.email_verified == true));
+    }
+
+    // Verifica se o usuário possui papel de auditor jurídico
+    function isAuditor() {
+      return isAuthenticated() &&
+        (isAdmin() || request.auth.token.role == 'auditor');
+    }
+
+    // Garante que o UID/userId não seja forjado no create
+    function uidUnchanged() {
+      return (!('userId' in request.resource.data) || !isAuthenticated() || request.resource.data.userId == request.auth.uid) &&
+             (!('uid' in request.resource.data) || !isAuthenticated() || request.resource.data.uid == request.auth.uid);
+    }
+
+    // Garante que o UID/userId não seja modificado no update
+    function uidNotModified() {
+      return (!('userId' in request.resource.data) || request.resource.data.userId == resource.data.userId) &&
+             (!('uid' in request.resource.data) || request.resource.data.uid == resource.data.uid);
+    }
+
+    // Valida presença de campos obrigatórios
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Valida que o documento contém estritamente campos permitidos (anti-schema pollution)
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // Valida que um timestamp é recente (tolerância de 5 min atrás até 1 min no futuro)
+    function isRecent(time) {
+      return time is timestamp &&
+             time > request.time - duration.value(5, 'm') &&
+             time <= request.time + duration.value(1, 'm');
+    }
+
+    // ===============================================================
+    // Domain Validator: jobs_auditoria
+    // ===============================================================
+
+    // Lista de todos os campos autorizados para o job
+    function allowedJobFields() {
+      return [
+        'job_id', 'status', 'progresso', 'filename', 'file_name',
+        'file_size', 'createdAt', 'updatedAt', 'file_url', 'file_hash',
+        'artifact_type', 'tipo_documento', 'artifact_title', 'titulo',
+        'process_nup', 'nup', 'orgao_nome', 'orgao', 'cancel_reason',
+        'error_message', 'total_clauses', 'total_user_clauses_parsed',
+        'compliance_score', 'resultado', 'userId', 'uid', 'metadata'
+      ];
+    }
+
+    // Validador de domínio estrutural completo (utilizado tanto no create quanto no update)
+    function isValidJob(data) {
+      return hasOnlyAllowedFields(allowedJobFields()) &&
+             hasRequiredFields(['job_id', 'status', 'progresso', 'file_size', 'createdAt']) &&
+             (('filename' in data) || ('file_name' in data)) &&
+             data.job_id is string && data.job_id.size() >= 3 && data.job_id.size() <= 128 &&
+             data.status is string && data.status in ['pendente', 'processando', 'concluido', 'erro', 'cancelado'] &&
+             data.progresso is number && data.progresso >= 0 && data.progresso <= 100 &&
+             data.file_size is number && data.file_size > 0 && data.file_size <= 52428800 &&
+             data.createdAt is timestamp &&
+             (!('filename' in data) || (data.filename is string && data.filename.size() <= 255)) &&
+             (!('file_name' in data) || (data.file_name is string && data.file_name.size() <= 255)) &&
+             (!('file_url' in data) || (data.file_url is string && data.file_url.size() <= 1000)) &&
+             (!('file_hash' in data) || (data.file_hash is string && data.file_hash.size() <= 64)) &&
+             (!('artifact_type' in data) || (data.artifact_type is string && data.artifact_type.size() <= 50)) &&
+             (!('tipo_documento' in data) || (data.tipo_documento is string && data.tipo_documento.size() <= 50)) &&
+             (!('artifact_title' in data) || (data.artifact_title is string && data.artifact_title.size() <= 300)) &&
+             (!('titulo' in data) || (data.titulo is string && data.titulo.size() <= 300)) &&
+             (!('process_nup' in data) || (data.process_nup is string && data.process_nup.size() <= 60)) &&
+             (!('nup' in data) || (data.nup is string && data.nup.size() <= 60)) &&
+             (!('orgao_nome' in data) || (data.orgao_nome is string && data.orgao_nome.size() <= 200)) &&
+             (!('orgao' in data) || (data.orgao is string && data.orgao.size() <= 200)) &&
+             (!('cancel_reason' in data) || (data.cancel_reason is string && data.cancel_reason.size() <= 500)) &&
+             (!('error_message' in data) || (data.error_message is string && data.error_message.size() <= 2000)) &&
+             (!('total_clauses' in data) || (data.total_clauses is int && data.total_clauses >= 0)) &&
+             (!('total_user_clauses_parsed' in data) || (data.total_user_clauses_parsed is int && data.total_user_clauses_parsed >= 0)) &&
+             (!('compliance_score' in data) || (data.compliance_score is number && data.compliance_score >= 0 && data.compliance_score <= 100)) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp) &&
+             (!('resultado' in data) || data.resultado is map) &&
+             (!('userId' in data) || (data.userId is string && data.userId.size() <= 128)) &&
+             (!('uid' in data) || (data.uid is string && data.uid.size() <= 128)) &&
+             (!('metadata' in data) || (data.metadata is map && data.metadata.size() <= 25));
+    }
+
+    // Validação específica da submissão inicial pelo cliente
+    function isValidJobCreate(jobId) {
+      let d = request.resource.data;
+      return d.job_id == jobId &&
+             d.status == 'pendente' &&
+             d.progresso == 0 &&
+             isRecent(d.createdAt) &&
+             !('resultado' in d) &&
+             !('error_message' in d) &&
+             uidUnchanged();
+    }
+
+    // Validação restrita de atualização pelo cliente:
+    // Impede que o cliente avance progresso, altere resultado ou marque como concluído/processando/erro.
+    // O cliente só tem permissão para cancelar um job pendente ou em processamento.
+    function isValidJobUpdate(jobId) {
+      let prev = resource.data;
+      let curr = request.resource.data;
+      return curr.job_id == jobId &&
+             curr.job_id == prev.job_id &&
+             curr.createdAt == prev.createdAt &&
+             curr.file_size == prev.file_size &&
+             curr.progresso == prev.progresso &&
+             uidNotModified() &&
+             prev.status in ['pendente', 'processando'] &&
+             curr.status == 'cancelado' &&
+             !curr.diff(prev).affectedKeys().hasAny([
+               'resultado', 'compliance_score', 'total_clauses', 'total_user_clauses_parsed'
+             ]);
+    }
+
+    // ===============================================================
+    // Regras de Acesso: Coleção jobs_auditoria
+    // ===============================================================
+    match /jobs_auditoria/{jobId} {
+
+      // Leitura permitida para clientes acompanharem o progresso em tempo real via onSnapshot()
+      allow read: if true;
+
+      // Criação de novos jobs pelo cliente com validação estrita de integridade
+      allow create: if isValidJob(request.resource.data) &&
+                       isValidJobCreate(jobId);
+
+      // Atualização restrita pelo cliente (apenas cancelamento);
+      // O worker backend/Cloud Functions opera via Firebase Admin SDK (com bypass nativo de regras)
+      allow update: if isValidJob(request.resource.data) &&
+                       isValidJobUpdate(jobId);
+
+      // Exclusão permitida apenas para administradores
+      allow delete: if isAdmin();
+    }
+
+    // ===============================================================
+    // Regras de Acesso: Coleção dead_letter_jobs
+    // ===============================================================
+    match /dead_letter_jobs/{jobId} {
+
+      // Apenas administradores e auditores credenciados podem ler a dead-letter queue;
+      // Clientes comuns têm leitura e escrita bloqueadas (false)
+      allow read, write: if isAdmin() || isAuditor();
+    }
+
+    // ===============================================================
+    // Bloqueio Padrão (Default Deny)
+    // ===============================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

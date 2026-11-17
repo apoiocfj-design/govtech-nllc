@@ -3,7 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/png" href="/app_logo_transparent.png" />
+  <link rel="icon" type="image/png" href="/app_logo_transparent.png" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#1e2d3d" />
+  <!-- Firebase SDKs (Compat v9) para Arquitetura Orientada a Eventos e Storage Assíncrono -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
   <title>GovTech NLLC • Sistema Unificado de Compras Públicas & Auditoria</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
@@ -623,6 +629,74 @@
         </label>
       </div>
       <p class="text-[11px] text-slate-400">Ao carregar, o sistema processa o documento e exibe a tela de conferência e réplica cláusula a cláusula.</p>
+    </div>
+
+    <!-- CARD DE PROGRESSO ASSÍNCRONO EM TEMPO REAL (EVENT-DRIVEN WORKER / CLOUD FUNCTIONS & STORAGE) -->
+    <div id="ragProgressCard" class="hidden bg-white p-6 md:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-xl">
+            ⚡
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-black uppercase text-[#1e2d3d]">Auditoria Assíncrona de Minutas</span>
+              <span id="ragJobIdBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-bold">job_id: —</span>
+            </div>
+            <p id="ragFileNameLabel" class="text-xs text-slate-500 font-semibold truncate max-w-md mt-0.5">documento.docx</p>
+          </div>
+        </div>
+        <div id="ragStatusBadge" class="text-xs font-black px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-blue-600 animate-ping"></span>
+          <span id="ragStatusText">Iniciando worker isolado...</span>
+        </div>
+      </div>
+
+      <!-- Barra de Progresso Animada -->
+      <div class="space-y-1.5">
+        <div class="flex justify-between items-center text-xs font-bold">
+          <span id="ragStepDescription" class="text-slate-700">Enviando documento para o Cloud Storage...</span>
+          <span id="ragProgressPercent" class="font-mono text-[#3b5b7c]">0%</span>
+        </div>
+        <div class="w-full bg-slate-100 rounded-full h-3.5 overflow-hidden border border-slate-200 p-0.5">
+          <div id="ragProgressBar" class="bg-gradient-to-r from-[#3b5b7c] via-[#c5a365] to-emerald-600 h-full rounded-full transition-all duration-300 ease-out" style="width: 0%"></div>
+        </div>
+        <div class="flex justify-between text-[11px] text-slate-400">
+          <span id="ragStageInfo">Isolamento de carga ativo (zero consumo síncrono de CPU)</span>
+          <span id="ragEtaInfo">Tempo estimado: ~5 a 15 segundos</span>
+        </div>
+      </div>
+
+      <!-- Área de Ações após Conclusão -->
+      <div id="ragCompletedActions" class="hidden pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2 text-emerald-800 text-xs font-bold">
+          <span class="text-base">✅</span>
+          <span>Minuta auditada com sucesso! Grifos em amarelo gerados e prontos para download seguro.</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <a id="ragSecureDownloadBtn" href="#" target="_blank" class="h-9 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-4 py-2 rounded-xl text-xs shadow-sm transition flex items-center gap-1.5">
+            <span>📥</span> Baixar Minuta Auditada (.DOCX)
+          </a>
+          <button onclick="showRAGEditorView()" class="h-9 bg-[#27394d] hover:bg-[#334960] text-white font-black px-4 py-2 rounded-xl text-xs shadow-sm transition flex items-center gap-1.5">
+            <span>👁️</span> Inspecionar Cláusulas na Tela
+          </button>
+          <button onclick="resetRAGUpload()" class="h-9 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl text-xs transition">
+            🔄 Novo Arquivo
+          </button>
+        </div>
+      </div>
+
+      <!-- Alerta de Erro se houver falha -->
+      <div id="ragErrorBox" class="hidden p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs space-y-2">
+        <div class="flex items-center gap-2 font-bold">
+          <span>🚨</span>
+          <span id="ragErrorMessage">Erro no processamento da minuta.</span>
+        </div>
+        <p class="text-[11px] text-rose-600">Verifique se o documento não está corrompido ou protegido por senha e tente novamente.</p>
+        <button onclick="resetRAGUpload()" class="px-3 py-1.5 rounded-lg bg-rose-600 text-white font-bold text-xs hover:bg-rose-700 transition">
+          Tentar Novamente
+        </button>
+      </div>
     </div>
 
     <!-- ESTADO ATIVO: AUDITORIA RAG E RÉPLICA JURÍDICA (SÓ APARECE APÓS ANEXAR O ARQUIVO) -->
@@ -2156,6 +2230,251 @@
       renderCurrentQuotesTable();
     }
 
+    // =========================================================================
+    // AUDITORIA DAS EMPRESAS PARTICIPANTES E COTAÇÕES DO GOVERNO (IN 65/2021)
+    // Inteligência de Risco e Bloqueio Cautelar (Art. 14, III e Art. 68 Lei 14.133)
+    // =========================================================================
+    window.quotesFilterMode = "ALL";
+    window.quotesSortMode = "status-first";
+    window.supplierSanctionsCache = window.supplierSanctionsCache || {};
+
+    function setQuotesFilter(mode) {
+      window.quotesFilterMode = mode;
+      const tabAll = document.getElementById("tabQuotesAll");
+      const tabVal = document.getElementById("tabQuotesValid");
+      const tabPurg = document.getElementById("tabQuotesPurged");
+
+      const actCls = "px-2 py-0.5 rounded text-[10px] font-bold transition bg-[#3b5b7c] text-white shadow-2xs";
+      const inactAll = "px-2 py-0.5 rounded text-[10px] font-bold transition bg-white text-slate-700 hover:bg-slate-200 border border-slate-200";
+      const inactVal = "px-2 py-0.5 rounded text-[10px] font-bold transition bg-emerald-50 text-emerald-900 border border-emerald-300 hover:bg-emerald-100";
+      const inactPurg = "px-2 py-0.5 rounded text-[10px] font-bold transition bg-rose-50 text-rose-900 border border-rose-300 hover:bg-rose-100";
+
+      if (tabAll) tabAll.className = mode === "ALL" ? actCls : inactAll;
+      if (tabVal) tabVal.className = mode === "VALID" ? actCls : inactVal;
+      if (tabPurg) tabPurg.className = mode === "PURGED" ? actCls : inactPurg;
+
+      renderCurrentQuotesTable();
+    }
+
+    function applyQuotesSort(mode) {
+      window.quotesSortMode = mode;
+      renderCurrentQuotesTable();
+    }
+
+    async function checkSupplierSanctionAsync(cleanCnpj) {
+      if (!cleanCnpj || cleanCnpj.length !== 14) return null;
+      if (window.supplierSanctionsCache[cleanCnpj]) {
+        return window.supplierSanctionsCache[cleanCnpj];
+      }
+      try {
+        const resp = await fetch(`/api/v1/supplier/sanctions-check?cnpj=${cleanCnpj}`);
+        if (resp.ok) {
+          const data = await resp.json();
+          window.supplierSanctionsCache[cleanCnpj] = data;
+          renderCurrentQuotesTable();
+          return data;
+        }
+      } catch (e) {
+        console.warn("Sanctions check failed:", e);
+      }
+      return null;
+    }
+
+    function excludeQuoteDueToSanction(idx) {
+      if (!window.currentAllQuotes || !window.currentAllQuotes[idx]) return;
+      const q = window.currentAllQuotes[idx];
+      const sInfo = window.supplierSanctionsCache[(q.supplier_cnpj || "").replace(/\D/g, "")];
+      const motivo = (sInfo && sInfo.sanctions && sInfo.sanctions[0] && sInfo.sanctions[0].motivo) || "Empresa com sanção ativa no CEIS/CNEP/TCU";
+
+      q.is_selected = false;
+      q.is_outlier = true;
+      q.purge_status = "EXPURGADA_SANCAO";
+      q.purge_justification = `BLOQUEIO CAUTELAR (Art. 14, III e Art. 68 da Lei nº 14.133/2021): ${motivo}. Amostra excluída da cesta de preços.`;
+
+      showAppNotification(`Empresa ${q.supplier_name || q.supplier_cnpj} excluída da cesta por sanção administrativa.`, "warn");
+      recalculateCuratedQuotes();
+    }
+
+    function renderCurrentQuotesTable() {
+      const tbody = document.getElementById("quotesTableBody");
+      if (!tbody) return;
+
+      if (!activePriceReport) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-xs text-slate-400 italic">Nenhuma pesquisa selecionada para auditoria.</td></tr>`;
+        return;
+      }
+
+      // Inicializa ou sincroniza lista completa se ainda não houver
+      if (!window.currentAllQuotes || window.currentAllQuotesReportCode !== activePriceReport.catmat_catser_code) {
+        window.currentAllQuotesReportCode = activePriceReport.catmat_catser_code;
+        const valids = (activePriceReport.valid_quotes || []).map(q => ({
+          ...q,
+          is_selected: q.is_selected !== undefined ? q.is_selected : true,
+          is_outlier: false,
+          purge_status: q.purge_status || "VALIDA"
+        }));
+        const purgeds = (activePriceReport.purged_quotes || []).map(q => ({
+          ...q,
+          is_selected: q.is_selected !== undefined ? q.is_selected : false,
+          is_outlier: true,
+          purge_status: q.purge_status || "EXPURGADA_ESTATISTICA"
+        }));
+        window.currentAllQuotes = [...valids, ...purgeds];
+      }
+
+      const allQuotes = window.currentAllQuotes || [];
+
+      // Contadores de abas
+      const cntAll = allQuotes.length;
+      const cntVal = allQuotes.filter(q => q.is_selected !== false && !q.is_outlier).length;
+      const cntPurg = allQuotes.filter(q => q.is_outlier || q.is_selected === false).length;
+
+      const elAll = document.getElementById("cntQuotesAll");
+      const elVal = document.getElementById("cntQuotesValid");
+      const elPurg = document.getElementById("cntQuotesPurged");
+      if (elAll) elAll.textContent = cntAll;
+      if (elVal) elVal.textContent = cntVal;
+      if (elPurg) elPurg.textContent = cntPurg;
+
+      // Filtragem
+      let visible = [];
+      allQuotes.forEach((q, originalIdx) => {
+        const isConsidered = (q.is_selected !== false && !q.is_outlier);
+        if (window.quotesFilterMode === "ALL") {
+          visible.push({ q, idx: originalIdx });
+        } else if (window.quotesFilterMode === "VALID" && isConsidered) {
+          visible.push({ q, idx: originalIdx });
+        } else if (window.quotesFilterMode === "PURGED" && !isConsidered) {
+          visible.push({ q, idx: originalIdx });
+        }
+      });
+
+      // Ordenação
+      if (window.quotesSortMode === "status-first") {
+        visible.sort((a, b) => {
+          const aVal = (a.q.is_selected !== false && !a.q.is_outlier) ? 0 : 1;
+          const bVal = (b.q.is_selected !== false && !b.q.is_outlier) ? 0 : 1;
+          if (aVal !== bVal) return aVal - bVal;
+          return Number(a.q.unit_price || 0) - Number(b.q.unit_price || 0);
+        });
+      } else if (window.quotesSortMode === "price-asc") {
+        visible.sort((a, b) => Number(a.q.unit_price || 0) - Number(b.q.unit_price || 0));
+      } else if (window.quotesSortMode === "price-desc") {
+        visible.sort((a, b) => Number(b.q.unit_price || 0) - Number(a.q.unit_price || 0));
+      } else if (window.quotesSortMode === "date-desc") {
+        visible.sort((a, b) => String(b.q.purchase_date || "").localeCompare(String(a.q.purchase_date || "")));
+      }
+
+      if (visible.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-xs text-slate-400 italic">Nenhuma cotação encontrada para o filtro selecionado.</td></tr>`;
+        return;
+      }
+
+      // Dispara verificação preventiva de sanções para todos os CNPJs distintos
+      const cnpjsToVerify = [...new Set(visible.map(v => (v.q.supplier_cnpj || "").replace(/\D/g, "")).filter(c => c.length === 14))];
+      cnpjsToVerify.forEach(cnpj => {
+        if (!window.supplierSanctionsCache[cnpj]) {
+          checkSupplierSanctionAsync(cnpj);
+        }
+      });
+
+      tbody.innerHTML = visible.map(({ q, idx }) => {
+        const isConsidered = (q.is_selected !== false && !q.is_outlier);
+        const cleanCnpj = (q.supplier_cnpj || "").replace(/\D/g, "");
+        const sanctionInfo = window.supplierSanctionsCache[cleanCnpj];
+        const isSanctioned = Boolean(sanctionInfo && sanctionInfo.has_sanctions);
+
+        let sanctionBadge = "";
+        if (isSanctioned) {
+          const tipoSan = (sanctionInfo.sanctions && sanctionInfo.sanctions[0] && sanctionInfo.sanctions[0].tipo) || "Impedimento / Suspensão";
+          sanctionBadge = `
+            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black bg-rose-600 text-white shadow-2xs animate-pulse" title="${tipoSan}">
+              🚨 IMPEDIDO (CEIS/CNEP)
+            </span>
+          `;
+        } else if (sanctionInfo && !sanctionInfo.has_sanctions) {
+          sanctionBadge = `<span class="inline-flex items-center text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded">✅ Regular</span>`;
+        }
+
+        let statusCell = "";
+        if (isConsidered) {
+          statusCell = `
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-900 border border-emerald-300">
+              ✅ Considerada na Cesta
+            </span>
+          `;
+        } else if (q.purge_status === "EXPURGADA_SANCAO") {
+          statusCell = `
+            <div>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black bg-rose-200 text-rose-950 border border-rose-400">
+                🚨 Excluída (Sanção Art. 68)
+              </span>
+              <p class="text-[9.5px] text-rose-700 mt-0.5 line-clamp-1" title="${q.purge_justification || ''}">${q.purge_justification || 'Sanção administrativa impeditiva'}</p>
+            </div>
+          `;
+        } else {
+          statusCell = `
+            <div>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300">
+                ❌ Descartada (Outlier)
+              </span>
+              <p class="text-[9.5px] text-slate-500 mt-0.5 line-clamp-1" title="${q.purge_justification || ''}">${q.purge_justification || 'Excluída estatisticamente'}</p>
+            </div>
+          `;
+        }
+
+        const rowBg = isConsidered ? "hover:bg-slate-50/80" : "bg-slate-50/40 hover:bg-slate-100/50 opacity-85";
+
+        return `
+          <tr class="${rowBg} transition border-b border-slate-200/70">
+            <td class="py-2.5 px-3 text-center">
+              <input type="checkbox" onchange="toggleQuoteInBasket(${idx}, this.checked); recalculateCuratedQuotes();" ${isConsidered ? 'checked' : ''} class="w-4 h-4 rounded text-[#c5a365] focus:ring-[#c5a365] cursor-pointer" title="Marcar ou desmarcar da cesta de preços" />
+            </td>
+            <td class="py-2.5 px-3">
+              <div class="space-y-0.5">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <strong class="text-slate-900 text-xs">${q.supplier_name || 'Fornecedor Vencedor'}</strong>
+                  ${sanctionBadge}
+                </div>
+                <div class="flex items-center gap-2">
+                  <button onclick="openSupplierCnpjModal('${q.supplier_cnpj || ''}', '${encodeURIComponent(q.supplier_name || '')}')" class="text-[10px] font-mono text-slate-500 hover:text-blue-700 underline flex items-center gap-0.5" title="Inspecionar CNPJ, CNAE e Certidões">
+                    CNPJ: ${q.supplier_cnpj || '—'} ℹ️
+                  </button>
+                  ${isSanctioned && isConsidered ? `
+                    <button onclick="excludeQuoteDueToSanction(${idx})" class="text-[9px] font-black text-rose-700 hover:bg-rose-100 px-1 py-0.2 rounded border border-rose-300 transition" title="Excluir motivadamente conforme Art. 14, III e Art. 68">
+                      ❌ Excluir por Sanção
+                    </button>
+                  ` : ''}
+                </div>
+              </div>
+            </td>
+            <td class="py-2.5 px-3">
+              ${statusCell}
+            </td>
+            <td class="py-2.5 px-3 text-right font-mono font-bold text-slate-900 text-xs">
+              R$ ${Number(q.unit_price || 0).toFixed(2)}
+            </td>
+            <td class="py-2.5 px-3">
+              <span class="text-slate-800 text-[11px] block truncate max-w-[180px]" title="${q.buyer_org_name || ''}">${q.buyer_org_name || 'Órgão Público'}</span>
+              <span class="text-[10px] text-slate-500">UASG ${q.buyer_uasg || '—'} (${q.buyer_uf || 'BR'})</span>
+            </td>
+            <td class="py-2.5 px-3">
+              <span class="text-slate-800 font-mono text-[11px] block">${q.purchase_number_year || '—'}</span>
+              <span class="text-[10px] text-slate-500">${q.purchase_date || '—'}</span>
+            </td>
+            <td class="py-2.5 px-3 text-center whitespace-nowrap space-x-1">
+              <button onclick="openPncpPortalByQuote(${idx})" class="h-6.5 bg-white hover:bg-slate-50 text-[#1e2d3d] border border-slate-300 font-bold px-2 py-0.5 rounded text-[10px] shadow-2xs transition inline-flex items-center gap-1" title="Abrir página oficial da compra no Compras.gov/PNCP">
+                <span>🌐</span> Gov.br
+              </button>
+              <button onclick="openQuoteDossierByIndex(${idx})" class="h-6.5 bg-[#3b5b7c] hover:bg-[#2e4761] text-white font-bold px-2 py-0.5 rounded text-[10px] shadow-2xs transition inline-flex items-center gap-1" title="Ver Dossiê e Arquivos PNCP da Compra">
+                <span>📄</span> Dossiê
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
     
     // =========================================================================
     // RESOLUÇÃO E ABERTURA DIRETA DA PÁGINA DO EDITAL NO PORTAL PNCP
@@ -2657,32 +2976,252 @@
       state.findings.forEach(f => { if (!f.resolved) applyFinding(f.id); });
     }
 
+    // =========================================================================
+    // INICIALIZAÇÃO FIREBASE (CLIENT SDK V9 COMPAT) - EVENT-DRIVEN & STORAGE
+    // =========================================================================
+    const firebaseConfig = {
+      projectId: "admin-cfj",
+      appId: "1:67699760103:web:241923c185441dfb8cbb42",
+      storageBucket: "admin-cfj.firebasestorage.app",
+      apiKey: "AIzaSyBL0_Wwt7rsyiVD-1XwpB0b3wn3LhTmmgA",
+      authDomain: "admin-cfj.firebaseapp.com"
+    };
+
+    let fbApp = null;
+    let fbFirestore = null;
+    let fbStorage = null;
+
+    try {
+      if (typeof firebase !== "undefined") {
+        if (!firebase.apps.length) {
+          fbApp = firebase.initializeApp(firebaseConfig);
+        } else {
+          fbApp = firebase.app();
+        }
+        fbFirestore = firebase.firestore();
+        fbStorage = firebase.storage();
+      }
+    } catch (e) {
+      console.warn("Firebase SDK init deferred/fallback:", e);
+    }
+
+    // Registro PWA Service Worker (Resiliência Operacional Offline)
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/sw.js").catch(() => {});
+      });
+    }
+
+    function showRAGProgressUI(jobId, fileName, fileSize) {
+      const dropzone = document.getElementById("ragUploadDropzone");
+      const progCard = document.getElementById("ragProgressCard");
+      const editorSec = document.getElementById("ragEditorSection");
+      const completedActions = document.getElementById("ragCompletedActions");
+      const errorBox = document.getElementById("ragErrorBox");
+
+      if (dropzone) dropzone.classList.add("hidden");
+      if (editorSec) editorSec.classList.add("hidden");
+      if (completedActions) completedActions.classList.add("hidden");
+      if (errorBox) errorBox.classList.add("hidden");
+
+      if (progCard) {
+        progCard.classList.remove("hidden");
+        document.getElementById("ragJobIdBadge").textContent = `job: ${jobId.substring(0, 14)}...`;
+        document.getElementById("ragFileNameLabel").textContent = `${fileName} (${(fileSize / 1024).toFixed(1)} KB)`;
+        updateRAGProgress(5, "Iniciando Fila...", "Isolamento de carga ativo: gravando no Firestore...");
+      }
+    }
+
+    function updateRAGProgress(percent, stageText, descText) {
+      const pBar = document.getElementById("ragProgressBar");
+      const pPct = document.getElementById("ragProgressPercent");
+      const sBadge = document.getElementById("ragStatusText");
+      const sDesc = document.getElementById("ragStepDescription");
+
+      if (pBar) pBar.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+      if (pPct) pPct.textContent = `${Math.min(100, Math.max(0, percent))}%`;
+      if (sBadge && stageText) sBadge.textContent = stageText;
+      if (sDesc && descText) sDesc.textContent = descText;
+    }
+
+    function onRAGJobCompleted(data, fileName) {
+      updateRAGProgress(100, "Concluído", "Minuta auditada com sucesso pelo Worker!");
+      const completedActions = document.getElementById("ragCompletedActions");
+      const downloadBtn = document.getElementById("ragSecureDownloadBtn");
+      const statusBadge = document.getElementById("ragStatusBadge");
+
+      if (statusBadge) {
+        statusBadge.className = "text-xs font-black px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 flex items-center gap-1.5";
+        statusBadge.innerHTML = `<span>✅</span> Concluído`;
+      }
+
+      if (completedActions) completedActions.classList.remove("hidden");
+      if (downloadBtn) {
+        if (data.downloadUrl) {
+          downloadBtn.href = data.downloadUrl;
+        } else {
+          downloadBtn.onclick = () => downloadHighlightedWord();
+        }
+      }
+
+      // Se retornou cláusulas auditadas, já deixa pronto no state
+      if (data.clauses && Array.isArray(data.clauses)) {
+        state.clauses = data.clauses;
+        state.findings = (data.findings || []).map((x, idx) => ({
+          id: "UF_" + idx,
+          type: x.finding_type || "RECOMENDACAO",
+          clause: x.clause_reference || `Cláusula ${idx + 1}`,
+          title: x.section_title || "Revisão Jurídica",
+          explanation: x.explanation || "",
+          legal: x.legal_foundation || "Lei nº 14.133/2021",
+          aguText: x.agu_standard_clause || "",
+          resolved: false
+        }));
+      }
+
+      showAppNotification("Auditoria assíncrona da minuta concluída!", "success");
+    }
+
+    function onRAGJobError(errorMessage) {
+      const errorBox = document.getElementById("ragErrorBox");
+      const msgEl = document.getElementById("ragErrorMessage");
+      const statusBadge = document.getElementById("ragStatusBadge");
+
+      if (statusBadge) {
+        statusBadge.className = "text-xs font-black px-3 py-1 rounded-full bg-rose-50 text-rose-800 border border-rose-300 flex items-center gap-1.5";
+        statusBadge.innerHTML = `<span>🚨</span> Erro`;
+      }
+      if (msgEl) msgEl.textContent = errorMessage || "O arquivo está corrompido ou protegido por senha.";
+      if (errorBox) errorBox.classList.remove("hidden");
+    }
+
+    function showRAGEditorView() {
+      const progCard = document.getElementById("ragProgressCard");
+      const editorSec = document.getElementById("ragEditorSection");
+      const topActions = document.getElementById("ragTopActions");
+      if (progCard) progCard.classList.add("hidden");
+      if (editorSec) editorSec.classList.remove("hidden");
+      if (topActions) topActions.classList.remove("hidden");
+      renderRAG();
+    }
+
+    function resetRAGUpload() {
+      const dropzone = document.getElementById("ragUploadDropzone");
+      const progCard = document.getElementById("ragProgressCard");
+      const editorSec = document.getElementById("ragEditorSection");
+      const topActions = document.getElementById("ragTopActions");
+      const fileInput = document.getElementById("fileInputRAG");
+
+      if (fileInput) fileInput.value = "";
+      if (dropzone) dropzone.classList.remove("hidden");
+      if (progCard) progCard.classList.add("hidden");
+      if (editorSec) editorSec.classList.add("hidden");
+      if (topActions) topActions.classList.add("hidden");
+    }
+
     async function handleUploadFile() {
       const fileInput = document.getElementById("fileInputRAG");
       if (!fileInput.files.length) return;
       const file = fileInput.files[0];
+
+      const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
+      const jobId = "job_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
+
+      showRAGProgressUI(jobId, file.name, file.size);
+
+      // FASE 1: Ingestão Desacoplada e Controle de Estado (Frontend -> Firestore -> Storage)
+      if (fbFirestore && fbStorage) {
+        try {
+          updateRAGProgress(10, "Gravando na Fila", "Criando documento em jobs_auditoria no Firestore...");
+          await fbFirestore.collection("jobs_auditoria").doc(jobId).set({
+            job_id: jobId,
+            status: "pendente",
+            progresso: 0,
+            filename: file.name,
+            file_size: file.size,
+            artifact_type: ext.replace(".", "").toUpperCase(),
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+
+          // FASE 3: Transmissão em Tempo Real (Firestore -> Frontend via onSnapshot)
+          let unsubscribe = null;
+          let fallbackTimer = null;
+
+          unsubscribe = fbFirestore.collection("jobs_auditoria").doc(jobId).onSnapshot((doc) => {
+            if (!doc.exists) return;
+            const data = doc.data();
+            const status = data.status || "pendente";
+            const progress = data.progresso || 10;
+            const msg = data.mensagem || "Processando minuta...";
+
+            updateRAGProgress(progress, status === "processando" ? "Worker em Execução" : (status === "concluido" ? "Concluído" : "Processando"), msg);
+
+            if (status === "concluido") {
+              if (fallbackTimer) clearTimeout(fallbackTimer);
+              if (unsubscribe) unsubscribe();
+              onRAGJobCompleted(data, file.name);
+            } else if (status === "erro") {
+              if (fallbackTimer) clearTimeout(fallbackTimer);
+              if (unsubscribe) unsubscribe();
+              onRAGJobError(data.mensagem || "O arquivo está corrompido ou protegido por senha.");
+            }
+          }, (err) => {
+            console.warn("Firestore snapshot listener alert:", err);
+          });
+
+          // Upload direto para /uploads_minutas/{jobId}.ext
+          updateRAGProgress(20, "Upload para Nuvem", "Enviando arquivo diretamente para o Cloud Storage...");
+          const storageRef = fbStorage.ref().child(`uploads_minutas/${jobId}${ext}`);
+          const uploadTask = storageRef.put(file);
+
+          uploadTask.on(
+            "state_changed",
+            (snapshot) => {
+              const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 20) + 20;
+              updateRAGProgress(pct, "Enviando Minuta", `Upload Storage: ${Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)}% concluído...`);
+            },
+            (err) => {
+              console.warn("Storage put error, switching to direct fallback:", err);
+              if (unsubscribe) unsubscribe();
+              fallbackSyncUpload(file, jobId);
+            },
+            () => {
+              updateRAGProgress(45, "Worker Disparado", "Arquivo no Storage. Worker Cloud Functions acionado em background...");
+              fallbackTimer = setTimeout(() => {
+                fallbackSyncUpload(file, jobId);
+              }, 12000);
+            }
+          );
+          return;
+        } catch (fbErr) {
+          console.warn("Firebase event-driven flow encountered an issue, running API fallback:", fbErr);
+        }
+      }
+
+      // FASE 4 Fallback: Execução via backend HTTP API direto
+      fallbackSyncUpload(file, jobId);
+    }
+
+    async function fallbackSyncUpload(file, jobId) {
+      updateRAGProgress(50, "Processando Minuta", "Extraindo cláusulas e executando auditoria jurídica AGU...");
       const reader = new FileReader();
       reader.onload = async function() {
-        const b64 = reader.result.split(",")[1];
-        const resp = await fetch("/api/v1/rag/audit-upload", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filename: file.name, file_base64: b64, artifact_type: "TR" })
-        });
-        const data = await resp.json();
-        if (data.clauses) {
-          state.clauses = data.clauses;
-          state.findings = (data.findings || []).map((x, idx) => ({
-            id: "UF_" + idx,
-            type: x.finding_type,
-            clause: x.clause_reference,
-            title: x.section_title,
-            explanation: x.explanation,
-            legal: x.legal_foundation,
-            aguText: x.agu_standard_clause,
-            resolved: false
-          }));
-          renderRAG();
+        try {
+          const b64 = reader.result.split(",")[1];
+          updateRAGProgress(75, "Auditando Regras", "Aplicando regras da Lei nº 14.133/2021...");
+          const resp = await fetch("/api/v1/rag/audit-upload", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filename: file.name, file_base64: b64, artifact_type: "TR" })
+          });
+          const data = await resp.json();
+          if (data.clauses) {
+            onRAGJobCompleted(data, file.name);
+          } else {
+            onRAGJobError(data.error || "Não foi possível extrair cláusulas deste arquivo.");
+          }
+        } catch (e) {
+          onRAGJobError("Falha na comunicação com o servidor de auditoria: " + e.message);
         }
       };
       reader.readAsDataURL(file);
@@ -3130,7 +3669,30 @@
       recalculateCuratedQuotes();
     }
 
+    // =========================================================================
+    // RESILIÊNCIA OPERACIONAL E CACHE LOCAL (PWA / INDEXEDDB / LOCALSTORAGE)
+    // Preserva o lote mesmo em caso de queda de rede ou recarregamento
+    // =========================================================================
+    function saveBatchToLocalCache() {
+      try {
+        localStorage.setItem("govtech_batch_tray_items_v1", JSON.stringify(batchTrayItems));
+      } catch (e) {}
+    }
+
+    function restoreBatchFromLocalCache() {
+      try {
+        const raw = localStorage.getItem("govtech_batch_tray_items_v1");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0 && batchTrayItems.length === 0) {
+            batchTrayItems = parsed;
+          }
+        }
+      } catch (e) {}
+    }
+
     function renderBatchTray() {
+      saveBatchToLocalCache();
       const countBadge = document.getElementById("batchCountBadge");
       const wfBadge = document.getElementById("wfBatchBadge");
       if (wfBadge) wfBadge.textContent = batchTrayItems.length;
@@ -3604,6 +4166,8 @@
     }
 
     // Inicialização
+    restoreBatchFromLocalCache();
+    renderBatchTray();
     loadNetworkInfo();
     renderRAG();
     loadConsultaDetalhadaLinks();
