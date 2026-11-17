@@ -3734,14 +3734,18 @@
     async function addItemToBatchTray(itemType, codigo, descricao, unidade, qty = 1) {
       const codeNum = parseInt(codigo, 10);
       if (!codeNum) return;
-      const normType = (itemType || "MATERIAL").toUpperCase();
-      const key = `${normType}:${codeNum}`;
+      let normType = (itemType || "MATERIAL").toUpperCase();
+      let key = `${normType}:${codeNum}`;
       window.catalogDemandMap = window.catalogDemandMap || {};
 
-      // Verifica se já sabemos que não tem demanda nos últimos 12 meses
+      // Se a chave direta estiver sem demanda, checa se a chave alternativa tem demanda
+      const altType = normType === 'MATERIAL' ? 'SERVICO' : 'MATERIAL';
+      const altKey = `${altType}:${codeNum}`;
       if (window.catalogDemandMap[key] && !window.catalogDemandMap[key].has_demand) {
-        showAppNotification(`Cód. ${codeNum}: Sem compras nos últimos 12 meses — evitado no lote pois a pesquisa não converge.`, "error");
-        return;
+        if (window.catalogDemandMap[altKey] && window.catalogDemandMap[altKey].has_demand) {
+          normType = altType;
+          key = altKey;
+        }
       }
 
       const existing = batchTrayItems.find(it => it.code === codeNum && it.type === normType);
@@ -3752,7 +3756,7 @@
           code: codeNum,
           type: normType,
           description: descricao || `${normType === 'SERVICO' ? 'CATSER' : 'CATMAT'} ${codeNum}`,
-          unit: (unidade || "UN").toUpperCase(),
+          unit: (unidade || (normType === 'SERVICO' ? 'SV' : 'UN')).toUpperCase(),
           qty: parseFloat(qty) || 1
         });
       }
@@ -4216,18 +4220,13 @@
     }
 
     async function processBatchResearch() {
-      const demandMap = window.catalogDemandMap || {};
       const marked = batchTrayItems.filter(it => it.selected !== false);
       if (marked.length === 0) {
         showAppNotification("Nenhum item marcado. Marque ☑ os itens do lote que deseja pesquisar.", "warn");
         return;
       }
-      const skipped = marked.filter(it => { const d = demandMap[`${it.type}:${it.code}`]; return d && !d.has_demand; });
-      const selectedItems = marked.filter(it => !skipped.includes(it));
-      if (selectedItems.length === 0) {
-        showAppNotification("Todos os itens marcados estão sem compras no Compras.gov.br nos últimos 12 meses. Troque os códigos em vermelho.", "error");
-        return;
-      }
+      const selectedItems = marked;
+      const skipped = [];
 
       const btn = document.getElementById("btnProcessBatch");
       if (btn) btn.disabled = true;
@@ -4939,6 +4938,58 @@
       }
       closeDemandParserModal();
       if (added) showAppNotification(`${added} item(ns) adicionados ao lote. Agora clique em “🚀 Pesquisar Preços” (passo 2).`, "success");
+    }
+
+    function togglePasteBatchModal() {
+      const m = document.getElementById("pasteBatchModal");
+      if (!m) return;
+      m.classList.toggle("hidden");
+      if (!m.classList.contains("hidden")) {
+        const ta = document.getElementById("pasteBatchTextarea");
+        if (ta) { ta.value = ""; ta.focus(); }
+      }
+    }
+
+    async function addPastedCodesToBatch() {
+      const ta = document.getElementById("pasteBatchTextarea");
+      if (!ta) return;
+      const raw = ta.value.trim();
+      if (!raw) {
+        showAppNotification("Cole ao menos um código CATMAT ou CATSER.", "warn");
+        return;
+      }
+      const matches = raw.match(/\b\d{3,8}\b/g) || [];
+      const uniqueCodes = [...new Set(matches.map(c => parseInt(c, 10)))];
+      if (uniqueCodes.length === 0) {
+        showAppNotification("Nenhum código numérico identificado no texto colado.", "warn");
+        return;
+      }
+
+      showAppNotification(`Analisando e incluindo ${uniqueCodes.length} item(ns) no lote...`, "info");
+      let countAdded = 0;
+      for (const code of uniqueCodes) {
+        let itType = "MATERIAL";
+        let desc = `Item Catálogo ${code}`;
+        let unit = "UN";
+        try {
+          const resp = await fetch(`/api/v1/catalog/search?q=${code}&limit=3`);
+          if (resp.ok) {
+            const data = await resp.json();
+            const found = (data.results || []).find(r => r.codigo === code);
+            if (found) {
+              itType = found.item_type || "MATERIAL";
+              desc = found.descricao || desc;
+              unit = found.unidade || (itType === "SERVICO" ? "SV" : "UN");
+            }
+          }
+        } catch (e) {
+          console.warn(e);
+        }
+        await addItemToBatchTray(itType, code, desc, unit, 1);
+        countAdded++;
+      }
+      togglePasteBatchModal();
+      showAppNotification(`✅ ${countAdded} item(ns) incluído(s) no lote com sucesso!`, "success");
     }
 
 </script>

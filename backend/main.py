@@ -1072,9 +1072,11 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                     if has_data:
                         unit_est = float(rep.get("final_estimated_unit_price", 0.0))
                         resolved_unit = rep.get("target_supply_unit") or unit or "UN"
+                        resolved_type = rep.get("item_type") or item_type
                     else:
                         unit_est = 0.0
                         resolved_unit = unit or "UN"
+                        resolved_type = item_type
                         rep = {
                             "catmat_catser_code": catalog_code,
                             "item_description": desc_fallback or f"Item {catalog_code}",
@@ -1087,7 +1089,7 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                     return {
                         "item_index": idx,
                         "code": catalog_code,
-                        "type": item_type,
+                        "type": resolved_type,
                         "unit": resolved_unit,
                         "qty": qty,
                         "has_data": has_data,

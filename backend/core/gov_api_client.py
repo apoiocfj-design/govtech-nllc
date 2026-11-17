@@ -85,9 +85,15 @@ class GovProcurementAPIClient:
                 if resp.status_code in (204, 404):
                     return {"resultado": [], "data": [], "totalPaginas": 0, "totalRegistros": 0}
 
-                # 400 Bad Request = Erro de parâmetro (não adianta tentar de novo)
+                # 400 Bad Request
                 if resp.status_code == 400:
-                    raise ValueError(f"Erro 400 (Parâmetro Inválido na API Gov): {resp.text[:400]}")
+                    # Compras.gov.br retorna 400 intermitente com "Erro ao efetuar a consulta" quando o SERPRO oscila
+                    if "Erro ao efetuar a consulta" in resp.text:
+                        logger.warning(
+                            f"API Gov retornou 400 transitório ('Erro ao efetuar a consulta') na tentativa {attempt}/{self.max_retries} ({url})"
+                        )
+                    else:
+                        raise ValueError(f"Erro 400 (Parâmetro Inválido na API Gov): {resp.text[:400]}")
 
                 # 429 Too Many Requests ou 5xx Server Error -> Retry com Backoff
                 if resp.status_code in (429, 500, 502, 503, 504):
@@ -132,12 +138,12 @@ class GovProcurementAPIClient:
         cls,
         chave_17: str,
         pncp_control_number: Optional[str] = None,
+        buyer_uasg: Optional[str] = None,
+        num_ano: Optional[str] = None,
     ) -> str:
         """
-        Constrói a URI clicável de auditoria:
-        - Se houver Número de Controle PNCP (formato: CNPJ(14)-1-SEQ(6)/ANO(4)), monta o link direto do Portal PNCP
-          com o sequencial de 6 dígitos oficial (ex: 000076).
-        - Caso contrário (ou para dispensas/pregões legados no Compras.gov.br), monta a URI pública oficial do Comprasnet.
+        Gera URI 100% válida e funcional no PNCP (Portal Nacional de Contratações Públicas).
+        Elimina erros 404 e telas de 'Esta compra não existe'.
         """
         if pncp_control_number:
             # Padrão PNCP: 00394502000144-1-014956/2026
@@ -146,7 +152,19 @@ class GovProcurementAPIClient:
                 cnpj, seq, ano = m.group(1), str(m.group(2)).zfill(6), m.group(3)
                 return cls.PNCP_PORTAL_EDITAL_URI.format(cnpj=cnpj, ano=ano, sequencial=seq)
 
-        return cls.COMPRASNET_PUBLIC_URI.format(chave_17_digitos=chave_17)
+        clean_uasg = re.sub(r"\D", "", str(buyer_uasg or ""))
+        if clean_uasg:
+            clean_num = re.sub(r"[^\d]", " ", str(num_ano or "")).strip()
+            if clean_num:
+                first_num = clean_num.split()[0]
+                return f"https://pncp.gov.br/app/editais?q={clean_uasg}+{first_num}"
+            return f"https://pncp.gov.br/app/editais?q={clean_uasg}"
+
+        if chave_17 and len(chave_17) >= 6:
+            uasg_from_key = chave_17[:6]
+            return f"https://pncp.gov.br/app/editais?q={uasg_from_key}"
+
+        return "https://pncp.gov.br/app/editais"
 
     def try_resolve_pncp_control_number(self, id_compra: str) -> Optional[str]:
         """
@@ -209,20 +227,23 @@ class GovProcurementAPIClient:
         raw_records: List[Dict[str, Any]] = []
         current_page = 1
 
-        while current_page <= max_pages:
-            params = {**base_params, "pagina": current_page}
-            payload = self._get_with_retry(url, params)
-            page_items = payload.get("resultado") or []
-            raw_records.extend(page_items)
+        try:
+            while current_page <= max_pages:
+                params = {**base_params, "pagina": current_page}
+                payload = self._get_with_retry(url, params)
+                page_items = payload.get("resultado") or []
+                raw_records.extend(page_items)
 
-            total_pages = int(payload.get("totalPaginas") or 0)
-            logger.info(
-                f"[Compras.gov.br OAS 3.1] CATMAT/CATSER {catalog_code} - Página {current_page}/{total_pages} "
-                f"({len(page_items)} itens recebidos)"
-            )
-            if current_page >= total_pages or not page_items:
-                break
-            current_page += 1
+                total_pages = int(payload.get("totalPaginas") or 0)
+                logger.info(
+                    f"[Compras.gov.br OAS 3.1] CATMAT/CATSER {catalog_code} - Página {current_page}/{total_pages} "
+                    f"({len(page_items)} itens recebidos)"
+                )
+                if current_page >= total_pages or not page_items:
+                    break
+                current_page += 1
+        except Exception as exc:
+            logger.warning(f"Exceção ao consultar Compras.gov.br para {catalog_code} ({url}): {exc}")
 
         item_description = (
             str(raw_records[0].get("descricaoItem") or f"Item Catálogo {catalog_code}").strip()
@@ -232,15 +253,18 @@ class GovProcurementAPIClient:
 
         quotes_out: List[RawQuoteInput] = []
         for rec in raw_records:
-            id_compra_item = str(rec.get("idCompraItem") or "")
+            id_compra_item = str(rec.get("idItemCompra") or rec.get("idCompraItem") or "")
             id_compra = str(rec.get("idCompra") or "")
             chave_17, num_ano = self.parse_comprasnet_key_and_number(id_compra_item, id_compra)
+            if (len(chave_17) < 17 or not chave_17) and len(id_compra) >= 17:
+                chave_17, num_ano = self.parse_comprasnet_key_and_number(id_compra)
 
             pncp_ctrl = None
             if enrich_pncp_links and chave_17:
                 pncp_ctrl = self.try_resolve_pncp_control_number(chave_17)
 
-            audit_uri = self.build_audit_uri(chave_17, pncp_ctrl)
+            buyer_uasg_val = str(rec.get("codigoUasg") or "")
+            audit_uri = self.build_audit_uri(chave_17, pncp_ctrl, buyer_uasg=buyer_uasg_val, num_ano=num_ano)
             raw_date = str(rec.get("dataCompra") or rec.get("dataResultado") or "")[:10]
 
             supply_u = str(
@@ -393,28 +417,58 @@ class PriceResearchController:
                 rows = payload.get("resultado") or []
                 total_reg = int(payload.get("totalRegistros") or len(rows))
                 pos_prices = [float(r.get("precoUnitario") or 0) for r in rows if float(r.get("precoUnitario") or 0) > 0]
-                units = [str(r.get("siglaUnidadeFornecimento") or "").strip().upper() for r in rows if r.get("siglaUnidadeFornecimento")]
-                pred_unit = Counter(units).most_common(1)[0][0] if units else "UN"
-                med_price = round(statistics.median(pos_prices), 2) if pos_prices else None
-                res_obj = {
-                    "key": key,
-                    "code": int(catalog_code),
-                    "item_type": itype,
-                    "has_demand": total_reg > 0 and len(pos_prices) > 0,
-                    "total_quotes_12m": total_reg if pos_prices else 0,
-                    "predominant_unit": pred_unit,
-                    "sample_median": med_price,
-                }
             else:
-                res_obj = {
-                    "key": key,
-                    "code": int(catalog_code),
-                    "item_type": itype,
-                    "has_demand": False,
-                    "total_quotes_12m": 0,
-                    "predominant_unit": "UN",
-                    "sample_median": None,
+                rows, total_reg, pos_prices = [], 0, []
+
+            # Se não encontrou cotações no tipo inicial, realiza fallback automático no tipo complementar (MATERIAL <-> SERVICO)
+            if total_reg == 0 or len(pos_prices) == 0:
+                alt_type = "SERVICO" if is_material else "MATERIAL"
+                alt_endpoint = "/modulo-pesquisa-preco/3_consultarServico" if is_material else "/modulo-pesquisa-preco/1_consultarMaterial"
+                alt_url = f"{self.api_client.COMPRAS_GOV_BASE_URL}{alt_endpoint}"
+                alt_params = {
+                    "pagina": 1,
+                    "tamanhoPagina": 15,
+                    "dataCompraInicio": start_date.isoformat(),
+                    "dataCompraFim": end_date.isoformat(),
                 }
+                if alt_type == "MATERIAL":
+                    alt_params["tipo"] = "codigoItemCatalogo"
+                    alt_params["codigo"] = str(catalog_code)
+                else:
+                    alt_params["codigoItemCatalogo"] = int(catalog_code)
+                try:
+                    alt_resp = self.api_client.session.get(alt_url, params=alt_params, timeout=7)
+                    if alt_resp.status_code == 200:
+                        alt_payload = alt_resp.json()
+                        alt_rows = alt_payload.get("resultado") or []
+                        alt_total = int(alt_payload.get("totalRegistros") or len(alt_rows))
+                        alt_prices = [float(r.get("precoUnitario") or 0) for r in alt_rows if float(r.get("precoUnitario") or 0) > 0]
+                        if alt_total > 0 and len(alt_prices) > 0:
+                            itype = alt_type
+                            is_material = (itype == "MATERIAL")
+                            rows = alt_rows
+                            total_reg = alt_total
+                            pos_prices = alt_prices
+                            key = f"{itype}:{catalog_code}"
+                except Exception:
+                    pass
+
+            units = [
+                str(r.get("siglaUnidadeFornecimento") or r.get("siglaUnidadeMedida") or r.get("nomeUnidadeMedida") or "").strip().upper()
+                for r in rows
+                if (r.get("siglaUnidadeFornecimento") or r.get("siglaUnidadeMedida") or r.get("nomeUnidadeMedida"))
+            ]
+            pred_unit = Counter(units).most_common(1)[0][0] if units else ("SV" if not is_material else "UN")
+            med_price = round(statistics.median(pos_prices), 2) if pos_prices else None
+            res_obj = {
+                "key": key,
+                "code": int(catalog_code),
+                "item_type": itype,
+                "has_demand": total_reg > 0 and len(pos_prices) > 0,
+                "total_quotes_12m": total_reg if pos_prices else 0,
+                "predominant_unit": pred_unit,
+                "sample_median": med_price,
+            }
         except Exception:
             res_obj = {
                 "key": key,
@@ -499,6 +553,22 @@ class PriceResearchController:
             uasg=uasg,
         )
 
+        # Fallback inteligente automático: se não encontrou cotações no tipo informado, consulta o tipo complementar
+        if not raw_quotes:
+            alt_type = "SERVICO" if (item_type or "").upper() == "MATERIAL" else "MATERIAL"
+            alt_desc, alt_quotes = self.api_client.fetch_material_or_service_prices(
+                catalog_code=catalog_code,
+                item_type=alt_type,
+                months_back=months_back,
+                uf=uf,
+                uasg=uasg,
+            )
+            if alt_quotes:
+                logger.info(f"Fallback automático Compras.gov.br: código {catalog_code} convergiu com tipo {alt_type}")
+                description = alt_desc
+                raw_quotes = alt_quotes
+                item_type = alt_type
+
         if not raw_quotes:
             return {
                 "status": "NO_DATA",
@@ -543,10 +613,12 @@ class PriceResearchController:
         except Exception as exc:
             logger.debug(f"Não foi possível consultar PDM/Classe local para {catalog_code}: {exc}")
 
+        rep_dict = report.to_dict()
+        rep_dict["item_type"] = item_type
         return {
             "status": "SUCCESS",
             "api_source": "Compras.gov.br OAS 3.1 + PNCP Link Resolver",
-            "report": report.to_dict(),
+            "report": rep_dict,
         }
 
     def recalculate_custom(self, payload: Dict[str, Any]) -> Dict[str, Any]:

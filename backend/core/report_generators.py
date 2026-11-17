@@ -496,11 +496,11 @@ def build_in65_docx_bytes(
     valid_quotes = report.get("valid_quotes", [])
     quotes_to_show = valid_quotes[:10]
 
-    t_quotes = doc.add_table(rows=1 + len(quotes_to_show), cols=5)
+    t_quotes = doc.add_table(rows=1 + len(quotes_to_show), cols=6)
     t_quotes.alignment = WD_TABLE_ALIGNMENT.CENTER
-    q_widths = (Inches(0.55), Inches(1.5), Inches(1.35), Inches(2.3), Inches(1.3))
+    q_widths = (Inches(0.40), Inches(1.35), Inches(1.10), Inches(1.55), Inches(1.00), Inches(1.27))
 
-    q_headers = ["Nº", "UASG / Órgão", "Compra nº / Data", "Fornecedor Vencedor", "Preço Unit."]
+    q_headers = ["Nº", "UASG / Órgão", "Compra nº / Data", "Fornecedor Vencedor", "Preço Unit.", "Comprovação PNCP"]
     hdr_row = t_quotes.rows[0]
     for c_idx, h in enumerate(q_headers):
         cell = hdr_row.cells[c_idx]
@@ -516,7 +516,7 @@ def build_in65_docx_bytes(
 
     for idx, q in enumerate(quotes_to_show):
         row = t_quotes.rows[1 + idx]
-        q_url = q.get("pncp_or_compras_uri") or (f"https://pncp.gov.br/app/editais/{q['purchase_key']}" if q.get("purchase_key") else "https://pncp.gov.br")
+        q_url = q.get("pncp_or_compras_uri") or (f"https://pncp.gov.br/app/editais?q={q['purchase_key'][:6]}" if q.get("purchase_key") else "https://pncp.gov.br/app/editais")
 
         vals = [
             f"{idx + 1:02d}",
@@ -538,9 +538,40 @@ def build_in65_docx_bytes(
             r.font.name = "Calibri"
             if c_idx == 4:
                 r.font.bold = True
-            elif c_idx == 2 and q_url.startswith("http"):
-                p.add_run("\n")
-                add_docx_hyperlink(p, q_url, "🔗 Ver no Portal Gov", color="1D4ED8", underline=True)
+
+        # Coluna 6: Comprovação Digital / PNCP (QR Code + Link Clicável)
+        cell_qr = row.cells[5]
+        cell_qr.width = q_widths[5]
+        set_cell_background(cell_qr, bg)
+        set_cell_margins(cell_qr, 40, 40, 40, 40)
+        p_qr = cell_qr.paragraphs[0]
+        p_qr.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_qr.paragraph_format.space_before = Pt(2)
+        p_qr.paragraph_format.space_after = Pt(2)
+
+        try:
+            qr_obj = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_L,
+                box_size=2,
+                border=1,
+            )
+            qr_obj.add_data(q_url)
+            qr_obj.make(fit=True)
+            qr_img = qr_obj.make_image(fill_color="black", back_color="white")
+            qr_buf = io.BytesIO()
+            qr_img.save(qr_buf, format="PNG")
+            qr_buf.seek(0)
+            run_qr = p_qr.add_run()
+            run_qr.add_picture(qr_buf, width=Inches(0.72))
+        except Exception as exc:
+            logger.warning(f"Erro ao gerar QR code da cotação no Word: {exc}")
+
+        p_link = cell_qr.add_paragraph()
+        p_link.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_link.paragraph_format.space_before = Pt(0)
+        p_link.paragraph_format.space_after = Pt(2)
+        add_docx_hyperlink(p_link, q_url, "🔗 Ver no PNCP", color="1D4ED8", underline=True)
 
     # SEÇÃO 3: SANEAMENTO ESTATÍSTICO
     p_s3 = doc.add_paragraph()
@@ -952,28 +983,47 @@ def build_in65_pdf_bytes(
             Paragraph("Nº Compra / Data", st_cell_hdr),
             Paragraph("Fornecedor Vencedor & CNPJ", st_cell_hdr),
             Paragraph("Preço Unit.", st_cell_hdr),
+            Paragraph("Comprovação PNCP", st_cell_hdr),
         ]
     ]
 
     for idx, q in enumerate(valid_quotes[:7]):
-        q_url = q.get("pncp_or_compras_uri") or (f"https://pncp.gov.br/app/editais/{q['purchase_key']}" if q.get("purchase_key") else "https://pncp.gov.br")
+        q_url = q.get("pncp_or_compras_uri") or (f"https://pncp.gov.br/app/editais?q={q['purchase_key'][:6]}" if q.get("purchase_key") else "https://pncp.gov.br/app/editais")
+        
+        qr_obj = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=2,
+            border=1,
+        )
+        qr_obj.add_data(q_url)
+        qr_obj.make(fit=True)
+        qr_img = qr_obj.make_image(fill_color="black", back_color="white")
+        qr_buf = io.BytesIO()
+        qr_img.save(qr_buf, format="PNG")
+        qr_buf.seek(0)
+        rl_qr = RLImage(qr_buf, width=1.5 * cm, height=1.5 * cm)
+        p_link = Paragraph(f"<font color='#0284c7' size='7'><u><a href='{q_url}'><b>🔗 Ver no PNCP</b></a></u></font>", st_cell_txt_center)
+
         quotes_data.append([
             Paragraph(f"{idx+1:02d}", st_cell_txt_center),
             Paragraph(f"UASG {q.get('buyer_uasg', '')} ({q.get('buyer_uf', '')})<br/>{q.get('buyer_org_name', '')[:25]}", st_cell_txt),
-            Paragraph(f"{q.get('purchase_number_year', '')}<br/>{q.get('purchase_date', '')}<br/><font color='#0284c7'><u><a href='{q_url}'>Ver Compra</a></u></font>", st_cell_txt_center),
+            Paragraph(f"{q.get('purchase_number_year', '')}<br/>{q.get('purchase_date', '')}", st_cell_txt_center),
             Paragraph(f"{q.get('supplier_name', '')[:35]}<br/>CNPJ: {q.get('supplier_cnpj', '')}", st_cell_txt),
             Paragraph(_format_brl(float(q.get("unit_price", 0.0))), st_cell_bold_right),
+            [rl_qr, p_link],
         ])
 
-    t_quotes = Table(quotes_data, colWidths=[1 * cm, 4.5 * cm, 3.2 * cm, 6.5 * cm, 2.8 * cm])
+    t_quotes = Table(quotes_data, colWidths=[0.8 * cm, 3.8 * cm, 2.4 * cm, 4.8 * cm, 2.5 * cm, 3.7 * cm])
     t_quotes.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (5, 0), (5, -1), "CENTER"),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
         ("TOPPADDING", (0, 0), (-1, -1), 3),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
     ]))
     story.append(t_quotes)
