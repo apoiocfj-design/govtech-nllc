@@ -613,6 +613,33 @@ class PriceResearchController:
         except Exception as exc:
             logger.debug(f"Não foi possível consultar PDM/Classe local para {catalog_code}: {exc}")
 
+        # Resolução paralela dos links literais e diretos no PNCP para todas as cotações auditadas
+        try:
+            import concurrent.futures
+            try:
+                from pncp_extractor import resolve_pncp_webpage_url
+            except ImportError:
+                from core.pncp_extractor import resolve_pncp_webpage_url
+
+            def _enrich_quote_pncp(q):
+                if q.pncp_control_number and "/editais/" in (q.pncp_or_compras_uri or "") and "?q=" not in (q.pncp_or_compras_uri or ""):
+                    return
+                key = q.purchase_key or (q.id_compra_item[:17] if len(q.id_compra_item) >= 17 else "")
+                if key:
+                    literal_url = resolve_pncp_webpage_url(key)
+                    if literal_url:
+                        q.pncp_or_compras_uri = literal_url
+                        m = re.match(r"https://pncp\.gov\.br/app/editais/(\d+)/(\d+)/(\d+)", literal_url)
+                        if m:
+                            q.pncp_control_number = f"{m.group(1)}-1-{m.group(3)}/{m.group(2)}"
+
+            quotes_to_enrich = report.valid_quotes + report.purged_quotes[:15]
+            if quotes_to_enrich:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+                    list(executor.map(_enrich_quote_pncp, quotes_to_enrich))
+        except Exception as exc_enrich:
+            logger.debug(f"Não foi possível enriquecer links literais do PNCP: {exc_enrich}")
+
         rep_dict = report.to_dict()
         rep_dict["item_type"] = item_type
         return {
@@ -647,6 +674,33 @@ class PriceResearchController:
             nome_classe=classe,
             arp_atas_vigentes=arps,
         )
+
+        # Enriquecimento de links PNCP literais no recálculo personalizado
+        try:
+            import concurrent.futures
+            try:
+                from pncp_extractor import resolve_pncp_webpage_url
+            except ImportError:
+                from core.pncp_extractor import resolve_pncp_webpage_url
+
+            def _enrich_dict_quote(q_dict):
+                uri = q_dict.get("pncp_or_compras_uri") or ""
+                if "/editais/" in uri and "?q=" not in uri:
+                    return
+                key = q_dict.get("purchase_key") or (str(q_dict.get("id_compra_item", ""))[:17] if len(str(q_dict.get("id_compra_item", ""))) >= 17 else "")
+                if key:
+                    literal_url = resolve_pncp_webpage_url(key)
+                    if literal_url:
+                        q_dict["pncp_or_compras_uri"] = literal_url
+                        m = re.match(r"https://pncp\.gov\.br/app/editais/(\d+)/(\d+)/(\d+)", literal_url)
+                        if m:
+                            q_dict["pncp_control_number"] = f"{m.group(1)}-1-{m.group(3)}/{m.group(2)}"
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+                list(executor.map(_enrich_dict_quote, rep_dict.get("valid_quotes", []) + rep_dict.get("purged_quotes", [])[:15]))
+        except Exception:
+            pass
+
         return {
             "status": "SUCCESS",
             "api_source": "Curadoria do Analista (Art. 6º, § 2º IN 65/2021)",

@@ -516,7 +516,19 @@ def build_in65_docx_bytes(
 
     for idx, q in enumerate(quotes_to_show):
         row = t_quotes.rows[1 + idx]
-        q_url = q.get("pncp_or_compras_uri") or (f"https://pncp.gov.br/app/editais?q={q['purchase_key'][:6]}" if q.get("purchase_key") else "https://pncp.gov.br/app/editais")
+        q_url = q.get("pncp_or_compras_uri") or ""
+        if not q_url or "?q=" in q_url:
+            key = q.get("purchase_key") or (str(q.get("id_compra_item", ""))[:17] if len(str(q.get("id_compra_item", ""))) >= 17 else "")
+            if key:
+                try:
+                    from pncp_extractor import resolve_pncp_webpage_url
+                    lit = resolve_pncp_webpage_url(key)
+                    if lit:
+                        q_url = lit
+                except Exception:
+                    pass
+        if not q_url:
+            q_url = f"https://pncp.gov.br/app/editais?q={q.get('buyer_uasg', '')}" if q.get("buyer_uasg") else "https://pncp.gov.br/app/editais"
 
         vals = [
             f"{idx + 1:02d}",
@@ -988,7 +1000,19 @@ def build_in65_pdf_bytes(
     ]
 
     for idx, q in enumerate(valid_quotes[:7]):
-        q_url = q.get("pncp_or_compras_uri") or (f"https://pncp.gov.br/app/editais?q={q['purchase_key'][:6]}" if q.get("purchase_key") else "https://pncp.gov.br/app/editais")
+        q_url = q.get("pncp_or_compras_uri") or ""
+        if not q_url or "?q=" in q_url:
+            key = q.get("purchase_key") or (str(q.get("id_compra_item", ""))[:17] if len(str(q.get("id_compra_item", ""))) >= 17 else "")
+            if key:
+                try:
+                    from pncp_extractor import resolve_pncp_webpage_url
+                    lit = resolve_pncp_webpage_url(key)
+                    if lit:
+                        q_url = lit
+                except Exception:
+                    pass
+        if not q_url:
+            q_url = f"https://pncp.gov.br/app/editais?q={q.get('buyer_uasg', '')}" if q.get("buyer_uasg") else "https://pncp.gov.br/app/editais"
         
         qr_obj = qrcode.QRCode(
             version=1,

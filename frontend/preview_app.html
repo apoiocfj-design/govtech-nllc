@@ -404,24 +404,24 @@
           </div>
         </div>
 
-        <!-- BARRA DE AÇÕES DIRETAS MINIMALISTA (ALTURA H-9, SIMETRIA PERFEITA) -->
+        <!-- BARRA DE AÇÕES DIRETAS: PESQUISA DE PREÇOS OFICIAL (IN 65/2021) -->
         <div class="pt-2 border-t border-slate-200/80 grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <button onclick="downloadLiveExcel()" class="h-9 bg-[#3b6e5c] hover:bg-[#2d5849] text-white font-bold px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Baixar planilha com mapa comparativo e memórias de cálculo">
-            <span>📊</span> <span class="truncate">Mapa Excel (.XLSX)</span>
+          <button onclick="downloadLiveExcel()" class="h-9 bg-[#3b6e5c] hover:bg-[#2d5849] text-white font-bold px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Baixar Mapa Comparativo de Preços em Excel (.xlsx)">
+            <span>📊</span> <span class="truncate">Planilha Mapa (.XLSX)</span>
           </button>
-          <button onclick="downloadLiveWord()" class="h-9 bg-[#3b5b7c] hover:bg-[#2e4761] text-white font-bold px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Baixar relatório editável em formato Word com modelo AGU">
-            <span>📄</span> <span class="truncate">Relatório Word (.DOCX)</span>
+          <button onclick="downloadLiveWord()" class="h-9 bg-[#3b5b7c] hover:bg-[#2e4761] text-white font-bold px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Baixar Relatório Oficial de Pesquisa de Preços em Word (.docx)">
+            <span>📄</span> <span class="truncate">Pesquisa Preços Word (.DOCX)</span>
           </button>
-          <button onclick="downloadLivePdf()" class="h-9 bg-[#9e4747] hover:bg-[#833838] text-white font-bold px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Baixar relatório oficial formatado pronto para assinatura">
-            <span>📕</span> <span class="truncate">Relatório PDF (.PDF)</span>
+          <button onclick="downloadLivePdf()" class="h-9 bg-[#9e4747] hover:bg-[#833838] text-white font-bold px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Baixar Relatório Oficial de Pesquisa de Preços em PDF com QR Codes">
+            <span>📕</span> <span class="truncate">Pesquisa Preços PDF (.PDF)</span>
           </button>
-          <button onclick="openFormalReportModal()" class="h-9 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Inspecionar folha de rosto e termos na tela">
-            <span>👁️</span> <span class="truncate">Visualizar Relatório</span>
+          <button onclick="openFormalReportModal()" class="h-9 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Visualizar Relatório de Pesquisa na Tela">
+            <span>👁️</span> <span class="truncate">Ver Pesquisa na Tela</span>
           </button>
         </div>
       </div>
 
-      <!-- ALERTA DE AUDITORIA: MENOS DE 3 COTAÇÕES (COMPACTO) -->
+      <!-- ALERTA DE AUDITORIA: MENOS DE 3 COTAÇÕES (DESPACHO DA AUTORIDADE) -->
       <div id="justificativaCircunstanciadaCard" class="hidden bg-amber-50 border border-amber-300 rounded-xl p-3 space-y-2">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div class="flex items-center gap-2.5">
@@ -439,14 +439,14 @@
             </div>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
-            <button onclick="downloadLiveJustificativaWord()" class="h-7.5 bg-[#3b5b7c] hover:bg-[#2e4761] text-white font-bold px-2.5 py-1 rounded-lg text-[10px] shadow-2xs transition flex items-center gap-1">
-              <span>📄</span> Word
+            <button onclick="downloadLiveJustificativaWord()" class="h-7.5 bg-[#3b5b7c] hover:bg-[#2e4761] text-white font-bold px-2.5 py-1 rounded-lg text-[10px] shadow-2xs transition flex items-center gap-1" title="Baixar Minuta de Despacho de Justificativa Circunstanciada em Word (.docx)">
+              <span>📄</span> Despacho Word (.DOCX)
             </button>
-            <button onclick="downloadLiveJustificativaPdf()" class="h-7.5 bg-[#9e4747] hover:bg-[#833838] text-white font-bold px-2.5 py-1 rounded-lg text-[10px] shadow-2xs transition flex items-center gap-1">
-              <span>📕</span> PDF
+            <button onclick="downloadLiveJustificativaPdf()" class="h-7.5 bg-[#9e4747] hover:bg-[#833838] text-white font-bold px-2.5 py-1 rounded-lg text-[10px] shadow-2xs transition flex items-center gap-1" title="Baixar Minuta de Despacho de Justificativa Circunstanciada em PDF">
+              <span>📕</span> Despacho PDF (.PDF)
             </button>
-            <button onclick="openJustificativaModal()" class="h-7.5 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-2.5 py-1 rounded-lg text-[10px] shadow-2xs transition flex items-center gap-1">
-              <span>👁️</span> Despacho
+            <button onclick="openJustificativaModal()" class="h-7.5 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-2.5 py-1 rounded-lg text-[10px] shadow-2xs transition flex items-center gap-1" title="Abrir e revisar texto do Despacho Circunstanciado na tela">
+              <span>👁️</span> Ver Despacho
             </button>
           </div>
         </div>
@@ -2862,8 +2862,8 @@
               <span class="text-[10px] text-slate-500">${q.purchase_date || '—'}</span>
             </td>
             <td class="py-2.5 px-3 text-center whitespace-nowrap space-x-1">
-              <button onclick="openPncpPortalByQuote(${idx})" class="h-6.5 bg-white hover:bg-slate-50 text-[#1e2d3d] border border-slate-300 font-bold px-2 py-0.5 rounded text-[10px] shadow-2xs transition inline-flex items-center gap-1" title="Abrir página oficial da compra no Compras.gov/PNCP">
-                <span>🌐</span> Gov.br
+              <button onclick="openPncpPortalByQuote(${idx})" class="h-6.5 bg-white hover:bg-slate-50 text-[#1e2d3d] border border-slate-300 font-bold px-2 py-0.5 rounded text-[10px] shadow-2xs transition inline-flex items-center gap-1" title="Abrir página oficial específica da contratação no PNCP">
+                <span>🌐</span> Ver no PNCP
               </button>
               <button onclick="openQuoteDossierByIndex(${idx})" class="h-6.5 bg-[#3b5b7c] hover:bg-[#2e4761] text-white font-bold px-2 py-0.5 rounded text-[10px] shadow-2xs transition inline-flex items-center gap-1" title="Ver Dossiê e Arquivos PNCP da Compra">
                 <span>📄</span> Dossiê
@@ -2882,6 +2882,13 @@
       if (!window.currentAllQuotes || !window.currentAllQuotes[idx]) return;
       const q = window.currentAllQuotes[idx];
 
+      // 1. Se já possui URL literal específica do PNCP (/editais/{cnpj}/{ano}/{seq})
+      if (q.pncp_or_compras_uri && /\/app\/editais\/\d{14}\/\d{4}\/\d+/.test(q.pncp_or_compras_uri)) {
+        window.open(q.pncp_or_compras_uri, "_blank");
+        return;
+      }
+
+      // 2. Se possui número de controle PNCP (CNPJ-1-SEQ/ANO)
       if (q.pncp_control_number) {
         const m = String(q.pncp_control_number).trim().match(/^(\d{14})-\d+-(\d+)\/(\d{4})$/);
         if (m) {
@@ -2891,17 +2898,15 @@
         }
       }
 
-      if (q.pncp_or_compras_uri && q.pncp_or_compras_uri.includes("pncp.gov.br/app/editais")) {
-        window.open(q.pncp_or_compras_uri, "_blank");
-        return;
-      }
-
-      const chave = q.purchase_key || q.id_compra_item || "";
-      if (chave) {
+      // 3. Resolve dinamicamente via backend a contratação exata no PNCP
+      const chave = q.purchase_key || (q.id_compra_item ? String(q.id_compra_item).slice(0, 17) : "");
+      if (chave && chave.length >= 10) {
+        showAppNotification("Abrindo edital correspondente no Portal PNCP...", "info");
         fetch(`/api/v1/pncp/compra-info?chave=${encodeURIComponent(chave)}`)
           .then(r => r.json())
           .then(d => {
             if (d && d.status === "SUCCESS" && d.pncp_webpage_url) {
+              q.pncp_or_compras_uri = d.pncp_webpage_url;
               window.open(d.pncp_webpage_url, "_blank");
             } else {
               window.open(q.pncp_or_compras_uri || "https://pncp.gov.br", "_blank");
