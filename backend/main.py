@@ -54,6 +54,7 @@ from pncp_extractor import (
     resolve_pncp_webpage_url,
     capture_pncp_page_pdf,
 )
+from irp_client import search_irps, get_irp_detail
 
 price_controller = PriceResearchController()
 rag_auditor = RAGLegalAuditor(similarity_threshold=0.45)
@@ -784,6 +785,35 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                     self._send_json(404, {"error": "Arquivo não encontrado no PNCP."})
             except Exception as exc:
                 self._send_json(500, {"error": str(exc)})
+            return
+
+        # 13. Motor de Busca de IRP (Intenções de Registro de Preços) no PNCP (Lei 14.133/2021)
+        if path == "/api/v1/irp/search":
+            q = qs.get("q", [""])[0]
+            status = qs.get("status", ["aberta"])[0]
+            uf = qs.get("uf", [""])[0]
+            pagina = int(qs.get("pagina", ["1"])[0] or 1)
+            tam_pagina = int(qs.get("tam_pagina", qs.get("tamanhoPagina", ["20"]))[0] or 20)
+            try:
+                res = search_irps(q=q, status=status, uf=uf, pagina=pagina, tam_pagina=tam_pagina)
+                self._send_json(200, res)
+            except Exception as exc:
+                self._send_json(500, {"status": "ERROR", "error": str(exc), "items": []})
+            return
+
+        # 14. Detalhes Completos, Itens e Arquivos da IRP (PNCP)
+        if path == "/api/v1/irp/detail":
+            cnpj = qs.get("cnpj", [""])[0]
+            ano = qs.get("ano", [""])[0]
+            seq = qs.get("seq", qs.get("sequencial", [""]))[0]
+            if not (cnpj and ano and seq):
+                self._send_json(400, {"status": "ERROR", "error": "Parâmetros 'cnpj', 'ano' e 'seq' são obrigatórios."})
+                return
+            try:
+                res = get_irp_detail(cnpj=cnpj, ano=ano, sequencial=seq)
+                self._send_json(200, res)
+            except Exception as exc:
+                self._send_json(500, {"status": "ERROR", "error": str(exc), "itens": [], "arquivos": []})
             return
 
         self._send_json(404, {"error": "Rota não encontrada."})

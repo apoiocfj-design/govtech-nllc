@@ -86,6 +86,9 @@
         <button id="tabBtnLinks" onclick="openTab('LINKS')" class="px-3.5 py-2 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-[#334960] transition">
           🏛️ 3. Consulta Detalhada & Certidões (Gov.br)
         </button>
+        <button id="tabBtnIRP" onclick="openTab('IRP')" class="px-3.5 py-2 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-[#334960] transition">
+          📡 4. Radar de IRP (Abertas & Em Andamento)
+        </button>
       </div>
     </div>
   </header>
@@ -705,6 +708,261 @@
   </main>
 
   <!-- ===================================================================== -->
+  <!-- ABA 4: RADAR DE IRP (INTENÇÕES DE REGISTRO DE PREÇOS NO PNCP)        -->
+  <!-- ===================================================================== -->
+  <main id="viewIRP" class="max-w-7xl w-full mx-auto p-6 space-y-6 flex-1 no-print hidden">
+    <!-- Banner de Cabeçalho Executivo -->
+    <div class="bg-gradient-to-r from-[#1e2d3d] via-[#27394d] to-[#1e2d3d] rounded-2xl p-5 text-white shadow-md border border-[#334960]/80">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2.5">
+            <div class="w-10 h-10 rounded-xl bg-amber-400/20 border border-amber-400/40 flex items-center justify-center text-xl text-amber-300 shadow-inner">
+              📡
+            </div>
+            <div>
+              <h2 class="text-base md:text-lg font-black tracking-tight flex items-center gap-2">
+                Radar de IRP & Oportunidades SRP
+                <span class="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 tracking-normal flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> PNCP Ao Vivo
+                </span>
+              </h2>
+              <p class="text-xs text-slate-300 mt-0.5">
+                Descoberta de Intenções de Registro de Preços abertas a manifestação de interesse e adesão de órgãos participantes (Art. 86 da Lei 14.133/2021 & Dec. 11.462/2023).
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="loadIRPSearch()" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-[#c5a365] hover:bg-[#d6b476] text-[#1e2d3d] shadow-sm flex items-center gap-1.5 transition">
+            <span>🔄</span> Atualizar Radar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Barra de Filtros e Busca Inteligente -->
+    <div class="bg-white rounded-2xl p-4 shadow-xs border border-slate-200 space-y-3">
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5">
+        <!-- Campo de Busca -->
+        <div class="md:col-span-6 relative">
+          <input
+            id="irpSearchInput"
+            type="text"
+            placeholder="Buscar por termo ou objeto (ex: veículos, limpeza, computadores, medicamentos, pneus, geradores)..."
+            class="w-full pl-9 pr-3 py-2 text-xs font-medium rounded-xl border border-slate-300 focus:border-[#c5a365] focus:ring-1 focus:ring-[#c5a365] outline-none"
+            onkeydown="if(event.key === 'Enter') executeIRPSearch(1)"
+          />
+          <span class="absolute left-3 top-2.5 text-slate-400 text-xs">🔍</span>
+        </div>
+
+        <!-- Filtro de Situação -->
+        <div class="md:col-span-3">
+          <select
+            id="irpStatusSelect"
+            onchange="executeIRPSearch(1)"
+            class="w-full py-2 px-2.5 text-xs font-bold rounded-xl border border-slate-300 bg-white focus:border-[#c5a365] outline-none text-slate-700"
+          >
+            <option value="aberta" selected>🟢 IRPs Abertas para Manifestação</option>
+            <option value="em_andamento">🟡 IRPs Em Andamento / Divulgadas</option>
+            <option value="todas">⚪ Todas as IRPs no PNCP</option>
+            <option value="srp_edital">📜 Editais & Pregões SRP (Recebendo Propostas)</option>
+          </select>
+        </div>
+
+        <!-- Filtro por UF -->
+        <div class="md:col-span-2">
+          <select
+            id="irpUfSelect"
+            onchange="executeIRPSearch(1)"
+            class="w-full py-2 px-2.5 text-xs font-bold rounded-xl border border-slate-300 bg-white focus:border-[#c5a365] outline-none text-slate-700"
+          >
+            <option value="">Todas as UFs</option>
+            <option value="RJ">RJ - Rio de Janeiro</option>
+            <option value="DF">DF - Distrito Federal</option>
+            <option value="SP">SP - São Paulo</option>
+            <option value="MG">MG - Minas Gerais</option>
+            <option value="RS">RS - Rio Grande do Sul</option>
+            <option value="PR">PR - Paraná</option>
+            <option value="SC">SC - Santa Catarina</option>
+            <option value="BA">BA - Bahia</option>
+            <option value="PE">PE - Pernambuco</option>
+            <option value="CE">CE - Ceará</option>
+            <option value="MS">MS - Mato Grosso do Sul</option>
+            <option value="MT">MT - Mato Grosso</option>
+            <option value="GO">GO - Goiás</option>
+            <option value="ES">ES - Espírito Santo</option>
+            <option value="PA">PA - Pará</option>
+            <option value="AM">AM - Amazonas</option>
+            <option value="RN">RN - Rio Grande do Norte</option>
+            <option value="PB">PB - Paraíba</option>
+            <option value="AL">AL - Alagoas</option>
+            <option value="SE">SE - Sergipe</option>
+            <option value="PI">PI - Piauí</option>
+            <option value="MA">MA - Maranhão</option>
+            <option value="RO">RO - Rondônia</option>
+            <option value="AC">AC - Acre</option>
+            <option value="AP">AP - Amapá</option>
+            <option value="RR">RR - Roraima</option>
+            <option value="TO">TO - Tocantins</option>
+          </select>
+        </div>
+
+        <!-- Botão Buscar -->
+        <div class="md:col-span-1">
+          <button
+            onclick="executeIRPSearch(1)"
+            class="w-full py-2 px-3 rounded-xl bg-[#27394d] hover:bg-[#1e2d3d] text-white text-xs font-bold transition shadow-xs flex items-center justify-center gap-1"
+          >
+            Filtrar
+          </button>
+        </div>
+      </div>
+
+      <!-- Atalhos de Busca Rápida -->
+      <div class="flex flex-wrap items-center gap-1.5 pt-1 text-[11px] text-slate-500">
+        <span class="font-bold text-slate-400">Atalhos:</span>
+        <button onclick="setIRPTermAndSearch('veículos')" class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-200 transition">🚗 Veículos</button>
+        <button onclick="setIRPTermAndSearch('limpeza')" class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-200 transition">🧹 Limpeza</button>
+        <button onclick="setIRPTermAndSearch('computador')" class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-200 transition">💻 Informática / TI</button>
+        <button onclick="setIRPTermAndSearch('manutenção')" class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-200 transition">⚙️ Manutenção</button>
+        <button onclick="setIRPTermAndSearch('medicamento')" class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-200 transition">🏥 Saúde</button>
+        <button onclick="setIRPTermAndSearch('alimentação')" class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-200 transition">🍎 Gêneros Alimentícios</button>
+        <button onclick="setIRPTermAndSearch('pneu')" class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-200 transition">🛞 Pneus</button>
+        <button onclick="setIRPTermAndSearch('')" class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-500 font-semibold border border-slate-200 transition">✖️ Limpar Termo</button>
+      </div>
+    </div>
+
+    <!-- Indicadores Rápidos / KPIs -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div class="bg-white rounded-xl p-3 border border-slate-200/90 shadow-xs">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total Encontradas</div>
+        <div id="irpMetricTotal" class="text-xl font-black text-[#1e2d3d] mt-0.5">0</div>
+        <div class="text-[10px] text-slate-400 mt-0.5">No PNCP oficial</div>
+      </div>
+      <div class="bg-white rounded-xl p-3 border border-slate-200/90 shadow-xs">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Abertas a Participação</div>
+        <div id="irpMetricOpen" class="text-xl font-black text-emerald-600 mt-0.5">0</div>
+        <div class="text-[10px] text-emerald-600/80 mt-0.5">Com prazo vigente</div>
+      </div>
+      <div class="bg-white rounded-xl p-3 border border-slate-200/90 shadow-xs">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-amber-700">Prazo Crítico (&le; 5 dias)</div>
+        <div id="irpMetricCritical" class="text-xl font-black text-amber-600 mt-0.5">0</div>
+        <div class="text-[10px] text-amber-600/80 mt-0.5">Encerram em breve</div>
+      </div>
+      <div class="bg-white rounded-xl p-3 border border-slate-200/90 shadow-xs">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-sky-700">UFs Abrangidas</div>
+        <div id="irpMetricUfs" class="text-xl font-black text-sky-600 mt-0.5">0</div>
+        <div class="text-[10px] text-sky-600/80 mt-0.5">Estados e municípios</div>
+      </div>
+    </div>
+
+    <!-- Lista de Resultados e Cards -->
+    <div class="space-y-3">
+      <div id="irpLoadingState" class="hidden bg-white rounded-2xl p-8 border border-slate-200 text-center space-y-3">
+        <div class="inline-block animate-spin text-3xl text-[#c5a365]">⏳</div>
+        <div class="text-xs font-bold text-slate-700">Consultando o Portal Nacional de Contratações Públicas (PNCP)...</div>
+        <div class="text-[11px] text-slate-400">Varrendo intenções de registro de preços e manifestações de interesse abertas...</div>
+      </div>
+
+      <div id="irpEmptyState" class="hidden bg-white rounded-2xl p-8 border border-slate-200 text-center space-y-2">
+        <div class="text-3xl text-slate-300">🔍</div>
+        <div class="text-sm font-bold text-slate-700">Nenhuma IRP encontrada com os filtros selecionados</div>
+        <div class="text-xs text-slate-500">Tente buscar por um termo mais amplo ou selecionar "Todas as IRPs" no seletor de situação.</div>
+      </div>
+
+      <!-- Container de Cards -->
+      <div id="irpCardsContainer" class="space-y-3"></div>
+
+      <!-- Paginação -->
+      <div id="irpPaginationContainer" class="hidden flex items-center justify-between bg-white rounded-xl p-3 border border-slate-200 text-xs font-bold text-slate-600">
+        <span id="irpPaginationInfo">Página 1</span>
+        <div class="flex gap-1.5">
+          <button id="irpPrevPageBtn" onclick="changeIRPPage(-1)" class="px-3 py-1 rounded-lg border border-slate-300 hover:bg-slate-100 disabled:opacity-40">Anterior</button>
+          <button id="irpNextPageBtn" onclick="changeIRPPage(1)" class="px-3 py-1 rounded-lg border border-slate-300 hover:bg-slate-100 disabled:opacity-40">Próxima</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL DE DETALHES COMPLETOS DA IRP (ITENS, ARQUIVOS, IMPORTAÇÃO)     -->
+  <!-- ===================================================================== -->
+  <div id="modalIrpDetail" class="hidden fixed inset-0 z-[95] bg-slate-950/80 backdrop-blur-sm p-4 flex items-center justify-center no-print">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col border border-slate-200 overflow-hidden animate-in fade-in zoom-in duration-150">
+      <!-- Modal Header -->
+      <div class="p-4 bg-[#1e2d3d] text-white flex items-center justify-between border-b border-[#334960]">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30">
+              IRP DETALHADA
+            </span>
+            <h3 id="modalIrpTitle" class="text-sm font-black text-white">IRP --</h3>
+          </div>
+          <p id="modalIrpOrgao" class="text-xs text-slate-300 mt-0.5 font-medium">Órgão --</p>
+        </div>
+        <button onclick="closeModalIrpDetail()" class="text-slate-300 hover:text-white p-1 text-lg font-black transition">✕</button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-4 overflow-y-auto space-y-4 flex-1 text-slate-800 text-xs custom-scrollbar">
+        <!-- Objeto e Metadados -->
+        <div class="bg-slate-50 rounded-xl p-3 border border-slate-200 space-y-2">
+          <div class="font-bold text-slate-700">Objeto da Intenção:</div>
+          <div id="modalIrpObjeto" class="text-slate-600 font-medium leading-relaxed">--</div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-2 pt-2 border-t border-slate-200 text-[11px]">
+            <div><span class="text-slate-500 font-bold">Prazo Final:</span> <span id="modalIrpPrazo" class="font-black text-emerald-700">--</span></div>
+            <div><span class="text-slate-500 font-bold">Modalidade:</span> <span id="modalIrpModalidade" class="font-bold text-slate-700">--</span></div>
+            <div><span class="text-slate-500 font-bold">Amparo Legal:</span> <span id="modalIrpAmparo" class="font-bold text-slate-700">--</span></div>
+            <div><span class="text-slate-500 font-bold">Unidade/UASG:</span> <span id="modalIrpUnidade" class="font-bold text-slate-700">--</span></div>
+          </div>
+        </div>
+
+        <!-- Seção de Documentos Oficiais -->
+        <div id="modalIrpFilesSection" class="space-y-1.5">
+          <div class="font-black text-[#1e2d3d] flex items-center justify-between">
+            <span>📁 Documentos Oficiais & Termo de Referência</span>
+            <span id="modalIrpFilesCount" class="text-[10px] text-slate-500 font-medium">(0 anexos)</span>
+          </div>
+          <div id="modalIrpFilesList" class="flex flex-wrap gap-2"></div>
+        </div>
+
+        <!-- Seção de Itens da IRP -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between font-black text-[#1e2d3d]">
+            <span>📋 Itens Previstos na IRP (<span id="modalIrpItemsCount">0</span> itens)</span>
+            <span class="text-[10px] font-normal text-slate-500">Clique em "Importar" para enviar o item para o seu lote de pesquisa</span>
+          </div>
+          <div class="overflow-x-auto rounded-xl border border-slate-200">
+            <table class="w-full text-left border-collapse">
+              <thead class="bg-slate-100 text-[10px] uppercase font-black text-slate-600 border-b border-slate-200">
+                <tr>
+                  <th class="p-2 w-12 text-center">Item</th>
+                  <th class="p-2 w-20">Tipo</th>
+                  <th class="p-2">Descrição Oficial</th>
+                  <th class="p-2 w-20 text-center">Unidade</th>
+                  <th class="p-2 w-28 text-right">Valor Unit. Est.</th>
+                  <th class="p-2 w-32 text-center">Ação</th>
+                </tr>
+              </thead>
+              <tbody id="modalIrpItemsTbody" class="divide-y divide-slate-100 text-[11px]"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+        <a id="modalIrpOfficialLink" href="#" target="_blank" class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 flex items-center gap-1.5 transition">
+          🌐 Abrir IRP no Portal PNCP ↗
+        </a>
+        <button onclick="closeModalIrpDetail()" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-slate-700 hover:bg-slate-800 text-white transition">
+          Fechar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
   <!-- MODAL DE RELATÓRIO EXECUTIVO OFICIAL (MODELO MARINHA DO BRASIL / PDF) -->
   <!-- ===================================================================== -->
     <!-- ===================================================================== -->
@@ -1283,12 +1541,18 @@
       document.getElementById("viewPrices").classList.toggle("hidden", tab !== "PRICES");
       document.getElementById("viewRAG").classList.toggle("hidden", tab !== "RAG");
       document.getElementById("viewLinks").classList.toggle("hidden", tab !== "LINKS");
+      document.getElementById("viewIRP").classList.toggle("hidden", tab !== "IRP");
 
       const baseCls = "px-3.5 py-2 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-[#334960] transition";
       const activeCls = "px-3.5 py-2 rounded-lg text-xs font-black bg-[#c5a365] text-[#1e2d3d] shadow border border-[#c9962b] transition";
       document.getElementById("tabBtnPrices").className = tab === "PRICES" ? activeCls : baseCls;
       document.getElementById("tabBtnRAG").className = tab === "RAG" ? activeCls : baseCls;
       document.getElementById("tabBtnLinks").className = tab === "LINKS" ? activeCls : baseCls;
+      document.getElementById("tabBtnIRP").className = tab === "IRP" ? activeCls : baseCls;
+
+      if (tab === "IRP" && !hasLoadedIRPOnce) {
+        loadIRPSearch();
+      }
     }
 
     // =========================================================================
@@ -4190,6 +4454,350 @@
       closeAddComplementaryQuoteModal();
       recalculateCuratedQuotes();
       showAppNotification("Cotação complementar inserida na cesta!", "success");
+    }
+
+    // =========================================================================
+    // RADAR DE IRP & OPORTUNIDADES SRP (PNCP AO VIVO - LEI 14.133/2021)
+    // =========================================================================
+    let irpCurrentPage = 1;
+    let irpTotalRecords = 0;
+    let hasLoadedIRPOnce = false;
+    let currentIrpModalDetail = null;
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function setIRPTermAndSearch(term) {
+      const input = document.getElementById("irpSearchInput");
+      if (input) input.value = term;
+      executeIRPSearch(1);
+    }
+
+    async function loadIRPSearch() {
+      hasLoadedIRPOnce = true;
+      executeIRPSearch(1);
+    }
+
+    async function executeIRPSearch(page = 1) {
+      irpCurrentPage = page;
+      const q = (document.getElementById("irpSearchInput")?.value || "").trim();
+      const status = document.getElementById("irpStatusSelect")?.value || "aberta";
+      const uf = document.getElementById("irpUfSelect")?.value || "";
+
+      const loadingEl = document.getElementById("irpLoadingState");
+      const emptyEl = document.getElementById("irpEmptyState");
+      const containerEl = document.getElementById("irpCardsContainer");
+      const paginationEl = document.getElementById("irpPaginationContainer");
+
+      if (loadingEl) loadingEl.classList.remove("hidden");
+      if (emptyEl) emptyEl.classList.add("hidden");
+      if (containerEl) containerEl.innerHTML = "";
+      if (paginationEl) paginationEl.classList.add("hidden");
+
+      try {
+        const queryParams = new URLSearchParams({
+          q: q,
+          status: status,
+          uf: uf,
+          pagina: irpCurrentPage,
+          tam_pagina: 15
+        });
+
+        const resp = await fetch(`/api/v1/irp/search?${queryParams.toString()}`);
+        const data = await resp.json();
+
+        if (loadingEl) loadingEl.classList.add("hidden");
+
+        if (data.status !== "SUCCESS" || !data.items || data.items.length === 0) {
+          if (emptyEl) emptyEl.classList.remove("hidden");
+          updateIRPMetrics(0, 0, 0, 0);
+          return;
+        }
+
+        irpTotalRecords = data.total || data.items.length;
+        renderIRPCards(data.items, irpTotalRecords);
+        updateIRPMetricsFromItems(data.items, irpTotalRecords);
+
+        // Paginação
+        if (paginationEl && irpTotalRecords > 15) {
+          paginationEl.classList.remove("hidden");
+          const totalPages = Math.ceil(irpTotalRecords / 15);
+          document.getElementById("irpPaginationInfo").textContent = `Página ${irpCurrentPage} de ${totalPages} (${irpTotalRecords} intenções)`;
+          document.getElementById("irpPrevPageBtn").disabled = irpCurrentPage <= 1;
+          document.getElementById("irpNextPageBtn").disabled = irpCurrentPage >= totalPages;
+        }
+      } catch (err) {
+        if (loadingEl) loadingEl.classList.add("hidden");
+        if (emptyEl) {
+          emptyEl.classList.remove("hidden");
+          emptyEl.querySelector(".text-sm").textContent = "Erro ao conectar com o serviço de IRP do PNCP";
+          emptyEl.querySelector(".text-xs").textContent = err.message || "Tente novamente em alguns segundos.";
+        }
+        showAppNotification("Falha na consulta ao PNCP: " + (err.message || "Erro de rede"), "error");
+      }
+    }
+
+    function changeIRPPage(delta) {
+      const newPage = irpCurrentPage + delta;
+      if (newPage >= 1) {
+        executeIRPSearch(newPage);
+        window.scrollTo({ top: 300, behavior: "smooth" });
+      }
+    }
+
+    function updateIRPMetrics(total, open, critical, ufs) {
+      const elTotal = document.getElementById("irpMetricTotal");
+      const elOpen = document.getElementById("irpMetricOpen");
+      const elCrit = document.getElementById("irpMetricCritical");
+      const elUfs = document.getElementById("irpMetricUfs");
+      if (elTotal) elTotal.textContent = total;
+      if (elOpen) elOpen.textContent = open;
+      if (elCrit) elCrit.textContent = critical;
+      if (elUfs) elUfs.textContent = ufs;
+    }
+
+    function updateIRPMetricsFromItems(items, total) {
+      let openCount = 0;
+      let critCount = 0;
+      const ufsSet = new Set();
+
+      items.forEach(it => {
+        if (it.uf) ufsSet.add(it.uf);
+        if (it.status_badge && it.status_badge.is_open) {
+          openCount++;
+          if (it.dias_restantes !== null && it.dias_restantes <= 5 && it.dias_restantes >= 0) {
+            critCount++;
+          }
+        }
+      });
+
+      updateIRPMetrics(total, openCount, critCount, ufsSet.size);
+    }
+
+    function renderIRPCards(items, total) {
+      const container = document.getElementById("irpCardsContainer");
+      if (!container) return;
+
+      container.innerHTML = items.map((it, idx) => {
+        const isCritical = it.dias_restantes !== null && it.dias_restantes <= 5 && it.dias_restantes >= 0;
+        const isClosed = it.dias_restantes !== null && it.dias_restantes < 0;
+
+        let badgeHtml = "";
+        if (isClosed) {
+          badgeHtml = `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-300">🔴 Encerrada</span>`;
+        } else if (isCritical) {
+          badgeHtml = `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-300 animate-pulse">⏳ Crítico (Faltam ${it.dias_restantes} dias)</span>`;
+        } else {
+          badgeHtml = `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-300">🟢 Aberta (${it.dias_restantes !== null ? it.dias_restantes + ' dias' : 'Vigente'})</span>`;
+        }
+
+        const orgaoDisplay = escapeHtml(it.orgao_nome || "Órgão Não Informado");
+        const ufDisplay = it.uf ? `<span class="px-1.5 py-0.2 rounded bg-slate-200 text-slate-700 font-bold">${escapeHtml(it.uf)}</span>` : "";
+        const descDisplay = escapeHtml(it.description || "Sem descrição cadastrada.");
+
+        return `
+          <div class="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-xs hover:border-[#c5a365]/80 hover:shadow-md transition duration-200 space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs font-black text-[#1e2d3d] bg-slate-100 px-2.5 py-0.5 rounded-lg border border-slate-200">
+                  IRP ${escapeHtml(it.numero_irp || 'S/N')}/${escapeHtml(it.ano_irp || '')}
+                </span>
+                ${badgeHtml}
+                <span class="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                  🏛️ ${orgaoDisplay} ${ufDisplay}
+                </span>
+              </div>
+              <div class="text-[11px] font-medium text-slate-500">
+                Prazo: <span class="font-bold text-[#1e2d3d]">${escapeHtml(it.prazo_manifestacao_formatado || 'Não informado')}</span>
+              </div>
+            </div>
+
+            <div>
+              <p class="text-xs font-medium text-slate-700 leading-relaxed line-clamp-3">
+                ${descDisplay}
+              </p>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-[11px]">
+              <div class="flex items-center gap-3 text-slate-500">
+                <span>Esfera: <strong class="text-slate-700">${escapeHtml(it.esfera_nome || 'Municipal')}</strong></span>
+                <span>Modalidade: <strong class="text-slate-700">${escapeHtml(it.modalidade_nome || 'Pregão SRP')}</strong></span>
+                <span>Adesão (Carona): <strong class="text-emerald-700">${it.permite_adesao ? 'Permitida' : 'Restrita'}</strong></span>
+              </div>
+              <div class="flex items-center gap-1.5 flex-wrap">
+                ${it.is_edital ? `
+                  <a
+                    href="${escapeHtml(it.link_pncp)}"
+                    target="_blank"
+                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#1e2d3d] hover:bg-[#27394d] text-white shadow-xs transition flex items-center gap-1"
+                  >
+                    📄 Abrir Edital SRP no PNCP ↗
+                  </a>
+                ` : `
+                  <button
+                    onclick="openModalIrpDetail('${escapeHtml(it.orgao_cnpj)}', '${escapeHtml(it.ano_irp)}', '${escapeHtml(it.numero_irp)}')"
+                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#1e2d3d] hover:bg-[#27394d] text-white shadow-xs transition flex items-center gap-1"
+                  >
+                    📋 Ver Itens da IRP
+                  </button>
+                  <a
+                    href="${escapeHtml(it.link_pncp)}"
+                    target="_blank"
+                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition flex items-center gap-1"
+                  >
+                    🌐 PNCP Oficial ↗
+                  </a>
+                `}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function openModalIrpDetail(cnpj, ano, seq) {
+      const modal = document.getElementById("modalIrpDetail");
+      if (!modal) return;
+      modal.classList.remove("hidden");
+
+      document.getElementById("modalIrpTitle").textContent = `IRP ${seq}/${ano}`;
+      document.getElementById("modalIrpOrgao").textContent = "Carregando detalhes do PNCP...";
+      document.getElementById("modalIrpObjeto").textContent = "Buscando itens e documentos...";
+      document.getElementById("modalIrpPrazo").textContent = "--";
+      document.getElementById("modalIrpModalidade").textContent = "--";
+      document.getElementById("modalIrpAmparo").textContent = "--";
+      document.getElementById("modalIrpUnidade").textContent = "--";
+      document.getElementById("modalIrpItemsCount").textContent = "0";
+      document.getElementById("modalIrpFilesCount").textContent = "(carregando...)";
+      document.getElementById("modalIrpItemsTbody").innerHTML = `
+        <tr><td colspan="6" class="p-6 text-center text-slate-400 font-bold">Consultando itens da IRP no PNCP...</td></tr>
+      `;
+      document.getElementById("modalIrpFilesList").innerHTML = "";
+
+      try {
+        const resp = await fetch(`/api/v1/irp/detail?cnpj=${encodeURIComponent(cnpj)}&ano=${encodeURIComponent(ano)}&seq=${encodeURIComponent(seq)}`);
+        const data = await resp.json();
+
+        if (data.status !== "SUCCESS") {
+          document.getElementById("modalIrpObjeto").textContent = data.message || "Erro ao carregar detalhes.";
+          return;
+        }
+
+        currentIrpModalDetail = data;
+
+        document.getElementById("modalIrpTitle").textContent = `IRP ${data.sequencial}/${data.ano}`;
+        document.getElementById("modalIrpOrgao").textContent = `${data.orgao_nome} (${data.uf || ''}) - CNPJ: ${data.cnpj}`;
+        document.getElementById("modalIrpObjeto").textContent = data.objeto || "Objeto não informado.";
+        document.getElementById("modalIrpPrazo").textContent = data.prazo_manifestacao_formatado || "Não informado";
+        document.getElementById("modalIrpModalidade").textContent = data.modalidade || "Pregão SRP";
+        document.getElementById("modalIrpAmparo").textContent = data.amparo_legal || "Lei 14.133/2021";
+        document.getElementById("modalIrpUnidade").textContent = data.unidade_nome || data.municipio || "--";
+        document.getElementById("modalIrpItemsCount").textContent = data.total_itens || "0";
+        document.getElementById("modalIrpOfficialLink").href = data.link_oficial_pncp || "#";
+
+        // Renderizar Documentos
+        const filesCountEl = document.getElementById("modalIrpFilesCount");
+        const filesListEl = document.getElementById("modalIrpFilesList");
+        if (data.arquivos && data.arquivos.length > 0) {
+          filesCountEl.textContent = `(${data.arquivos.length} anexos oficiais)`;
+          filesListEl.innerHTML = data.arquivos.map(f => `
+            <a
+              href="${escapeHtml(f.url)}"
+              target="_blank"
+              download
+              class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 flex items-center gap-1.5 transition"
+              title="${escapeHtml(f.tipo)}"
+            >
+              📄 <span>${escapeHtml(f.titulo)}</span> ⬇️
+            </a>
+          `).join("");
+        } else {
+          filesCountEl.textContent = "(Nenhum arquivo anexo divulgado)";
+          filesListEl.innerHTML = `<span class="text-slate-400 italic text-[11px]">Sem documentos anexados pelo órgão gerenciador.</span>`;
+        }
+
+        // Renderizar Itens
+        const tbodyEl = document.getElementById("modalIrpItemsTbody");
+        if (data.itens && data.itens.length > 0) {
+          tbodyEl.innerHTML = data.itens.map((it, idx) => {
+            const valUnit = it.valor_unitario_estimado > 0
+              ? `R$ ${it.valor_unitario_estimado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              : `<span class="text-slate-400 italic">A cotar</span>`;
+
+            return `
+              <tr class="hover:bg-slate-50 transition">
+                <td class="p-2 text-center font-bold text-slate-500">${it.numero_item || (idx + 1)}</td>
+                <td class="p-2 font-bold ${it.tipo_codigo === 'SERVICO' ? 'text-amber-700' : 'text-sky-700'}">${escapeHtml(it.categoria || 'Material')}</td>
+                <td class="p-2 font-medium text-slate-800 leading-tight">${escapeHtml(it.descricao)}</td>
+                <td class="p-2 text-center font-bold text-slate-600">${escapeHtml(it.unidade_fornecimento || 'UN')}</td>
+                <td class="p-2 text-right font-black text-slate-700">${valUnit}</td>
+                <td class="p-2 text-center">
+                  <button
+                    onclick="importIrpItemToBatch(${idx})"
+                    class="px-2.5 py-1 rounded-lg text-[10px] font-black bg-[#c5a365] hover:bg-[#d6b476] text-[#1e2d3d] shadow-xs transition flex items-center gap-1 mx-auto"
+                    title="Adicionar item à Cesta da Pesquisa de Preços (IN 65/2021)"
+                  >
+                    ➕ Importar p/ Lote
+                  </button>
+                </td>
+              </tr>
+            `;
+          }).join("");
+        } else {
+          tbodyEl.innerHTML = `
+            <tr><td colspan="6" class="p-4 text-center text-slate-400 italic">Nenhum item individual cadastrado no PNCP para esta IRP.</td></tr>
+          `;
+        }
+      } catch (e) {
+        document.getElementById("modalIrpObjeto").textContent = "Erro de conexão ao buscar IRP: " + e.message;
+      }
+    }
+
+    function closeModalIrpDetail() {
+      const modal = document.getElementById("modalIrpDetail");
+      if (modal) modal.classList.add("hidden");
+    }
+
+    async function importIrpItemToBatch(itemIndex) {
+      if (!currentIrpModalDetail || !currentIrpModalDetail.itens || !currentIrpModalDetail.itens[itemIndex]) {
+        showAppNotification("Item não encontrado para importação.", "error");
+        return;
+      }
+      const item = currentIrpModalDetail.itens[itemIndex];
+      const tipo = item.tipo_codigo || "MATERIAL";
+      const desc = item.descricao || "";
+      const unid = item.unidade_fornecimento || "UN";
+
+      let codigo = parseInt(item.codigo_item_catalogo, 10);
+
+      // Se não tiver código numérico na IRP, busca o melhor CATMAT/CATSER no catálogo local de 253.782 itens
+      if (!codigo || isNaN(codigo)) {
+        showAppNotification("Resolvendo código CATMAT/CATSER no catálogo oficial...", "info");
+        try {
+          const searchWord = desc.split(/[,;\s\-]/).filter(w => w.length > 3)[0] || desc.slice(0, 15);
+          const r = await fetch(`/api/v1/catalog/search?q=${encodeURIComponent(searchWord)}&type=${tipo}`);
+          const catData = await r.json();
+          if (catData.results && catData.results.length > 0) {
+            codigo = catData.results[0].code;
+          } else {
+            codigo = 475109; // fallback padrão
+          }
+        } catch (ex) {
+          codigo = 475109;
+        }
+      }
+
+      await addItemToBatchTray(tipo, codigo, desc, unid, 1);
+      closeModalIrpDetail();
+      openTab("PRICES");
+      showAppNotification(`Item importado da IRP para o Lote: ${desc.slice(0, 45)}...`, "success");
     }
   </script>
 </body>
