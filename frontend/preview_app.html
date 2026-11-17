@@ -30,6 +30,24 @@
     .custom-scrollbar::-webkit-scrollbar-thumb:hover {
       background: rgba(100, 116, 139, 0.55);
     }
+    
+    /* Auto-ajuste e dimensionamento dinâmico à tela do usuário */
+    .screen-auto-fit {
+      width: 100% !important;
+      max-width: 1720px !important;
+    }
+    @media (min-width: 1920px) {
+      .screen-auto-fit {
+        max-width: 95vw !important;
+      }
+    }
+    @media (max-width: 1024px) {
+      .split-viewport-grid {
+        height: auto !important;
+        min-height: auto !important;
+      }
+    }
+
     /* Estilos de Acessibilidade Governamental Obrigatória (eMAG / WCAG 2.1) */
     :focus-visible {
       outline: 2px solid #c5a365 !important;
@@ -151,7 +169,7 @@
   <!-- ===================================================================== -->
   <!-- ABA 1: PARSER DE PALAVRAS-CHAVE CNBS + PESQUISA DE PREÇOS IN 65/2021  -->
   <!-- ===================================================================== -->
-  <main id="viewPrices" class="max-w-7xl w-full mx-auto p-6 space-y-6 flex-1 no-print">
+  <main id="viewPrices" class="w-full max-w-[1720px] mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-5 flex-1 no-print">
 
     <!-- ================= FLUXO OFICIAL EM 3 PASSOS ================= -->
     <section class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
@@ -333,7 +351,7 @@
       </div>
 
       <!-- MASTER-DETAIL SPLIT VIEW: ESQUERDA = LISTA DE ITENS DO LOTE | DIREITA = PAINEL DO ITEM ATIVO -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch lg:h-[calc(100vh-170px)] min-h-[680px]">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5 items-stretch split-viewport-grid lg:h-[calc(100vh-185px)] min-h-0">
         
         <!-- COLUNA DA ESQUERDA: LISTA DE ITENS DO LOTE (~35% DE LARGURA / 4 COLS) COM ROLAGEM INDEPENDENTE -->
         <div class="lg:col-span-4 lg:h-full bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-w-0">
@@ -478,41 +496,110 @@
         <span id="resJustification" class="text-slate-600">—</span>
       </div>
 
-      <!-- DATA VIZ: DISPERSÃO ESTATÍSTICA E BOXPLOT (IN SEGES/ME Nº 65/2021 & MÉTODO DOS QUARTIS) -->
-      <div id="boxplotCard" class="bg-white border border-slate-200/90 rounded-xl p-3.5 space-y-2.5 shadow-2xs">
-        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+      <!-- DATA VIZ: DISPERSÃO ESTATÍSTICA (BOXPLOT) & CURVA GAUSSIANA (IN SEGES/ME Nº 65/2021) -->
+      <div id="boxplotCard" class="bg-white border border-slate-200/90 rounded-xl p-3 sm:p-4 space-y-3 shadow-2xs">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-2.5">
           <div class="flex items-center gap-2">
-            <span class="text-base">📈</span>
+            <span class="text-lg">📊</span>
             <div>
-              <h4 class="text-xs font-black uppercase text-slate-800 tracking-wide">
-                Dispersão Estatística da Amostra (Método dos Quartis / Boxplot)
+              <h4 class="text-xs font-black uppercase text-slate-800 tracking-wide flex items-center gap-2">
+                <span>Análise Estatística & Curva Gaussiana de Decisão</span>
+                <span class="text-[9px] font-mono bg-slate-100 text-[#3b5b7c] border border-slate-300 px-1.5 py-0.2 rounded font-bold">Art. 6º IN 65/2021</span>
               </h4>
-              <p class="text-[10px] text-slate-500">
-                Visualização do saneamento de preços: mediana, quartis (Q1-Q3), desvio padrão e identificação de outliers.
+              <p class="text-[10.5px] text-slate-500">
+                Visualização do saneamento da amostra, dispersão dos preços e fundamentação matemática da escolha da Média vs. Mediana.
               </p>
             </div>
           </div>
-          <div class="flex items-center gap-2 text-[10px] font-bold">
-            <span class="flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-              <span class="w-2 h-2 rounded-full bg-emerald-600 inline-block"></span> Válidas
-            </span>
-            <span class="flex items-center gap-1 text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-              <span class="w-2 h-2 rounded-full bg-rose-600 inline-block"></span> Outliers
-            </span>
+
+          <!-- SELETOR DE MODO DE VISUALIZAÇÃO E DOWNLOAD DO GRÁFICO -->
+          <div class="flex items-center flex-wrap gap-1.5">
+            <div class="bg-slate-100 p-0.5 rounded-lg border border-slate-200 flex items-center text-[10px] font-bold">
+              <button type="button" id="btnGraphTabBoxplot" onclick="switchStatGraphView('boxplot')" class="px-2.5 py-1 rounded-md transition bg-[#3b5b7c] text-white shadow-2xs">
+                📈 Boxplot dos Quartis
+              </button>
+              <button type="button" id="btnGraphTabGauss" onclick="switchStatGraphView('gauss')" class="px-2.5 py-1 rounded-md transition text-slate-600 hover:text-slate-900">
+                🔔 Curva Gaussiana (IN 65)
+              </button>
+              <button type="button" id="btnGraphTabDual" onclick="switchStatGraphView('dual')" class="px-2.5 py-1 rounded-md transition text-slate-600 hover:text-slate-900">
+                👁️ Visão Combinada
+              </button>
+            </div>
+
+            <button type="button" onclick="downloadInfographicPng()" class="h-7.5 px-2.5 bg-slate-100 hover:bg-slate-200 text-[#1e2d3d] border border-slate-300 rounded-lg text-[10.5px] font-bold transition flex items-center gap-1 shadow-2xs" title="Baixar infográfico estatístico com Boxplot e Curva Gaussiana em alta resolução (.PNG)">
+              <span>🖼️</span> <span class="hidden sm:inline">Baixar Gráfico HD</span>
+            </button>
           </div>
         </div>
-        <div id="boxplotContainer" class="w-full overflow-x-auto custom-scrollbar py-2">
-          <svg id="boxplotSvg" class="w-full h-24 min-w-[500px]" viewBox="0 0 700 95" preserveAspectRatio="none">
-            <!-- Injetado dinamicamente via renderStatisticalBoxplot(rep) -->
-          </svg>
+
+        <!-- PAINEL 1: BOXPLOT INTERATIVO -->
+        <div id="statPanelBoxplot" class="space-y-2">
+          <div class="flex items-center justify-between text-[10px] font-bold text-slate-600 px-1">
+            <span>Intervalo Interquartil (IQR = Q3 - Q1) e Detecção de Outliers:</span>
+            <div class="flex items-center gap-2">
+              <span class="flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                <span class="w-2 h-2 rounded-full bg-emerald-600 inline-block"></span> Válidas
+              </span>
+              <span class="flex items-center gap-1 text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                <span class="w-2 h-2 rounded-full bg-rose-600 inline-block"></span> Outliers
+              </span>
+            </div>
+          </div>
+          <div id="boxplotContainer" class="w-full overflow-x-auto custom-scrollbar py-1">
+            <svg id="boxplotSvg" class="w-full h-24 min-w-[500px]" viewBox="0 0 700 95" preserveAspectRatio="none"></svg>
+          </div>
+          <div id="boxplotLegend" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-[10px] font-mono text-slate-600 border-t border-slate-100 pt-2 bg-slate-50/50 p-1.5 rounded-lg">
+            <div>Menor: <strong id="bpMin" class="text-slate-900 block font-bold">R$ 0,00</strong></div>
+            <div>Q1 (25%): <strong id="bpQ1" class="text-slate-900 block font-bold">R$ 0,00</strong></div>
+            <div class="text-[#c5a365] font-black">Mediana: <strong id="bpMedian" class="text-amber-800 block font-black">R$ 0,00</strong></div>
+            <div class="text-[#3b5b7c] font-black">Média: <strong id="bpMean" class="text-slate-900 block font-bold">R$ 0,00</strong></div>
+            <div>Q3 (75%): <strong id="bpQ3" class="text-slate-900 block font-bold">R$ 0,00</strong></div>
+            <div>Maior: <strong id="bpMax" class="text-slate-900 block font-bold">R$ 0,00</strong></div>
+          </div>
         </div>
-        <div id="boxplotLegend" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-[10px] font-mono text-slate-600 border-t border-slate-100 pt-2 bg-slate-50/50 p-1.5 rounded-lg">
-          <div>Menor: <strong id="bpMin" class="text-slate-900 block font-bold">R$ 0,00</strong></div>
-          <div>Q1 (25%): <strong id="bpQ1" class="text-slate-900 block font-bold">R$ 0,00</strong></div>
-          <div class="text-[#c5a365] font-black">Mediana: <strong id="bpMedian" class="text-amber-800 block font-black">R$ 0,00</strong></div>
-          <div class="text-[#3b5b7c] font-black">Média: <strong id="bpMean" class="text-slate-900 block font-bold">R$ 0,00</strong></div>
-          <div>Q3 (75%): <strong id="bpQ3" class="text-slate-900 block font-bold">R$ 0,00</strong></div>
-          <div>Maior: <strong id="bpMax" class="text-slate-900 block font-bold">R$ 0,00</strong></div>
+
+        <!-- PAINEL 2: CURVA GAUSSIANA E CRITÉRIOS DE ESCOLHA (IN 65/2021) -->
+        <div id="statPanelGauss" class="hidden space-y-3 border-t border-slate-100 pt-3">
+          <div class="flex items-center justify-between text-[10.5px] font-bold text-slate-700 px-1">
+            <span>Distribuição Normal e Limites Decisórios da Instrução Normativa:</span>
+            <span id="gaussSampleBadge" class="px-2 py-0.5 rounded text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300">
+              Série Heterogênea (CV > 25%) → Mediana Obrigatória
+            </span>
+          </div>
+
+          <div id="gaussContainer" class="w-full overflow-x-auto custom-scrollbar py-1">
+            <svg id="gaussSvg" class="w-full h-32 min-w-[500px]" viewBox="0 0 700 135" preserveAspectRatio="none"></svg>
+          </div>
+
+          <!-- GUIA DIDÁTICO E FUNDAMENTAÇÃO DOS CRITÉRIOS DE ESCOLHA -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-[11px] leading-relaxed pt-1">
+            <div class="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200 text-emerald-950 space-y-1">
+              <strong class="font-bold flex items-center gap-1 text-emerald-900">
+                <span class="w-2 h-2 rounded-full bg-emerald-600 inline-block"></span> Média Saneada (CV ≤ 25%)
+              </strong>
+              <p class="text-[10.5px] text-emerald-800">
+                Adotada quando os preços se concentram na faixa central (série homogênea). Reflete com precisão o valor médio das propostas sem distorções acentuadas.
+              </p>
+            </div>
+
+            <div class="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200 text-amber-950 space-y-1">
+              <strong class="font-bold flex items-center gap-1 text-amber-900">
+                <span class="w-2 h-2 rounded-full bg-amber-600 inline-block"></span> Mediana Saneada (CV > 25%)
+              </strong>
+              <p class="text-[10.5px] text-amber-800">
+                Obrigatória pelo Art. 6º, § 5º da IN 65/2021 em séries heterogêneas ou assimétricas, pois anula o impacto de cotações desproporcionais nos extremos.
+              </p>
+            </div>
+
+            <div class="p-2.5 rounded-xl bg-rose-50/70 border border-rose-200 text-rose-950 space-y-1">
+              <strong class="font-bold flex items-center gap-1 text-rose-900">
+                <span class="w-2 h-2 rounded-full bg-rose-600 inline-block"></span> Caudas & Outliers (Expurgo)
+              </strong>
+              <p class="text-[10.5px] text-rose-800">
+                Valores inexequíveis ou com sobrepreço manifesto (> 50% da mediana ou além de 1,5× IQR) são expurgados com justificativa registrada para auditoria.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -716,7 +803,7 @@
   <!-- ===================================================================== -->
   <!-- ABA 2: REVISOR E EDITOR DE DOCUMENTOS COM DESTAQUE AMARELO            -->
   <!-- ===================================================================== -->
-  <main id="viewRAG" class="max-w-7xl w-full mx-auto p-6 space-y-6 flex-1 hidden no-print">
+  <main id="viewRAG" class="w-full max-w-[1720px] mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-5 flex-1 hidden no-print">
     <!-- CABEÇALHO DA ABA 2 -->
     <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
       <div>
@@ -843,7 +930,7 @@
   <!-- ===================================================================== -->
   <!-- ABA 3: CENTRAL DE CONSULTA DETALHADA E CERTIDÕES (DISTRIBUIÇÃO VISUAL)-->
   <!-- ===================================================================== -->
-  <main id="viewLinks" class="max-w-7xl w-full mx-auto p-6 space-y-6 flex-1 hidden no-print">
+  <main id="viewLinks" class="w-full max-w-[1720px] mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-5 flex-1 hidden no-print">
     <!-- 1. PAINEL RÁPIDO DO FORNECEDOR: CHECKLIST FISCAL E TRABALHISTA (ART. 68 DA LEI 14.133/2021) -->
     <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-2xl shadow-md border border-slate-800 space-y-4">
       <div class="flex flex-wrap items-center justify-between gap-3">
@@ -911,7 +998,7 @@
   <!-- ===================================================================== -->
   <!-- ABA 4: RADAR DE IRP (INTENÇÕES DE REGISTRO DE PREÇOS NO PNCP)        -->
   <!-- ===================================================================== -->
-  <main id="viewIRP" class="max-w-7xl w-full mx-auto p-6 space-y-6 flex-1 no-print hidden">
+  <main id="viewIRP" class="w-full max-w-[1720px] mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-5 flex-1 no-print hidden">
     <!-- Banner de Cabeçalho Executivo -->
     <div class="bg-gradient-to-r from-[#1e2d3d] via-[#27394d] to-[#1e2d3d] rounded-2xl p-5 text-white shadow-md border border-[#334960]/80">
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -2474,6 +2561,7 @@
 
       // Renderização do Boxplot Estatístico, Alerta de Fracionamento e Gatilho Socioambiental
       renderStatisticalBoxplot(rep);
+      renderGaussDistributionCurve(rep);
       checkFracionamentoRisk(rep, qty);
       checkSocioambientalTrigger(rep);
 
@@ -6274,6 +6362,157 @@
         banner.classList.remove("hidden");
       } else {
         banner.classList.add("hidden");
+      }
+    }
+
+
+    // =========================================================================
+    // VISUALIZAÇÃO DA CURVA NORMAL GAUSSIANA E CRITÉRIOS DE ESCOLHA (IN 65/2021)
+    // =========================================================================
+    window.currentStatGraphView = "boxplot";
+
+    function switchStatGraphView(mode) {
+      window.currentStatGraphView = mode;
+      const pBox = document.getElementById("statPanelBoxplot");
+      const pGauss = document.getElementById("statPanelGauss");
+      const btnBox = document.getElementById("btnGraphTabBoxplot");
+      const btnGauss = document.getElementById("btnGraphTabGauss");
+      const btnDual = document.getElementById("btnGraphTabDual");
+
+      const actCls = "px-2.5 py-1 rounded-md transition bg-[#3b5b7c] text-white shadow-2xs font-bold";
+      const inactCls = "px-2.5 py-1 rounded-md transition text-slate-600 hover:text-slate-900 font-bold";
+
+      if (btnBox) btnBox.className = mode === "boxplot" ? actCls : inactCls;
+      if (btnGauss) btnGauss.className = mode === "gauss" ? actCls : inactCls;
+      if (btnDual) btnDual.className = mode === "dual" ? actCls : inactCls;
+
+      if (mode === "boxplot") {
+        if (pBox) pBox.classList.remove("hidden");
+        if (pGauss) pGauss.classList.add("hidden");
+      } else if (mode === "gauss") {
+        if (pBox) pBox.classList.add("hidden");
+        if (pGauss) pGauss.classList.remove("hidden");
+      } else if (mode === "dual") {
+        if (pBox) pBox.classList.remove("hidden");
+        if (pGauss) pGauss.classList.remove("hidden");
+      }
+    }
+
+    function renderGaussDistributionCurve(rep) {
+      const svg = document.getElementById("gaussSvg");
+      const badge = document.getElementById("gaussSampleBadge");
+      if (!svg || !rep) return;
+
+      const sm = rep.sanitized_metrics || {};
+      const cv = Number(sm.cv_percent || 0);
+      const isHomo = rep.is_homogeneous || cv <= 25.0;
+      const adopted = rep.adopted_parameter || (isHomo ? "MÉDIA" : "MEDIANA");
+      const uPrice = Number(rep.final_estimated_unit_price || 0);
+
+      if (badge) {
+        if (isHomo) {
+          badge.className = "px-2.5 py-0.5 rounded text-[10.5px] font-black bg-emerald-100 text-emerald-900 border border-emerald-300";
+          badge.innerHTML = `<span>🌿 Série Homogênea (CV ${cv.toFixed(1)}% ≤ 25%) → <strong>Média Adotada</strong></span>`;
+        } else {
+          badge.className = "px-2.5 py-0.5 rounded text-[10.5px] font-black bg-amber-100 text-amber-950 border border-amber-300";
+          badge.innerHTML = `<span>⚖️ Série Heterogênea (CV ${cv.toFixed(1)}% > 25%) → <strong>Mediana Obrigatória</strong></span>`;
+        }
+      }
+
+      const width = 700;
+      const height = 135;
+      const marginL = 40;
+      const marginR = 40;
+      const plotW = width - marginL - marginR;
+      const cyBase = 108;
+      const cyPeak = 24;
+
+      const pts = [];
+      const steps = 70;
+      for (let s = 0; s <= steps; s++) {
+        const z = -3.0 + (6.0 * s / steps);
+        const y = Math.exp(-0.5 * (z * z));
+        const px = marginL + (s / steps) * plotW;
+        const py = cyBase - (y * (cyBase - cyPeak));
+        pts.push(`${px.toFixed(1)},${py.toFixed(1)}`);
+      }
+      const dPath = "M " + pts.join(" L ");
+
+      const xM2 = marginL + (1.0 / 6.0) * plotW;
+      const xM1 = marginL + (2.0 / 6.0) * plotW;
+      const xMid = marginL + (3.0 / 6.0) * plotW;
+      const xP1 = marginL + (4.0 / 6.0) * plotW;
+      const xP2 = marginL + (5.0 / 6.0) * plotW;
+
+      let needleZ = 0;
+      if (!isHomo) {
+        needleZ = Math.min(2.3, Math.max(1.1, (cv / 25.0) * 0.9));
+      } else {
+        needleZ = (cv / 25.0) * 0.7;
+      }
+      const needleX = xMid + (needleZ / 3.0) * (plotW / 2);
+
+      svg.innerHTML = `
+        <!-- Eixo Base -->
+        <line x1="${marginL}" y1="${cyBase}" x2="${width - marginR}" y2="${cyBase}" stroke="#cbd5e1" stroke-width="1.5" />
+
+        <!-- Região Central Homogênea (CV <= 25% / +-1 sigma) -->
+        <rect x="${xM1}" y="${cyPeak + 14}" width="${xP1 - xM1}" height="${cyBase - cyPeak - 14}" fill="#dcfce7" opacity="0.6" rx="4" />
+
+        <!-- Linhas verticais pontilhadas de desvio padrão -->
+        <line x1="${xM1}" y1="${cyBase}" x2="${xM1}" y2="${cyPeak + 16}" stroke="#86efac" stroke-width="1.5" stroke-dasharray="3,3" />
+        <line x1="${xP1}" y1="${cyBase}" x2="${xP1}" y2="${cyPeak + 16}" stroke="#86efac" stroke-width="1.5" stroke-dasharray="3,3" />
+        <line x1="${xM2}" y1="${cyBase}" x2="${xM2}" y2="${cyBase - 30}" stroke="#fca5a5" stroke-width="1.5" stroke-dasharray="2,2" />
+        <line x1="${xP2}" y1="${cyBase}" x2="${xP2}" y2="${cyBase - 30}" stroke="#fca5a5" stroke-width="1.5" stroke-dasharray="2,2" />
+
+        <!-- Curva Normal Gaussiana -->
+        <path d="${dPath}" fill="none" stroke="#3b5b7c" stroke-width="3" stroke-linecap="round" />
+
+        <!-- Linha da Média / Centro -->
+        <line x1="${xMid}" y1="${cyBase}" x2="${xMid}" y2="${cyPeak}" stroke="#c5a365" stroke-width="2.5" />
+
+        <!-- Agulha da Amostra Atual do Item -->
+        <line x1="${needleX}" y1="${cyBase}" x2="${needleX}" y2="${cyPeak - 6}" stroke="#b45309" stroke-width="3" stroke-linecap="round" />
+        <circle cx="${needleX}" cy="${cyPeak - 6}" r="5" fill="#f59e0b" stroke="#78350f" stroke-width="1.5" />
+
+        <!-- Rótulos -->
+        <text x="${xMid}" y="${cyBase + 16}" font-size="9" font-weight="bold" fill="#1e2d3d" text-anchor="middle">μ (Centro)</text>
+        <text x="${xM1}" y="${cyBase + 16}" font-size="8.5" fill="#64748b" text-anchor="middle">-1σ</text>
+        <text x="${xP1}" y="${cyBase + 16}" font-size="8.5" fill="#64748b" text-anchor="middle">+1σ</text>
+        <text x="${xM2}" y="${cyBase + 16}" font-size="8" fill="#94a3b8" text-anchor="middle">-2σ (Outlier)</text>
+        <text x="${xP2}" y="${cyBase + 16}" font-size="8" fill="#94a3b8" text-anchor="middle">+2σ (Outlier)</text>
+
+        <text x="${xMid}" y="${cyPeak + 22}" font-size="8.5" font-weight="bold" fill="#15803d" text-anchor="middle">ZONA HOMOGÊNEA (CV ≤ 25%)</text>
+        <text x="${needleX + 6}" y="${cyPeak - 2}" font-size="9.5" font-weight="black" fill="#b45309">Posição da Amostra: CV ${cv.toFixed(1)}% → ${escapeHtml(adopted)} (R$ ${uPrice.toFixed(2)})</text>
+      `;
+    }
+
+    async function downloadInfographicPng() {
+      if (!activePriceReport) {
+        showAppNotification("Selecione um item com pesquisa realizada para baixar o gráfico.", "warn");
+        return;
+      }
+      showAppNotification("Gerando infográfico estatístico em alta resolução (.PNG HD)...", "info");
+      try {
+        const resp = await fetch("/api/v1/prices/export-infographic-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ report: activePriceReport })
+        });
+        if (!resp.ok) throw new Error("Erro na geração da imagem");
+        const blob = await resp.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        const code = activePriceReport.catmat_catser_code || "item";
+        a.download = `Infografico_Estatistico_CATMAT_${code}.png`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        showAppNotification("Infográfico com Boxplot e Curva Gaussiana baixado com sucesso!", "success");
+      } catch (e) {
+        showAppNotification("Falha ao baixar imagem: " + e.message, "error");
       }
     }
 

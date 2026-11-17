@@ -10,7 +10,10 @@ import os
 import re
 import zipfile
 import json
+import math
 from datetime import datetime, timezone
+from typing import Dict, Any, List, Optional
+from PIL import Image as PILImage, ImageDraw as PILImageDraw
 from typing import Dict, Any
 
 # python-docx
@@ -55,6 +58,216 @@ def _get_mes_extenso(mes: int) -> str:
         "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"
     ]
     return meses[mes - 1] if 1 <= mes <= 12 else ""
+
+
+def generate_statistical_infographic(
+    valid_prices: List[float],
+    purged_prices: List[float],
+    cv_percent: float,
+    mean_val: float,
+    median_val: float,
+    std_val: float,
+    adopted_param: str = "MEDIANA",
+    width: int = 1000,
+    height: int = 440,
+) -> bytes:
+    """
+    Gera um infográfico estatístico institucional de alta resolução (Pillow) contendo:
+      1. Boxplot dos Quartis (Saneamento Estatístico IN SEGES/ME nº 65/2021)
+      2. Curva Normal Gaussiana e Critérios de Escolha (Média vs Mediana vs Outliers)
+    """
+    img = PILImage.new("RGB", (width, height), color="#ffffff")
+    draw = PILImageDraw.Draw(img)
+
+    c_navy = "#1e2d3d"
+    c_steel = "#3b5b7c"
+    c_gold = "#c5a365"
+    c_green = "#15803d"
+    c_red = "#be123c"
+    c_bg_box = "#f8fafc"
+    c_border = "#e2e8f0"
+    c_text_dark = "#0f172a"
+    c_text_muted = "#64748b"
+
+    # Cabeçalho Principal do Infográfico
+    draw.rectangle([(0, 0), (width, 42)], fill=c_navy)
+    draw.text((20, 12), "DEMONSTRATIVO ESTATÍSTICO & CURVA GAUSSIANA DE DECISÃO (IN SEGES/ME Nº 65/2021)", fill="#ffffff")
+    draw.text((width - 240, 14), "PADRÃO OFICIAL TCU / AUDITORIA", fill="#facc15")
+
+    # Moldura dos dois painéis
+    draw.rounded_rectangle([(15, 52), (485, 425)], radius=10, fill=c_bg_box, outline=c_border, width=1)
+    draw.rounded_rectangle([(495, 52), (985, 425)], radius=10, fill=c_bg_box, outline=c_border, width=1)
+
+    # =========================================================================
+    # PAINEL 1: BOXPLOT DA AMOSTRA SANEADA
+    # =========================================================================
+    draw.text((30, 65), "1. DISPERSÃO DA AMOSTRA (MÉTODO DOS QUARTIS / BOXPLOT)", fill=c_navy)
+    draw.text((30, 82), "Saneamento estatístico das cotações colhidas nas bases oficiais do Governo", fill=c_text_muted)
+
+    v_sorted = sorted([float(p) for p in valid_prices]) if valid_prices else [10.0]
+    p_vals = [float(p) for p in purged_prices] if purged_prices else []
+    all_vals = v_sorted + p_vals
+
+    v_min = v_sorted[0]
+    v_max = v_sorted[-1]
+
+    def get_p(arr, pct):
+        if len(arr) == 1:
+            return arr[0]
+        idx = (len(arr) - 1) * pct
+        low = int(idx)
+        high = math.ceil(idx)
+        if low == high:
+            return arr[low]
+        return arr[low] + (arr[high] - arr[low]) * (idx - low)
+
+    q1 = get_p(v_sorted, 0.25)
+    q3 = get_p(v_sorted, 0.75)
+    iqr = max(0.01, q3 - q1)
+    lower_w = max(v_min, q1 - 1.5 * iqr)
+    upper_w = min(v_max, q3 + 1.5 * iqr)
+
+    abs_min = min(all_vals)
+    abs_max = max(all_vals)
+    span = max(0.1, (abs_max - abs_min) * 1.25)
+    d_min = max(0, abs_min - span * 0.1)
+    d_max = abs_max + span * 0.1
+
+    bx_l, bx_r = 45, 455
+    bx_w = bx_r - bx_l
+
+    def scale_bx(val):
+        if d_max <= d_min:
+            return (bx_l + bx_r) / 2
+        return bx_l + ((val - d_min) / (d_max - d_min)) * bx_w
+
+    y_axis = 160
+    draw.line([(bx_l, y_axis), (bx_r, y_axis)], fill="#cbd5e1", width=1)
+
+    x_min = scale_bx(lower_w)
+    x_q1 = scale_bx(q1)
+    x_med = scale_bx(median_val)
+    x_mean = scale_bx(mean_val)
+    x_q3 = scale_bx(q3)
+    x_max = scale_bx(upper_w)
+
+    draw.line([(x_min, y_axis), (x_q1, y_axis)], fill=c_steel, width=3)
+    draw.line([(x_q3, y_axis), (x_max, y_axis)], fill=c_steel, width=3)
+    draw.line([(x_min, y_axis - 15), (x_min, y_axis + 15)], fill=c_steel, width=3)
+    draw.line([(x_max, y_axis - 15), (x_max, y_axis + 15)], fill=c_steel, width=3)
+
+    draw.rounded_rectangle([(x_q1, y_axis - 30), (x_q3, y_axis + 30)], radius=4, fill="#e2e8f0", outline=c_steel, width=2)
+    draw.line([(x_med, y_axis - 30), (x_med, y_axis + 30)], fill=c_gold, width=4)
+
+    for dy in range(-36, 37, 6):
+        draw.line([(x_mean, y_axis + dy), (x_mean, y_axis + dy + 3)], fill=c_green, width=2)
+
+    for i, p in enumerate(v_sorted):
+        cx = scale_bx(p)
+        cy = y_axis + ((i % 3) - 1) * 8
+        draw.ellipse([(cx - 5, cy - 5), (cx + 5, cy + 5)], fill="#10b981", outline="#047857", width=1)
+
+    for i, p in enumerate(p_vals):
+        cx = scale_bx(p)
+        cy = y_axis + ((i % 2) * 16 - 8)
+        draw.ellipse([(cx - 6, cy - 6), (cx + 6, cy + 6)], fill="#f43f5e", outline="#be123c", width=1)
+
+    draw.line([(25, 230), (475, 230)], fill="#e2e8f0", width=1)
+    draw.text((30, 240), f"Menor: R$ {v_min:.2f}", fill=c_text_dark)
+    draw.text((180, 240), f"Q1 (25%): R$ {q1:.2f}", fill=c_text_dark)
+    draw.text((330, 240), f"Q3 (75%): R$ {q3:.2f}", fill=c_text_dark)
+
+    draw.text((30, 265), f"Mediana: R$ {median_val:.2f}", fill=c_gold)
+    draw.text((180, 265), f"Média: R$ {mean_val:.2f}", fill=c_green)
+    draw.text((330, 265), f"Maior: R$ {v_max:.2f}", fill=c_text_dark)
+
+    draw.rounded_rectangle([(30, 305), (470, 405)], radius=6, fill="#ffffff", outline="#cbd5e1", width=1)
+    draw.text((40, 315), "RESUMO DA AUDITORIA DA CESTA:", fill=c_navy)
+    draw.text((40, 335), f"• Total Coletado: {len(all_vals)} cotações ({len(v_sorted)} válidas e {len(p_vals)} outliers expurgados)", fill=c_text_dark)
+    draw.text((40, 355), f"• Coeficiente de Variação (CV): {cv_percent:.2f}% (Desvio Padrão: R$ {std_val:.2f})", fill=c_text_dark)
+    is_homo = cv_percent <= 25.0
+    status_str = "SÉRIE HOMOGÊNEA (CV <= 25%)" if is_homo else "SÉRIE HETEROGÊNEA (CV > 25%)"
+    status_col = c_green if is_homo else "#b45309"
+    draw.text((40, 375), f"• Classificação IN 65/2021: {status_str}", fill=status_col)
+
+    # =========================================================================
+    # PAINEL 2: CURVA NORMAL GAUSSIANA E CRITÉRIOS DE ESCOLHA
+    # =========================================================================
+    draw.text((510, 65), "2. DISTRIBUIÇÃO NORMAL GAUSSIANA & CRITÉRIOS DE ESCOLHA", fill=c_navy)
+    draw.text((510, 82), "Critérios legais e matemáticos para adoção da Média vs. Mediana (Art. 6º)", fill=c_text_muted)
+
+    cx_l, cx_r = 525, 955
+    cx_w = cx_r - cx_l
+    cy_base = 230
+    cy_peak = 115
+
+    curve_pts = []
+    steps = 90
+    for s in range(steps + 1):
+        z = -3.0 + (6.0 * s / steps)
+        y_val = math.exp(-0.5 * (z ** 2))
+        px = cx_l + (s / steps) * cx_w
+        py = cy_base - (y_val * (cy_base - cy_peak))
+        curve_pts.append((px, py))
+
+    draw.line([(cx_l, cy_base), (cx_r, cy_base)], fill="#cbd5e1", width=2)
+
+    x_m2 = cx_l + (1.0 / 6.0) * cx_w
+    x_m1 = cx_l + (2.0 / 6.0) * cx_w
+    x_mid = cx_l + (3.0 / 6.0) * cx_w
+    x_p1 = cx_l + (4.0 / 6.0) * cx_w
+    x_p2 = cx_l + (5.0 / 6.0) * cx_w
+
+    poly_central = [(x_m1, cy_base)] + [pt for pt in curve_pts if x_m1 <= pt[0] <= x_p1] + [(x_p1, cy_base)]
+    if len(poly_central) > 2:
+        draw.polygon(poly_central, fill="#dcfce7")
+
+    draw.line([(x_m1, cy_base), (x_m1, cy_peak + 25)], fill="#86efac", width=1)
+    draw.line([(x_p1, cy_base), (x_p1, cy_peak + 25)], fill="#86efac", width=1)
+    draw.line([(x_m2, cy_base), (x_m2, cy_peak + 70)], fill="#fca5a5", width=1)
+    draw.line([(x_p2, cy_base), (x_p2, cy_peak + 70)], fill="#fca5a5", width=1)
+
+    for i in range(len(curve_pts) - 1):
+        draw.line([curve_pts[i], curve_pts[i+1]], fill=c_steel, width=3)
+
+    draw.line([(x_mid, cy_base), (x_mid, cy_peak)], fill=c_gold, width=3)
+
+    draw.text((x_mid - 25, cy_base - 50), "ZONA CENTRAL", fill=c_green)
+    draw.text((x_mid - 20, cy_base - 35), "CV <= 25%", fill=c_green)
+    draw.text((x_mid - 15, cy_base + 6), "u (Média)", fill=c_navy)
+
+    draw.text((x_p1 + 8, cy_base - 40), "DISPERSÃO", fill="#b45309")
+    draw.text((x_p1 + 8, cy_base - 25), "CV > 25%", fill="#b45309")
+    draw.text((x_p1 - 10, cy_base + 6), "+1s", fill=c_text_muted)
+    draw.text((x_m1 - 10, cy_base + 6), "-1s", fill=c_text_muted)
+
+    draw.text((cx_l + 10, cy_base - 25), "CAUDA (Expurgo)", fill=c_red)
+    draw.text((cx_r - 110, cy_base - 25), "CAUDA (Expurgo)", fill=c_red)
+    draw.text((x_m2 - 10, cy_base + 6), "-2s", fill=c_text_muted)
+    draw.text((x_p2 - 10, cy_base + 6), "+2s", fill=c_text_muted)
+
+    draw.rounded_rectangle([(510, 260), (970, 410)], radius=6, fill="#ffffff", outline="#cbd5e1", width=1)
+
+    draw.rectangle([(520, 270), (524, 305)], fill=c_green)
+    draw.text((532, 270), "REGRA DA MÉDIA SANEADA (CV <= 25%):", fill=c_green)
+    draw.text((532, 287), "Quando a amostra é homogênea, a média aritmética reflete com precisão o", fill=c_text_dark)
+    draw.text((532, 300), "valor de mercado e pondera igualmente as propostas válidas.", fill=c_text_dark)
+
+    draw.rectangle([(520, 318), (524, 353)], fill=c_gold)
+    draw.text((532, 318), "REGRA DA MEDIANA SANEADA (CV > 25%):", fill="#92400e")
+    draw.text((532, 335), "Quando a amostra é heterogênea ou assimétrica, a mediana é obrigatória", fill=c_text_dark)
+    draw.text((532, 348), "(Art. 6º, § 5º da IN 65/2021) pois é imune à distorção de preços nos extremos.", fill=c_text_dark)
+
+    adopted_is_med = "MEDIANA" in adopted_param.upper()
+    bg_dec = "#fef3c7" if adopted_is_med else "#dcfce7"
+    border_dec = c_gold if adopted_is_med else c_green
+    draw.rounded_rectangle([(520, 368), (960, 400)], radius=4, fill=bg_dec, outline=border_dec, width=1)
+    dec_text = f"DECISÃO LEGAL ADOTADA: {adopted_param} (R$ {median_val if adopted_is_med else mean_val:.2f}) — CV Saneado de {cv_percent:.2f}%"
+    draw.text((530, 376), dec_text, fill=c_navy)
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", dpi=(300, 300))
+    return buf.getvalue()
 
 
 # =============================================================================
@@ -289,11 +502,37 @@ def build_in65_docx_bytes(
             r.font.name = "Calibri"
             r.font.bold = is_label or (c_idx == 3 and r_idx == 3)
 
-    # SEÇÃO 4: JUSTIFICATIVA METODOLÓGICA
+    # SEÇÃO 4: DEMONSTRATIVO GRÁFICO (BOXPLOT E CURVA NORMAL GAUSSIANA)
+    p_sg = doc.add_paragraph()
+    p_sg.paragraph_format.space_before = Pt(12)
+    p_sg.paragraph_format.space_after = Pt(4)
+    r_sg = p_sg.add_run("4. DEMONSTRATIVO GRÁFICO: DISPERSÃO (BOXPLOT) E CURVA GAUSSIANA (IN 65/2021)")
+    r_sg.font.bold = True
+    r_sg.font.size = Pt(10.5)
+
+    try:
+        infographic_bytes = generate_statistical_infographic(
+            valid_prices=[float(q.get("unit_price", 0.0)) for q in valid_quotes],
+            purged_prices=[float(q.get("unit_price", 0.0)) for q in report.get("purged_quotes", [])],
+            cv_percent=float(sm.get("cv_percent", 0.0)),
+            mean_val=float(sm.get("mean", 0.0)),
+            median_val=float(sm.get("median", 0.0)),
+            std_val=float(sm.get("std_deviation", 0.0)),
+            adopted_param=str(report.get("adopted_parameter", "MEDIANA")),
+        )
+        p_chart = doc.add_paragraph()
+        p_chart.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_chart.paragraph_format.space_after = Pt(8)
+        run_chart = p_chart.add_run()
+        run_chart.add_picture(io.BytesIO(infographic_bytes), width=Inches(6.8))
+    except Exception as exc:
+        print(f"Erro ao inserir infográfico estatístico no Word: {exc}")
+
+    # SEÇÃO 5: JUSTIFICATIVA METODOLÓGICA
     p_s4 = doc.add_paragraph()
     p_s4.paragraph_format.space_before = Pt(12)
     p_s4.paragraph_format.space_after = Pt(4)
-    r_s4 = p_s4.add_run("4. JUSTIFICATIVA PARA A METODOLOGIA ADOTADA (Art. 6º, §4º da IN 65/2021)")
+    r_s4 = p_s4.add_run("5. JUSTIFICATIVA PARA A METODOLOGIA ADOTADA (Art. 6º, §4º da IN 65/2021)")
     r_s4.font.bold = True
     r_s4.font.size = Pt(10.5)
 
@@ -641,8 +880,26 @@ def build_in65_pdf_bytes(
     story.append(t_stat)
     story.append(Spacer(1, 3 * mm))
 
-    # SEÇÃO 4: JUSTIFICATIVA JURÍDICA
-    story.append(Paragraph("4. JUSTIFICATIVA METODOLÓGICA (Art. 6º da IN 65/2021)", st_sec_title))
+    # SEÇÃO 4: DEMONSTRATIVO GRÁFICO (BOXPLOT E CURVA NORMAL GAUSSIANA)
+    story.append(Paragraph("4. DEMONSTRATIVO GRÁFICO: DISPERSÃO (BOXPLOT) E CURVA GAUSSIANA (IN 65/2021)", st_sec_title))
+    story.append(Spacer(1, 1.5 * mm))
+    try:
+        infographic_bytes = generate_statistical_infographic(
+            valid_prices=[float(q.get("unit_price", 0.0)) for q in valid_quotes],
+            purged_prices=[float(q.get("unit_price", 0.0)) for q in report.get("purged_quotes", [])],
+            cv_percent=float(sm.get("cv_percent", 0.0)),
+            mean_val=float(sm.get("mean", 0.0)),
+            median_val=float(sm.get("median", 0.0)),
+            std_val=float(sm.get("std_deviation", 0.0)),
+            adopted_param=str(report.get("adopted_parameter", "MEDIANA")),
+        )
+        story.append(RLImage(io.BytesIO(infographic_bytes), width=18.0 * cm, height=7.92 * cm))
+        story.append(Spacer(1, 3 * mm))
+    except Exception as exc:
+        print(f"Erro ao inserir gráfico estatístico no PDF: {exc}")
+
+    # SEÇÃO 5: JUSTIFICATIVA JURÍDICA
+    story.append(Paragraph("5. JUSTIFICATIVA METODOLÓGICA (Art. 6º da IN 65/2021)", st_sec_title))
     story.append(Spacer(1, 1 * mm))
     story.append(Paragraph(report.get("legal_methodology_justification", ""), st_just))
     story.append(Spacer(1, 4 * mm))

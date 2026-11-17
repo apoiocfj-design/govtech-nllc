@@ -46,6 +46,7 @@ from report_generators import (
     build_consolidated_in65_excel_bytes,
     build_batch_zip_bytes,
     build_audit_certificate_pdf_bytes,
+    generate_statistical_infographic,
 )
 from pncp_extractor import (
     resolve_pncp_compra,
@@ -915,6 +916,29 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                     ip_address=ip_addr,
                 )
                 self._send_json(200, {"status": "SUCCESS", "entry": entry})
+            except Exception as exc:
+                self._send_json(400, {"status": "ERROR", "error": str(exc)})
+            return
+
+        # 0.005 Exportação Isolada do Infográfico Estatístico e Curva Gaussiana (.PNG HD)
+        if parsed.path == "/api/v1/prices/export-infographic-image":
+            try:
+                data = json.loads(raw_body)
+                rep = data.get("report") or {}
+                sm = rep.get("sanitized_metrics") or {}
+                valid_quotes = rep.get("valid_quotes") or []
+                purged_quotes = rep.get("purged_quotes") or []
+
+                img_bytes = generate_statistical_infographic(
+                    valid_prices=[float(q.get("unit_price", 0.0)) for q in valid_quotes],
+                    purged_prices=[float(q.get("unit_price", 0.0)) for q in purged_quotes],
+                    cv_percent=float(sm.get("cv_percent", 0.0)),
+                    mean_val=float(sm.get("mean", 0.0)),
+                    median_val=float(sm.get("median", 0.0)),
+                    std_val=float(sm.get("std_deviation", 0.0)),
+                    adopted_param=str(rep.get("adopted_parameter", "MEDIANA")),
+                )
+                self._send_binary(img_bytes, "image/png", f"Infografico_Estatistico_IN65_{int(time.time())}.png")
             except Exception as exc:
                 self._send_json(400, {"status": "ERROR", "error": str(exc)})
             return
