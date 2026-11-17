@@ -7,6 +7,8 @@ Gera em memória (BytesIO) relatórios completos e prontos para instrução proc
 
 import io
 import os
+import re
+import zipfile
 from datetime import datetime
 from typing import Dict, Any
 
@@ -1317,14 +1319,56 @@ def build_batch_zip_bytes(
     om_name: str = "MARINHA DO BRASIL",
     ordenador_nome: str = "ORDENADOR DE DESPESAS",
     elaborador_nome: str = "ENCARREGADO DO SETOR DE OBTENÇÃO",
+    extract_gov_docs: bool = True,
 ) -> bytes:
-    """Gera um arquivo .ZIP contendo os relatórios em Word, PDF e Excel individuais de cada item, além da planilha consolidada."""
+    """Gera um arquivo .ZIP contendo os relatórios em Word, PDF e Excel individuais de cada item, além da planilha consolidada e dos Editais/Termos oficiais extraídos do Governo (PNCP)."""
+    import concurrent.futures
+    from pncp_extractor import capture_pncp_page_pdf, CACHE_DIR
+
+    # 1. Extração concorrente de alta eficiência dos documentos oficiais do Governo (PNCP)
+    pncp_docs_map = {}
+    if extract_gov_docs:
+        tasks = {}
+        for item in items_results:
+            rep = item.get("report") or {}
+            for q in rep.get("valid_quotes", []):
+                p_key = q.get("purchase_key") or ""
+                p_url = q.get("pncp_or_compras_uri") or ""
+                c_num = str(q.get("purchase_number_year") or "compra").replace("/", "_")
+                if p_key and p_key not in tasks:
+                    tasks[p_key] = (p_url, p_key, c_num)
+
+        def _fetch_one_doc(entry):
+            k, (url, key, c_num) = entry
+            try:
+                clean_id = re.sub(r"\W", "_", key)
+                c_file = os.path.join(CACHE_DIR, f"pncp_full_{clean_id}.pdf")
+                if os.path.exists(c_file) and os.path.getsize(c_file) > 1000:
+                    with open(c_file, "rb") as cf:
+                        return k, c_num, cf.read()
+                pdf_b = capture_pncp_page_pdf(url, chave_or_id=key, timeout_sec=12)
+                if pdf_b and len(pdf_b) > 1000:
+                    return k, c_num, pdf_b
+            except Exception as e:
+                print(f"[PNCP Parallel Fetch Error] {key}: {e}")
+            return k, c_num, None
+
+        if tasks:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+                for k, c_num, pdf_b in executor.map(_fetch_one_doc, list(tasks.items())):
+                    if pdf_b:
+                        pncp_docs_map[k] = (c_num, pdf_b)
+
     z_buf = io.BytesIO()
 
     with zipfile.ZipFile(z_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        # 1. Planilha Consolidada
+        # 1. Planilha Consolidada Geral
         xlsx_consolidada = build_consolidated_in65_excel_bytes(items_results, uasg_name=(f"{om_name}" if "MARINHA" in om_name.upper() else f"MARINHA DO BRASIL - {om_name}"))
         zf.writestr("00_Mapa_Comparativo_Consolidado_Lote.xlsx", xlsx_consolidada)
+
+        # Pasta raiz dedicada aos Editais Oficiais do PNCP coletados
+        for p_key, (c_num, pdf_b) in pncp_docs_map.items():
+            zf.writestr(f"01_Editais_Oficiais_Gov_PNCP/PNCP_Edital_Compra_{c_num}.pdf", pdf_b)
 
         # 2. Itens individuais
         for idx, item in enumerate(items_results, start=1):
@@ -1350,24 +1394,14 @@ def build_batch_zip_bytes(
                 just_pdf = build_in65_justificativa_pdf_bytes(rep, qty, om_name=om_name, ordenador_nome=ordenador_nome)
                 zf.writestr(f"{folder}/Justificativa_Circunstanciada_Art6_IN65_{prefix}_{code}.pdf", just_pdf)
 
-            # Inclusão ultrarrápida de editais/documentos PNCP já consultados (via cache local sem travar o download)
-            try:
-                from pncp_extractor import CACHE_DIR
-                quotes = rep.get("valid_quotes", [])
-                seen_compras = set()
-                for q in quotes:
-                    p_key = q.get("purchase_key") or ""
-                    c_num = str(q.get("purchase_number_year") or "compra").replace("/", "_")
-                    if p_key and p_key not in seen_compras:
-                        seen_compras.add(p_key)
-                        clean_id = re.sub(r"\W", "_", p_key)
-                        c_file = os.path.join(CACHE_DIR, f"pncp_full_{clean_id}.pdf")
-                        if os.path.exists(c_file) and os.path.getsize(c_file) > 1000:
-                            with open(c_file, "rb") as cf:
-                                pncp_pdf = cf.read()
-                            zf.writestr(f"{folder}/PNCP_Edital_Lista_Materiais_{c_num}.pdf", pncp_pdf)
-                            zf.writestr(f"01_Editais_PNCP_Lista_Materiais/PNCP_Edital_Compra_{c_num}.pdf", pncp_pdf)
-            except Exception as e:
-                print(f"[ZIP PNCP cache check] {e}")
+            # Inclusão dos Editais/Documentos PNCP de cada cotação do item
+            quotes = rep.get("valid_quotes", [])
+            seen_item_keys = set()
+            for q in quotes:
+                p_key = q.get("purchase_key") or ""
+                if p_key in pncp_docs_map and p_key not in seen_item_keys:
+                    seen_item_keys.add(p_key)
+                    c_num, pdf_b = pncp_docs_map[p_key]
+                    zf.writestr(f"{folder}/Editais_Gov_PNCP/PNCP_Edital_Compra_{c_num}.pdf", pdf_b)
 
     return z_buf.getvalue()
