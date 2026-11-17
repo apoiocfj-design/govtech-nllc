@@ -3894,12 +3894,16 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            items: selected.map(it => ({
-              code: it.code,
-              type: it.type || "MATERIAL",
-              unit: it.unit || "UN",
-              qty: it.qty || 1
-            })),
+            items: selected.map(it => {
+              const matched = (batchResearchResults || []).find(r => String(r.code) === String(it.code));
+              return {
+                code: it.code,
+                type: it.type || "MATERIAL",
+                unit: it.unit || "UN",
+                qty: it.qty || 1,
+                report: it.report || (matched ? matched.report : null)
+              };
+            }),
             om_name: getGlobalOrgName()
           })
         });
@@ -3932,12 +3936,16 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            items: selected.map(it => ({
-              code: it.code,
-              type: it.type || "MATERIAL",
-              unit: it.unit || "UN",
-              qty: it.qty || 1
-            })),
+            items: selected.map(it => {
+              const matched = (batchResearchResults || []).find(r => String(r.code) === String(it.code));
+              return {
+                code: it.code,
+                type: it.type || "MATERIAL",
+                unit: it.unit || "UN",
+                qty: it.qty || 1,
+                report: it.report || (matched ? matched.report : null)
+              };
+            }),
             om_name: getGlobalOrgName()
           })
         });

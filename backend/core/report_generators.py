@@ -13,7 +13,8 @@ import json
 import math
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
-from PIL import Image as PILImage, ImageDraw as PILImageDraw
+from PIL import Image as PILImage, ImageDraw as PILImageDraw, ImageFont as PILImageFont
+import qrcode
 from typing import Dict, Any
 
 # python-docx
@@ -60,6 +61,72 @@ def _get_mes_extenso(mes: int) -> str:
     return meses[mes - 1] if 1 <= mes <= 12 else ""
 
 
+
+def _get_pil_font(size: int, bold: bool = False):
+    """Carrega fontes TrueType escaláveis para nitidez absoluta em impressões e telas."""
+    font_candidates = (
+        ["arialbd.ttf", "calibrib.ttf", "DejaVuSans-Bold.ttf", "segoeuib.ttf"]
+        if bold else
+        ["arial.ttf", "calibri.ttf", "DejaVuSans.ttf", "segoeui.ttf"]
+    )
+    for name in font_candidates:
+        try:
+            return PILImageFont.truetype(name, size)
+        except Exception:
+            continue
+    try:
+        return PILImageFont.load_default(size=size)
+    except Exception:
+        return PILImageFont.load_default()
+
+
+def generate_qr_code_bytes(url: str, box_size: int = 4, border: int = 1) -> bytes:
+    """Gera bytes PNG de um QR Code nítido apontando para a URL informada."""
+    if not url or not url.startswith("http"):
+        url = "https://pncp.gov.br"
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=box_size,
+        border=border,
+    )
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="#0f172a", back_color="#ffffff")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def add_docx_hyperlink(paragraph, url: str, text: str, color: str = "1D4ED8", underline: bool = True):
+    """Adiciona um link clicável nativo a um parágrafo no python-docx."""
+    if not url or not url.startswith("http"):
+        url = "https://pncp.gov.br"
+    part = paragraph.part
+    r_id = part.relate_to(url, docx.opc.constants.RELATIONSHIP_TYPE.HYPERLINK, is_external=True)
+
+    hyperlink = OxmlElement('w:hyperlink')
+    hyperlink.set(qn('r:id'), r_id)
+
+    new_run = OxmlElement('w:r')
+    rPr = OxmlElement('w:rPr')
+
+    if color:
+        c = OxmlElement('w:color')
+        c.set(qn('w:val'), color)
+        rPr.append(c)
+
+    if underline:
+        u = OxmlElement('w:u')
+        u.set(qn('w:val'), 'single')
+        rPr.append(u)
+
+    new_run.append(rPr)
+    new_run.text = text
+    hyperlink.append(new_run)
+    paragraph._p.append(hyperlink)
+    return hyperlink
+
 def generate_statistical_infographic(
     valid_prices: List[float],
     purged_prices: List[float],
@@ -68,57 +135,60 @@ def generate_statistical_infographic(
     median_val: float,
     std_val: float,
     adopted_param: str = "MEDIANA",
-    width: int = 1000,
-    height: int = 440,
+    width: int = 1400,
+    height: int = 620,
 ) -> bytes:
     """
-    Gera um infográfico estatístico institucional de alta resolução (Pillow) contendo:
-      1. Boxplot dos Quartis (Saneamento Estatístico IN SEGES/ME nº 65/2021)
-      2. Curva Normal Gaussiana e Critérios de Escolha (Média vs Mediana vs Outliers)
+    Gera infográfico estatístico de alta resolução com fontes TrueType escaláveis (300 DPI),
+    garantindo nitidez absoluta e legibilidade perfeita na impressão e em telas:
+      1. Boxplot dos Quartis e dispersão da amostra (IN SEGES/ME nº 65/2021)
+      2. Curva Normal Gaussiana e critérios de decisão legal (Média vs Mediana)
     """
     img = PILImage.new("RGB", (width, height), color="#ffffff")
     draw = PILImageDraw.Draw(img)
 
+    f_title = _get_pil_font(22, bold=True)
+    f_sec = _get_pil_font(18, bold=True)
+    f_lbl = _get_pil_font(15, bold=False)
+    f_bold = _get_pil_font(16, bold=True)
+    f_badge = _get_pil_font(15, bold=True)
+
     c_navy = "#1e2d3d"
     c_steel = "#3b5b7c"
-    c_gold = "#c5a365"
+    c_gold = "#b45309"
     c_green = "#15803d"
     c_red = "#be123c"
     c_bg_box = "#f8fafc"
-    c_border = "#e2e8f0"
+    c_border = "#cbd5e1"
     c_text_dark = "#0f172a"
-    c_text_muted = "#64748b"
+    c_text_muted = "#475569"
 
-    # Cabeçalho Principal do Infográfico
-    draw.rectangle([(0, 0), (width, 42)], fill=c_navy)
-    draw.text((20, 12), "DEMONSTRATIVO ESTATÍSTICO & CURVA GAUSSIANA DE DECISÃO (IN SEGES/ME Nº 65/2021)", fill="#ffffff")
-    draw.text((width - 240, 14), "PADRÃO OFICIAL TCU / AUDITORIA", fill="#facc15")
+    # Barra de Título Superior
+    draw.rectangle([(0, 0), (width, 55)], fill=c_navy)
+    draw.text((25, 14), "DEMONSTRATIVO ESTATÍSTICO & CURVA GAUSSIANA DE DECISÃO (IN SEGES/ME Nº 65/2021)", font=f_title, fill="#ffffff")
+    draw.text((width - 340, 18), "PADRÃO OFICIAL TCU / NLLC 14.133", font=f_badge, fill="#facc15")
 
-    # Moldura dos dois painéis
-    draw.rounded_rectangle([(15, 52), (485, 425)], radius=10, fill=c_bg_box, outline=c_border, width=1)
-    draw.rounded_rectangle([(495, 52), (985, 425)], radius=10, fill=c_bg_box, outline=c_border, width=1)
+    # Moldura dos Painéis
+    draw.rounded_rectangle([(20, 70), (685, 595)], radius=12, fill=c_bg_box, outline=c_border, width=2)
+    draw.rounded_rectangle([(705, 70), (1380, 595)], radius=12, fill=c_bg_box, outline=c_border, width=2)
 
     # =========================================================================
-    # PAINEL 1: BOXPLOT DA AMOSTRA SANEADA
+    # PAINEL 1: BOXPLOT
     # =========================================================================
-    draw.text((30, 65), "1. DISPERSÃO DA AMOSTRA (MÉTODO DOS QUARTIS / BOXPLOT)", fill=c_navy)
-    draw.text((30, 82), "Saneamento estatístico das cotações colhidas nas bases oficiais do Governo", fill=c_text_muted)
+    draw.text((40, 85), "1. DISPERSÃO DA AMOSTRA (MÉTODO DOS QUARTIS / BOXPLOT)", font=f_sec, fill=c_navy)
+    draw.text((40, 110), "Saneamento estatístico das cotações extraídas das bases públicas oficiais", font=f_lbl, fill=c_text_muted)
 
     v_sorted = sorted([float(p) for p in valid_prices]) if valid_prices else [10.0]
     p_vals = [float(p) for p in purged_prices] if purged_prices else []
     all_vals = v_sorted + p_vals
 
-    v_min = v_sorted[0]
-    v_max = v_sorted[-1]
-
+    v_min, v_max = v_sorted[0], v_sorted[-1]
     def get_p(arr, pct):
-        if len(arr) == 1:
-            return arr[0]
+        if len(arr) == 1: return arr[0]
         idx = (len(arr) - 1) * pct
         low = int(idx)
         high = math.ceil(idx)
-        if low == high:
-            return arr[low]
+        if low == high: return arr[low]
         return arr[low] + (arr[high] - arr[low]) * (idx - low)
 
     q1 = get_p(v_sorted, 0.25)
@@ -133,16 +203,14 @@ def generate_statistical_infographic(
     d_min = max(0, abs_min - span * 0.1)
     d_max = abs_max + span * 0.1
 
-    bx_l, bx_r = 45, 455
+    bx_l, bx_r = 60, 645
     bx_w = bx_r - bx_l
-
     def scale_bx(val):
-        if d_max <= d_min:
-            return (bx_l + bx_r) / 2
+        if d_max <= d_min: return (bx_l + bx_r) / 2
         return bx_l + ((val - d_min) / (d_max - d_min)) * bx_w
 
-    y_axis = 160
-    draw.line([(bx_l, y_axis), (bx_r, y_axis)], fill="#cbd5e1", width=1)
+    y_axis = 220
+    draw.line([(bx_l, y_axis), (bx_r, y_axis)], fill="#94a3b8", width=2)
 
     x_min = scale_bx(lower_w)
     x_q1 = scale_bx(q1)
@@ -151,55 +219,56 @@ def generate_statistical_infographic(
     x_q3 = scale_bx(q3)
     x_max = scale_bx(upper_w)
 
-    draw.line([(x_min, y_axis), (x_q1, y_axis)], fill=c_steel, width=3)
-    draw.line([(x_q3, y_axis), (x_max, y_axis)], fill=c_steel, width=3)
-    draw.line([(x_min, y_axis - 15), (x_min, y_axis + 15)], fill=c_steel, width=3)
-    draw.line([(x_max, y_axis - 15), (x_max, y_axis + 15)], fill=c_steel, width=3)
+    draw.line([(x_min, y_axis), (x_q1, y_axis)], fill=c_steel, width=4)
+    draw.line([(x_q3, y_axis), (x_max, y_axis)], fill=c_steel, width=4)
+    draw.line([(x_min, y_axis - 20), (x_min, y_axis + 20)], fill=c_steel, width=4)
+    draw.line([(x_max, y_axis - 20), (x_max, y_axis + 20)], fill=c_steel, width=4)
 
-    draw.rounded_rectangle([(x_q1, y_axis - 30), (x_q3, y_axis + 30)], radius=4, fill="#e2e8f0", outline=c_steel, width=2)
-    draw.line([(x_med, y_axis - 30), (x_med, y_axis + 30)], fill=c_gold, width=4)
+    draw.rounded_rectangle([(x_q1, y_axis - 40), (x_q3, y_axis + 40)], radius=6, fill="#e2e8f0", outline=c_steel, width=3)
+    draw.line([(x_med, y_axis - 40), (x_med, y_axis + 40)], fill=c_gold, width=5)
 
-    for dy in range(-36, 37, 6):
-        draw.line([(x_mean, y_axis + dy), (x_mean, y_axis + dy + 3)], fill=c_green, width=2)
+    for dy in range(-48, 49, 8):
+        draw.line([(x_mean, y_axis + dy), (x_mean, y_axis + dy + 4)], fill=c_green, width=3)
 
     for i, p in enumerate(v_sorted):
         cx = scale_bx(p)
-        cy = y_axis + ((i % 3) - 1) * 8
-        draw.ellipse([(cx - 5, cy - 5), (cx + 5, cy + 5)], fill="#10b981", outline="#047857", width=1)
+        cy = y_axis + ((i % 3) - 1) * 10
+        draw.ellipse([(cx - 7, cy - 7), (cx + 7, cy + 7)], fill="#10b981", outline="#047857", width=2)
 
     for i, p in enumerate(p_vals):
         cx = scale_bx(p)
-        cy = y_axis + ((i % 2) * 16 - 8)
-        draw.ellipse([(cx - 6, cy - 6), (cx + 6, cy + 6)], fill="#f43f5e", outline="#be123c", width=1)
+        cy = y_axis + ((i % 2) * 22 - 11)
+        draw.ellipse([(cx - 8, cy - 8), (cx + 8, cy + 8)], fill="#f43f5e", outline="#be123c", width=2)
 
-    draw.line([(25, 230), (475, 230)], fill="#e2e8f0", width=1)
-    draw.text((30, 240), f"Menor: R$ {v_min:.2f}", fill=c_text_dark)
-    draw.text((180, 240), f"Q1 (25%): R$ {q1:.2f}", fill=c_text_dark)
-    draw.text((330, 240), f"Q3 (75%): R$ {q3:.2f}", fill=c_text_dark)
+    draw.line([(40, 310), (665, 310)], fill="#e2e8f0", width=2)
+    draw.text((45, 325), f"Menor: R$ {v_min:.2f}", font=f_bold, fill=c_text_dark)
+    draw.text((250, 325), f"Q1 (25%): R$ {q1:.2f}", font=f_bold, fill=c_text_dark)
+    draw.text((460, 325), f"Q3 (75%): R$ {q3:.2f}", font=f_bold, fill=c_text_dark)
 
-    draw.text((30, 265), f"Mediana: R$ {median_val:.2f}", fill=c_gold)
-    draw.text((180, 265), f"Média: R$ {mean_val:.2f}", fill=c_green)
-    draw.text((330, 265), f"Maior: R$ {v_max:.2f}", fill=c_text_dark)
+    draw.text((45, 360), f"Mediana: R$ {median_val:.2f}", font=f_bold, fill=c_gold)
+    draw.text((250, 360), f"Média: R$ {mean_val:.2f}", font=f_bold, fill=c_green)
+    draw.text((460, 360), f"Maior: R$ {v_max:.2f}", font=f_bold, fill=c_text_dark)
 
-    draw.rounded_rectangle([(30, 305), (470, 405)], radius=6, fill="#ffffff", outline="#cbd5e1", width=1)
-    draw.text((40, 315), "RESUMO DA AUDITORIA DA CESTA:", fill=c_navy)
-    draw.text((40, 335), f"• Total Coletado: {len(all_vals)} cotações ({len(v_sorted)} válidas e {len(p_vals)} outliers expurgados)", fill=c_text_dark)
-    draw.text((40, 355), f"• Coeficiente de Variação (CV): {cv_percent:.2f}% (Desvio Padrão: R$ {std_val:.2f})", fill=c_text_dark)
+    # Cartão síntese
+    draw.rounded_rectangle([(40, 415), (665, 570)], radius=8, fill="#ffffff", outline="#cbd5e1", width=2)
+    draw.text((55, 430), "RESUMO DA AUDITORIA DA CESTA:", font=f_sec, fill=c_navy)
+    draw.text((55, 465), f"• Total Coletado: {len(all_vals)} cotações ({len(v_sorted)} válidas e {len(p_vals)} outliers expurgados)", font=f_bold, fill=c_text_dark)
+    draw.text((55, 498), f"• Coeficiente de Variação (CV): {cv_percent:.2f}% (Desvio Padrão: R$ {std_val:.2f})", font=f_bold, fill=c_text_dark)
     is_homo = cv_percent <= 25.0
-    status_str = "SÉRIE HOMOGÊNEA (CV <= 25%)" if is_homo else "SÉRIE HETEROGÊNEA (CV > 25%)"
+    status_str = "SÉRIE HOMOGÊNEA (CV ≤ 25%)" if is_homo else "SÉRIE HETEROGÊNEA (CV > 25%)"
     status_col = c_green if is_homo else "#b45309"
-    draw.text((40, 375), f"• Classificação IN 65/2021: {status_str}", fill=status_col)
+    draw.text((55, 530), f"• Classificação IN 65/2021: {status_str}", font=f_bold, fill=status_col)
 
     # =========================================================================
     # PAINEL 2: CURVA NORMAL GAUSSIANA E CRITÉRIOS DE ESCOLHA
     # =========================================================================
-    draw.text((510, 65), "2. DISTRIBUIÇÃO NORMAL GAUSSIANA & CRITÉRIOS DE ESCOLHA", fill=c_navy)
-    draw.text((510, 82), "Critérios legais e matemáticos para adoção da Média vs. Mediana (Art. 6º)", fill=c_text_muted)
+    draw.text((725, 85), "2. DISTRIBUIÇÃO NORMAL GAUSSIANA & CRITÉRIOS DE ESCOLHA", font=f_sec, fill=c_navy)
+    draw.text((725, 110), "Critérios legais e matemáticos para adoção da Média vs. Mediana (Art. 6º)", font=f_lbl, fill=c_text_muted)
 
-    cx_l, cx_r = 525, 955
+    cx_l, cx_r = 745, 1340
     cx_w = cx_r - cx_l
-    cy_base = 230
-    cy_peak = 115
+    cy_base = 310
+    cy_peak = 150
 
     curve_pts = []
     steps = 90
@@ -210,7 +279,7 @@ def generate_statistical_infographic(
         py = cy_base - (y_val * (cy_base - cy_peak))
         curve_pts.append((px, py))
 
-    draw.line([(cx_l, cy_base), (cx_r, cy_base)], fill="#cbd5e1", width=2)
+    draw.line([(cx_l, cy_base), (cx_r, cy_base)], fill="#94a3b8", width=2)
 
     x_m2 = cx_l + (1.0 / 6.0) * cx_w
     x_m1 = cx_l + (2.0 / 6.0) * cx_w
@@ -222,48 +291,47 @@ def generate_statistical_infographic(
     if len(poly_central) > 2:
         draw.polygon(poly_central, fill="#dcfce7")
 
-    draw.line([(x_m1, cy_base), (x_m1, cy_peak + 25)], fill="#86efac", width=1)
-    draw.line([(x_p1, cy_base), (x_p1, cy_peak + 25)], fill="#86efac", width=1)
-    draw.line([(x_m2, cy_base), (x_m2, cy_peak + 70)], fill="#fca5a5", width=1)
-    draw.line([(x_p2, cy_base), (x_p2, cy_peak + 70)], fill="#fca5a5", width=1)
+    draw.line([(x_m1, cy_base), (x_m1, cy_peak + 30)], fill="#86efac", width=2)
+    draw.line([(x_p1, cy_base), (x_p1, cy_peak + 30)], fill="#86efac", width=2)
+    draw.line([(x_m2, cy_base), (x_m2, cy_peak + 90)], fill="#fca5a5", width=2)
+    draw.line([(x_p2, cy_base), (x_p2, cy_peak + 90)], fill="#fca5a5", width=2)
 
     for i in range(len(curve_pts) - 1):
-        draw.line([curve_pts[i], curve_pts[i+1]], fill=c_steel, width=3)
+        draw.line([curve_pts[i], curve_pts[i+1]], fill=c_steel, width=4)
 
-    draw.line([(x_mid, cy_base), (x_mid, cy_peak)], fill=c_gold, width=3)
+    draw.line([(x_mid, cy_base), (x_mid, cy_peak)], fill=c_gold, width=4)
 
-    draw.text((x_mid - 25, cy_base - 50), "ZONA CENTRAL", fill=c_green)
-    draw.text((x_mid - 20, cy_base - 35), "CV <= 25%", fill=c_green)
-    draw.text((x_mid - 15, cy_base + 6), "u (Média)", fill=c_navy)
+    draw.text((x_mid - 45, cy_base - 65), "ZONA CENTRAL", font=f_bold, fill=c_green)
+    draw.text((x_mid - 40, cy_base - 45), "CV ≤ 25%", font=f_bold, fill=c_green)
+    draw.text((x_mid - 30, cy_base + 8), "μ (Média)", font=f_bold, fill=c_navy)
 
-    draw.text((x_p1 + 8, cy_base - 40), "DISPERSÃO", fill="#b45309")
-    draw.text((x_p1 + 8, cy_base - 25), "CV > 25%", fill="#b45309")
-    draw.text((x_p1 - 10, cy_base + 6), "+1s", fill=c_text_muted)
-    draw.text((x_m1 - 10, cy_base + 6), "-1s", fill=c_text_muted)
+    draw.text((x_p1 + 10, cy_base - 55), "DISPERSÃO", font=f_bold, fill="#b45309")
+    draw.text((x_p1 + 10, cy_base - 35), "CV > 25%", font=f_bold, fill="#b45309")
+    draw.text((x_p1 - 15, cy_base + 8), "+1σ", font=f_bold, fill=c_text_muted)
+    draw.text((x_m1 - 15, cy_base + 8), "-1σ", font=f_bold, fill=c_text_muted)
 
-    draw.text((cx_l + 10, cy_base - 25), "CAUDA (Expurgo)", fill=c_red)
-    draw.text((cx_r - 110, cy_base - 25), "CAUDA (Expurgo)", fill=c_red)
-    draw.text((x_m2 - 10, cy_base + 6), "-2s", fill=c_text_muted)
-    draw.text((x_p2 - 10, cy_base + 6), "+2s", fill=c_text_muted)
+    draw.text((cx_l + 15, cy_base - 35), "CAUDA (Expurgo)", font=f_bold, fill=c_red)
+    draw.text((cx_r - 165, cy_base - 35), "CAUDA (Expurgo)", font=f_bold, fill=c_red)
+    draw.text((x_m2 - 15, cy_base + 8), "-2σ", font=f_bold, fill=c_text_muted)
+    draw.text((x_p2 - 15, cy_base + 8), "+2σ", font=f_bold, fill=c_text_muted)
 
-    draw.rounded_rectangle([(510, 260), (970, 410)], radius=6, fill="#ffffff", outline="#cbd5e1", width=1)
+    # Guia Didático de Critérios de Escolha
+    draw.rounded_rectangle([(725, 360), (1360, 570)], radius=8, fill="#ffffff", outline="#cbd5e1", width=2)
 
-    draw.rectangle([(520, 270), (524, 305)], fill=c_green)
-    draw.text((532, 270), "REGRA DA MÉDIA SANEADA (CV <= 25%):", fill=c_green)
-    draw.text((532, 287), "Quando a amostra é homogênea, a média aritmética reflete com precisão o", fill=c_text_dark)
-    draw.text((532, 300), "valor de mercado e pondera igualmente as propostas válidas.", fill=c_text_dark)
+    draw.rectangle([(740, 375), (746, 420)], fill=c_green)
+    draw.text((758, 375), "REGRA DA MÉDIA SANEADA (CV ≤ 25%):", font=f_bold, fill=c_green)
+    draw.text((758, 398), "Quando a amostra é homogênea, a média aritmética reflete com precisão o valor de mercado.", font=f_lbl, fill=c_text_dark)
 
-    draw.rectangle([(520, 318), (524, 353)], fill=c_gold)
-    draw.text((532, 318), "REGRA DA MEDIANA SANEADA (CV > 25%):", fill="#92400e")
-    draw.text((532, 335), "Quando a amostra é heterogênea ou assimétrica, a mediana é obrigatória", fill=c_text_dark)
-    draw.text((532, 348), "(Art. 6º, § 5º da IN 65/2021) pois é imune à distorção de preços nos extremos.", fill=c_text_dark)
+    draw.rectangle([(740, 435), (746, 480)], fill=c_gold)
+    draw.text((758, 435), "REGRA DA MEDIANA SANEADA (CV > 25%):", font=f_bold, fill="#92400e")
+    draw.text((758, 458), "Obrigatória (Art. 6º, § 5º da IN 65/2021) em séries heterogêneas para neutralizar distorções extremas.", font=f_lbl, fill=c_text_dark)
 
     adopted_is_med = "MEDIANA" in adopted_param.upper()
     bg_dec = "#fef3c7" if adopted_is_med else "#dcfce7"
     border_dec = c_gold if adopted_is_med else c_green
-    draw.rounded_rectangle([(520, 368), (960, 400)], radius=4, fill=bg_dec, outline=border_dec, width=1)
+    draw.rounded_rectangle([(740, 505), (1345, 550)], radius=6, fill=bg_dec, outline=border_dec, width=2)
     dec_text = f"DECISÃO LEGAL ADOTADA: {adopted_param} (R$ {median_val if adopted_is_med else mean_val:.2f}) — CV Saneado de {cv_percent:.2f}%"
-    draw.text((530, 376), dec_text, fill=c_navy)
+    draw.text((755, 518), dec_text, font=f_bold, fill=c_navy)
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", dpi=(300, 300))
@@ -271,6 +339,7 @@ def generate_statistical_infographic(
 
 
 # =============================================================================
+
 # 1. GERADOR DO RELATÓRIO EM MICROSOFT WORD (.DOCX)
 # =============================================================================
 
@@ -302,7 +371,7 @@ def build_in65_docx_bytes(
     elaborador_nome: str = "ENCARREGADO DO SETOR DE OBTENÇÃO",
     ordenador_nome: str = "ORDENADOR DE DESPESAS",
 ) -> bytes:
-    """Gera o arquivo Word (.docx) formal com Brasão Oficial e padrão visual Marinha do Brasil."""
+    """Gera o arquivo Word (.docx) formal com Brasão Oficial e padrão visual Marinha do Brasil em alta legibilidade."""
     doc = docx.Document()
 
     # Configuração de Margens da Página (2 cm nas laterais, 2 cm superior/inferior)
@@ -328,11 +397,11 @@ def build_in65_docx_bytes(
     p_head.paragraph_format.space_after = Pt(12)
 
     lines = [
-        ("REPÚBLICA FEDERATIVA DO BRASIL", 10.5, True),
-        ("MINISTÉRIO DA DEFESA", 10, True),
-        ("COMANDO DA MARINHA", 10, True),
-        (om_name.upper(), 9.5, False),
-        ("SETOR DE OBTENÇÃO E CONTRATAÇÕES", 9, False),
+        ("REPÚBLICA FEDERATIVA DO BRASIL", 11.0, True),
+        ("MINISTÉRIO DA DEFESA", 10.5, True),
+        ("COMANDO DA MARINHA", 10.5, True),
+        (om_name.upper(), 10.0, False),
+        ("SETOR DE OBTENÇÃO E CONTRATAÇÕES", 9.5, False),
     ]
     for text, sz, bold in lines:
         r = p_head.add_run(f"{text}\n")
@@ -348,7 +417,7 @@ def build_in65_docx_bytes(
     p_title.paragraph_format.space_after = Pt(4)
     r_tit = p_title.add_run("RELATÓRIO DE PESQUISA DE PREÇOS\n")
     r_tit.font.name = "Calibri"
-    r_tit.font.size = Pt(12)
+    r_tit.font.size = Pt(14)
     r_tit.font.bold = True
     r_tit.font.color.rgb = RGBColor(15, 23, 42)
 
@@ -356,7 +425,7 @@ def build_in65_docx_bytes(
         "Conforme o Art. 23 da Lei nº 14.133/2021 e a Instrução Normativa SEGES/ME nº 65/2021"
     )
     r_sub.font.name = "Calibri"
-    r_sub.font.size = Pt(9.5)
+    r_sub.font.size = Pt(10)
     r_sub.font.italic = True
     r_sub.font.color.rgb = RGBColor(71, 85, 105)
 
@@ -372,11 +441,11 @@ def build_in65_docx_bytes(
 
     # SEÇÃO 1: CARACTERIZAÇÃO DO ITEM DEMANDADO
     p_s1 = doc.add_paragraph()
-    p_s1.paragraph_format.space_before = Pt(8)
+    p_s1.paragraph_format.space_before = Pt(10)
     p_s1.paragraph_format.space_after = Pt(4)
     r_s1 = p_s1.add_run("1. IDENTIFICAÇÃO DO OBJETO E PREÇO ESTIMADO")
     r_s1.font.bold = True
-    r_s1.font.size = Pt(10.5)
+    r_s1.font.size = Pt(11.5)
 
     t_item = doc.add_table(rows=5, cols=2)
     t_item.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -390,13 +459,13 @@ def build_in65_docx_bytes(
         ("Valor Total Estimado da Contratação:", f"{_format_brl(total_price)}"),
     ]
 
-    col_widths = (Inches(2.4), Inches(4.5))
+    col_widths = (Inches(2.5), Inches(4.5))
     for r_idx, (k, v) in enumerate(t_data):
         row = t_item.rows[r_idx]
         c0, c1 = row.cells[0], row.cells[1]
         c0.width, c1.width = col_widths[0], col_widths[1]
-        set_cell_margins(c0, 80, 80, 100, 100)
-        set_cell_margins(c1, 80, 80, 100, 100)
+        set_cell_margins(c0, 90, 90, 110, 110)
+        set_cell_margins(c1, 90, 90, 110, 110)
         set_cell_background(c0, "F1F5F9")
         set_cell_background(c1, "FFFFFF" if r_idx < 4 else "FEF3C7")
 
@@ -404,49 +473,51 @@ def build_in65_docx_bytes(
         p0.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         r0 = p0.add_run(k)
         r0.font.bold = True
-        r0.font.size = Pt(9)
+        r0.font.size = Pt(9.5)
         r0.font.name = "Calibri"
 
         p1 = c1.paragraphs[0]
         p1.alignment = WD_ALIGN_PARAGRAPH.LEFT
         r1 = p1.add_run(v)
         r1.font.bold = (r_idx >= 3)
-        r1.font.size = Pt(9.5 if r_idx < 4 else 10.5)
+        r1.font.size = Pt(10 if r_idx < 4 else 11)
         r1.font.name = "Calibri"
         if r_idx == 4:
             r1.font.color.rgb = RGBColor(146, 64, 14)
 
     # SEÇÃO 2: FONTES CONSULTADAS E COTAÇÕES
     p_s2 = doc.add_paragraph()
-    p_s2.paragraph_format.space_before = Pt(12)
+    p_s2.paragraph_format.space_before = Pt(14)
     p_s2.paragraph_format.space_after = Pt(4)
     r_s2 = p_s2.add_run("2. COTAÇÕES COLETADAS NAS COMPRAS PÚBLICAS SIMILARES (Art. 5º da IN 65/2021)")
     r_s2.font.bold = True
-    r_s2.font.size = Pt(10.5)
+    r_s2.font.size = Pt(11.5)
 
     valid_quotes = report.get("valid_quotes", [])
     quotes_to_show = valid_quotes[:10]
 
     t_quotes = doc.add_table(rows=1 + len(quotes_to_show), cols=5)
     t_quotes.alignment = WD_TABLE_ALIGNMENT.CENTER
-    q_widths = (Inches(0.6), Inches(1.5), Inches(1.3), Inches(2.2), Inches(1.3))
+    q_widths = (Inches(0.55), Inches(1.5), Inches(1.35), Inches(2.3), Inches(1.3))
 
-    q_headers = ["Nº", "UASG / Órgão", "Compra nº", "Fornecedor Vencedor", "Preço Unit."]
+    q_headers = ["Nº", "UASG / Órgão", "Compra nº / Data", "Fornecedor Vencedor", "Preço Unit."]
     hdr_row = t_quotes.rows[0]
     for c_idx, h in enumerate(q_headers):
         cell = hdr_row.cells[c_idx]
         cell.width = q_widths[c_idx]
         set_cell_background(cell, "1E293B")
-        set_cell_margins(cell, 80, 80, 80, 80)
+        set_cell_margins(cell, 90, 90, 90, 90)
         p = cell.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         r = p.add_run(h)
         r.font.bold = True
-        r.font.size = Pt(8.5)
+        r.font.size = Pt(9.5)
         r.font.color.rgb = RGBColor(255, 255, 255)
 
     for idx, q in enumerate(quotes_to_show):
         row = t_quotes.rows[1 + idx]
+        q_url = q.get("pncp_or_compras_uri") or (f"https://pncp.gov.br/app/editais/{q['purchase_key']}" if q.get("purchase_key") else "https://pncp.gov.br")
+
         vals = [
             f"{idx + 1:02d}",
             f"{q.get('buyer_uasg', '')} - {q.get('buyer_uf', '')}\n{q.get('buyer_org_name', '')[:25]}",
@@ -459,26 +530,29 @@ def build_in65_docx_bytes(
             cell = row.cells[c_idx]
             cell.width = q_widths[c_idx]
             set_cell_background(cell, bg)
-            set_cell_margins(cell, 60, 60, 60, 60)
+            set_cell_margins(cell, 70, 70, 70, 70)
             p = cell.paragraphs[0]
             p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if c_idx == 4 else (WD_ALIGN_PARAGRAPH.CENTER if c_idx in (0, 2) else WD_ALIGN_PARAGRAPH.LEFT)
             r = p.add_run(val)
-            r.font.size = Pt(8)
+            r.font.size = Pt(9)
             r.font.name = "Calibri"
             if c_idx == 4:
                 r.font.bold = True
+            elif c_idx == 2 and q_url.startswith("http"):
+                p.add_run("\n")
+                add_docx_hyperlink(p, q_url, "🔗 Ver no Portal Gov", color="1D4ED8", underline=True)
 
     # SEÇÃO 3: SANEAMENTO ESTATÍSTICO
     p_s3 = doc.add_paragraph()
-    p_s3.paragraph_format.space_before = Pt(12)
+    p_s3.paragraph_format.space_before = Pt(14)
     p_s3.paragraph_format.space_after = Pt(4)
     r_s3 = p_s3.add_run("3. SANEAMENTO ESTATÍSTICO E MEMÓRIA DE CÁLCULO (Art. 6º da IN 65/2021)")
     r_s3.font.bold = True
-    r_s3.font.size = Pt(10.5)
+    r_s3.font.size = Pt(11.5)
 
     t_stat = doc.add_table(rows=4, cols=4)
     t_stat.alignment = WD_TABLE_ALIGNMENT.CENTER
-    s_widths = (Inches(1.7), Inches(1.7), Inches(1.8), Inches(1.7))
+    s_widths = (Inches(1.75), Inches(1.75), Inches(1.75), Inches(1.75))
 
     stat_grid = [
         ("Cotações Válidas Auditadas:", str(sm.get("sample_size", len(valid_quotes))), "Outliers Expurgados:", str(len(report.get("purged_quotes", [])))),
@@ -494,21 +568,21 @@ def build_in65_docx_bytes(
             cell.width = s_widths[c_idx]
             is_label = (c_idx % 2 == 0)
             set_cell_background(cell, "F1F5F9" if is_label else "FFFFFF")
-            set_cell_margins(cell, 60, 60, 80, 80)
+            set_cell_margins(cell, 70, 70, 80, 80)
             p = cell.paragraphs[0]
             p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if is_label else WD_ALIGN_PARAGRAPH.LEFT
             r = p.add_run(val)
-            r.font.size = Pt(8.5)
+            r.font.size = Pt(9.5)
             r.font.name = "Calibri"
             r.font.bold = is_label or (c_idx == 3 and r_idx == 3)
 
     # SEÇÃO 4: DEMONSTRATIVO GRÁFICO (BOXPLOT E CURVA NORMAL GAUSSIANA)
     p_sg = doc.add_paragraph()
-    p_sg.paragraph_format.space_before = Pt(12)
+    p_sg.paragraph_format.space_before = Pt(14)
     p_sg.paragraph_format.space_after = Pt(4)
     r_sg = p_sg.add_run("4. DEMONSTRATIVO GRÁFICO: DISPERSÃO (BOXPLOT) E CURVA GAUSSIANA (IN 65/2021)")
     r_sg.font.bold = True
-    r_sg.font.size = Pt(10.5)
+    r_sg.font.size = Pt(11.5)
 
     try:
         infographic_bytes = generate_statistical_infographic(
@@ -524,28 +598,103 @@ def build_in65_docx_bytes(
         p_chart.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p_chart.paragraph_format.space_after = Pt(8)
         run_chart = p_chart.add_run()
-        run_chart.add_picture(io.BytesIO(infographic_bytes), width=Inches(6.8))
+        run_chart.add_picture(io.BytesIO(infographic_bytes), width=Inches(6.6))
     except Exception as exc:
         print(f"Erro ao inserir infográfico estatístico no Word: {exc}")
 
     # SEÇÃO 5: JUSTIFICATIVA METODOLÓGICA
     p_s4 = doc.add_paragraph()
-    p_s4.paragraph_format.space_before = Pt(12)
+    p_s4.paragraph_format.space_before = Pt(14)
     p_s4.paragraph_format.space_after = Pt(4)
     r_s4 = p_s4.add_run("5. JUSTIFICATIVA PARA A METODOLOGIA ADOTADA (Art. 6º, §4º da IN 65/2021)")
     r_s4.font.bold = True
-    r_s4.font.size = Pt(10.5)
+    r_s4.font.size = Pt(11.5)
 
     p_just = doc.add_paragraph()
     p_just.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     p_just.paragraph_format.line_spacing = 1.15
     p_just.paragraph_format.space_after = Pt(12)
     r_just = p_just.add_run(report.get("legal_methodology_justification", ""))
-    r_just.font.size = Pt(9)
+    r_just.font.size = Pt(10)
     r_just.font.name = "Calibri"
     r_just.font.italic = True
 
-    # SEÇÃO 5: ASSINATURAS E FECHAMENTO
+    # SEÇÃO 6: PAINEL DE CONFERÊNCIA DIGITAL & QR CODES (PORTAL PNCP E COMPRAS.GOV.BR)
+    p_sqr = doc.add_paragraph()
+    p_sqr.paragraph_format.space_before = Pt(14)
+    p_sqr.paragraph_format.space_after = Pt(4)
+    r_sqr = p_sqr.add_run("6. PAINEL DE CONFERÊNCIA DIGITAL & QR CODES (PORTAL PNCP E COMPRAS.GOV.BR)")
+    r_sqr.font.bold = True
+    r_sqr.font.size = Pt(11.5)
+
+    p_sqr_desc = doc.add_paragraph()
+    p_sqr_desc.paragraph_format.space_after = Pt(8)
+    r_sqr_desc = p_sqr_desc.add_run("Aponte a câmera do seu smartphone para o QR Code correspondente ou clique no link destacado diretamente abaixo para verificação oficial em tempo real:")
+    r_sqr_desc.font.size = Pt(9.5)
+    r_sqr_desc.font.italic = True
+    r_sqr_desc.font.color.rgb = RGBColor(71, 85, 105)
+
+    pncp_url = f"https://pncp.gov.br/app/editais?q={item_code}"
+    painel_url = "https://paineldeprecos.planejamento.gov.br"
+    first_q_url = ""
+    for q in valid_quotes:
+        if q.get("pncp_or_compras_uri"):
+            first_q_url = q["pncp_or_compras_uri"]
+            break
+        elif q.get("purchase_key"):
+            first_q_url = f"https://pncp.gov.br/app/editais/{q['purchase_key']}"
+            break
+    if not first_q_url:
+        first_q_url = pncp_url
+
+    t_qr = doc.add_table(rows=2, cols=3)
+    t_qr.alignment = WD_TABLE_ALIGNMENT.CENTER
+    qr_col_widths = (Inches(2.3), Inches(2.3), Inches(2.3))
+
+    qr1_png = generate_qr_code_bytes(pncp_url, box_size=3)
+    qr2_png = generate_qr_code_bytes(painel_url, box_size=3)
+    qr3_png = generate_qr_code_bytes(first_q_url, box_size=3)
+
+    qr_cards = [
+        (qr1_png, "Portal PNCP Oficial", pncp_url, "Consulta por Objeto / CATMAT"),
+        (qr2_png, "Painel de Preços Federal", painel_url, "Repositório SEGES / MGI"),
+        (qr3_png, "Compra Pública / Ata", first_q_url, "Dossiê Oficial da Licitação"),
+    ]
+
+    for c_i, (qr_bytes, title, url, subtitle) in enumerate(qr_cards):
+        cell_img = t_qr.rows[0].cells[c_i]
+        cell_img.width = qr_col_widths[c_i]
+        set_cell_background(cell_img, "F8FAFC")
+        set_cell_margins(cell_img, 60, 40, 60, 60)
+        p_img = cell_img.paragraphs[0]
+        p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_img.add_run().add_picture(io.BytesIO(qr_bytes), width=Inches(1.15))
+
+        cell_txt = t_qr.rows[1].cells[c_i]
+        cell_txt.width = qr_col_widths[c_i]
+        set_cell_background(cell_txt, "F8FAFC")
+        set_cell_margins(cell_txt, 20, 60, 60, 60)
+        p_txt = cell_txt.paragraphs[0]
+        p_txt.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_txt.paragraph_format.line_spacing = 1.05
+
+        r_title = p_txt.add_run(f"{title}\n")
+        r_title.font.bold = True
+        r_title.font.size = Pt(9.5)
+        r_title.font.name = "Calibri"
+
+        # LINK CLICÁVEL NATIVO DIRETAMENTE ABAIXO DO QR CODE
+        add_docx_hyperlink(p_txt, url, "Acessar Portal Oficial", color="1D4ED8", underline=True)
+
+        p_sub = cell_txt.add_paragraph()
+        p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_sub.paragraph_format.space_before = Pt(2)
+        r_sub = p_sub.add_run(subtitle)
+        r_sub.font.size = Pt(8.5)
+        r_sub.font.italic = True
+        r_sub.font.color.rgb = RGBColor(100, 116, 139)
+
+    # SEÇÃO 7: ASSINATURAS E FECHAMENTO
     today = datetime.now()
     mes_nome = _get_mes_extenso(today.month)
     data_str = f"{today.day} de {mes_nome} de {today.year}."
@@ -555,7 +704,7 @@ def build_in65_docx_bytes(
     p_dt.paragraph_format.space_before = Pt(16)
     p_dt.paragraph_format.space_after = Pt(28)
     r_dt = p_dt.add_run(data_str)
-    r_dt.font.size = Pt(9.5)
+    r_dt.font.size = Pt(10)
     r_dt.font.name = "Calibri"
 
     t_sig = doc.add_table(rows=1, cols=2)
@@ -565,28 +714,23 @@ def build_in65_docx_bytes(
 
     p_sig0 = c_sig0.paragraphs[0]
     p_sig0.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p_sig0.add_run("_________________________________________\n").font.size = Pt(9)
+    p_sig0.add_run("_________________________________________\n").font.size = Pt(9.5)
     r_s0_1 = p_sig0.add_run(f"{elaborador_nome}\n")
     r_s0_1.font.bold = True
-    r_s0_1.font.size = Pt(9)
+    r_s0_1.font.size = Pt(9.5)
     r_s0_2 = p_sig0.add_run("Elaborador da Pesquisa de Preços")
     r_s0_2.font.size = Pt(8.5)
     r_s0_2.font.color.rgb = RGBColor(100, 116, 139)
 
     p_sig1 = c_sig1.paragraphs[0]
     p_sig1.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p_sig1.add_run("_________________________________________\n").font.size = Pt(9)
+    p_sig1.add_run("_________________________________________\n").font.size = Pt(9.5)
     r_s1_1 = p_sig1.add_run(f"{ordenador_nome}\n")
     r_s1_1.font.bold = True
-    r_s1_1.font.size = Pt(9)
+    r_s1_1.font.size = Pt(9.5)
     r_s1_2 = p_sig1.add_run("Ratificador da Pesquisa de Preços")
     r_s1_2.font.size = Pt(8.5)
     r_s1_2.font.color.rgb = RGBColor(100, 116, 139)
-
-    # NOTA DE RODAPÉ
-    p_ft = doc.add_paragraph()
-    p_ft.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    pass  # Rodapé de sistema removido a pedido
 
     buf = io.BytesIO()
     doc.save(buf)
@@ -594,6 +738,7 @@ def build_in65_docx_bytes(
 
 
 # =============================================================================
+
 # 2. GERADOR DO RELATÓRIO EM PDF OFICIAL (A4 / REPORTLAB)
 # =============================================================================
 
@@ -604,7 +749,7 @@ def build_in65_pdf_bytes(
     elaborador_nome: str = "ENCARREGADO DO SETOR DE OBTENÇÃO",
     ordenador_nome: str = "ORDENADOR DE DESPESAS",
 ) -> bytes:
-    """Gera o arquivo PDF A4 de alta qualidade visual com Brasão Oficial e diagramação formal."""
+    """Gera o arquivo PDF A4 de alta qualidade visual com Brasão Oficial e diagramação formal em alta legibilidade."""
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf,
@@ -617,14 +762,14 @@ def build_in65_pdf_bytes(
 
     styles = getSampleStyleSheet()
 
-    # Estilos customizados
+    # Estilos customizados de alta legibilidade (proporções institucionais)
     st_header_main = ParagraphStyle(
         "NavalHeaderMain",
         parent=styles["Normal"],
         fontName="Helvetica-Bold",
-        fontSize=10,
-        leading=12,
-        alignment=1,  # Centralizado
+        fontSize=11,
+        leading=14,
+        alignment=1,
         textColor=colors.HexColor("#0f172a"),
     )
 
@@ -632,8 +777,8 @@ def build_in65_pdf_bytes(
         "NavalHeaderSub",
         parent=styles["Normal"],
         fontName="Helvetica",
-        fontSize=8.5,
-        leading=11,
+        fontSize=9.5,
+        leading=13,
         alignment=1,
         textColor=colors.HexColor("#334155"),
     )
@@ -642,8 +787,8 @@ def build_in65_pdf_bytes(
         "DocTitle",
         parent=styles["Normal"],
         fontName="Helvetica-Bold",
-        fontSize=11.5,
-        leading=14,
+        fontSize=14.5,
+        leading=18,
         alignment=1,
         textColor=colors.HexColor("#0f172a"),
     )
@@ -652,8 +797,8 @@ def build_in65_pdf_bytes(
         "DocSub",
         parent=styles["Normal"],
         fontName="Helvetica-Oblique",
-        fontSize=8,
-        leading=10,
+        fontSize=9.5,
+        leading=13,
         alignment=1,
         textColor=colors.HexColor("#64748b"),
     )
@@ -662,8 +807,8 @@ def build_in65_pdf_bytes(
         "SecTitle",
         parent=styles["Normal"],
         fontName="Helvetica-Bold",
-        fontSize=9,
-        leading=12,
+        fontSize=11.5,
+        leading=15,
         textColor=colors.HexColor("#0f172a"),
     )
 
@@ -671,8 +816,8 @@ def build_in65_pdf_bytes(
         "CellHdr",
         parent=styles["Normal"],
         fontName="Helvetica-Bold",
-        fontSize=7.5,
-        leading=9,
+        fontSize=9.5,
+        leading=12,
         textColor=colors.white,
         alignment=1,
     )
@@ -681,8 +826,8 @@ def build_in65_pdf_bytes(
         "CellTxt",
         parent=styles["Normal"],
         fontName="Helvetica",
-        fontSize=7.5,
-        leading=9,
+        fontSize=9,
+        leading=12,
         textColor=colors.HexColor("#1e293b"),
     )
 
@@ -696,8 +841,8 @@ def build_in65_pdf_bytes(
         "CellBold",
         parent=styles["Normal"],
         fontName="Helvetica-Bold",
-        fontSize=7.5,
-        leading=9,
+        fontSize=9.5,
+        leading=12,
         textColor=colors.HexColor("#0f172a"),
     )
 
@@ -708,42 +853,33 @@ def build_in65_pdf_bytes(
     )
 
     st_just = ParagraphStyle(
-        "JustTxt",
+        "JustifiedLegal",
         parent=styles["Normal"],
         fontName="Helvetica-Oblique",
-        fontSize=8,
-        leading=11,
-        alignment=4,  # Justificado
-        textColor=colors.HexColor("#1e293b"),
+        fontSize=10,
+        leading=14,
+        alignment=4,
+        textColor=colors.HexColor("#334155"),
     )
 
     st_sig_title = ParagraphStyle(
         "SigTitle",
         parent=styles["Normal"],
         fontName="Helvetica-Bold",
-        fontSize=8,
-        leading=10,
+        fontSize=9.5,
+        leading=12,
         alignment=1,
+        textColor=colors.HexColor("#0f172a"),
     )
 
     st_sig_sub = ParagraphStyle(
         "SigSub",
         parent=styles["Normal"],
         fontName="Helvetica",
-        fontSize=7.5,
-        leading=9,
+        fontSize=8.5,
+        leading=11,
         alignment=1,
         textColor=colors.HexColor("#64748b"),
-    )
-
-    st_footer = ParagraphStyle(
-        "FooterTxt",
-        parent=styles["Normal"],
-        fontName="Helvetica",
-        fontSize=7,
-        leading=8,
-        alignment=1,
-        textColor=colors.HexColor("#94a3b8"),
     )
 
     story = []
@@ -797,13 +933,15 @@ def build_in65_pdf_bytes(
         ("ALIGN", (0, 0), (0, -1), "RIGHT"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 3.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
     ]))
     story.append(t_item)
     story.append(Spacer(1, 3 * mm))
 
-    # SEÇÃO 2: COTAÇÕES (TOP 6)
+    # SEÇÃO 2: COTAÇÕES (TOP 7)
     story.append(Paragraph("2. COTAÇÕES VÁLIDAS AUDITADAS (Art. 5º da IN 65/2021)", st_sec_title))
     story.append(Spacer(1, 1.5 * mm))
 
@@ -818,10 +956,11 @@ def build_in65_pdf_bytes(
     ]
 
     for idx, q in enumerate(valid_quotes[:7]):
+        q_url = q.get("pncp_or_compras_uri") or (f"https://pncp.gov.br/app/editais/{q['purchase_key']}" if q.get("purchase_key") else "https://pncp.gov.br")
         quotes_data.append([
             Paragraph(f"{idx+1:02d}", st_cell_txt_center),
             Paragraph(f"UASG {q.get('buyer_uasg', '')} ({q.get('buyer_uf', '')})<br/>{q.get('buyer_org_name', '')[:25]}", st_cell_txt),
-            Paragraph(f"{q.get('purchase_number_year', '')}<br/>{q.get('purchase_date', '')}", st_cell_txt_center),
+            Paragraph(f"{q.get('purchase_number_year', '')}<br/>{q.get('purchase_date', '')}<br/><font color='#0284c7'><u><a href='{q_url}'>Ver Compra</a></u></font>", st_cell_txt_center),
             Paragraph(f"{q.get('supplier_name', '')[:35]}<br/>CNPJ: {q.get('supplier_cnpj', '')}", st_cell_txt),
             Paragraph(_format_brl(float(q.get("unit_price", 0.0))), st_cell_bold_right),
         ])
@@ -831,8 +970,10 @@ def build_in65_pdf_bytes(
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-        ("TOPPADDING", (0, 0), (-1, -1), 2.5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
     ]))
     story.append(t_quotes)
@@ -874,8 +1015,10 @@ def build_in65_pdf_bytes(
         ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#f1f5f9")),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
-        ("TOPPADDING", (0, 0), (-1, -1), 2.5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
     ]))
     story.append(t_stat)
     story.append(Spacer(1, 3 * mm))
@@ -893,7 +1036,7 @@ def build_in65_pdf_bytes(
             std_val=float(sm.get("std_deviation", 0.0)),
             adopted_param=str(report.get("adopted_parameter", "MEDIANA")),
         )
-        story.append(RLImage(io.BytesIO(infographic_bytes), width=18.0 * cm, height=7.92 * cm))
+        story.append(RLImage(io.BytesIO(infographic_bytes), width=18.0 * cm, height=7.97 * cm))
         story.append(Spacer(1, 3 * mm))
     except Exception as exc:
         print(f"Erro ao inserir gráfico estatístico no PDF: {exc}")
@@ -902,9 +1045,58 @@ def build_in65_pdf_bytes(
     story.append(Paragraph("5. JUSTIFICATIVA METODOLÓGICA (Art. 6º da IN 65/2021)", st_sec_title))
     story.append(Spacer(1, 1 * mm))
     story.append(Paragraph(report.get("legal_methodology_justification", ""), st_just))
-    story.append(Spacer(1, 4 * mm))
+    story.append(Spacer(1, 3 * mm))
 
-    # SEÇÃO 5: ASSINATURAS
+    # SEÇÃO 6: PAINEL DE CONFERÊNCIA DIGITAL & QR CODES (PORTAL PNCP E COMPRAS.GOV.BR)
+    story.append(Paragraph("6. PAINEL DE CONFERÊNCIA DIGITAL & QR CODES (PORTAL PNCP E COMPRAS.GOV.BR)", st_sec_title))
+    story.append(Paragraph("<i>Aponte a câmera do seu smartphone para o QR Code correspondente ou clique no link sublinhado diretamente abaixo para conferência oficial em tempo real:</i>", st_doc_sub))
+    story.append(Spacer(1, 2 * mm))
+
+    pncp_url = f"https://pncp.gov.br/app/editais?q={item_code}"
+    painel_url = "https://paineldeprecos.planejamento.gov.br"
+    first_q_url = ""
+    for q in valid_quotes:
+        if q.get("pncp_or_compras_uri"):
+            first_q_url = q["pncp_or_compras_uri"]
+            break
+        elif q.get("purchase_key"):
+            first_q_url = f"https://pncp.gov.br/app/editais/{q['purchase_key']}"
+            break
+    if not first_q_url:
+        first_q_url = pncp_url
+
+    qr1_png = generate_qr_code_bytes(pncp_url, box_size=3)
+    qr2_png = generate_qr_code_bytes(painel_url, box_size=3)
+    qr3_png = generate_qr_code_bytes(first_q_url, box_size=3)
+
+    qr_pdf_data = [
+        [
+            RLImage(io.BytesIO(qr1_png), width=2.4 * cm, height=2.4 * cm),
+            RLImage(io.BytesIO(qr2_png), width=2.4 * cm, height=2.4 * cm),
+            RLImage(io.BytesIO(qr3_png), width=2.4 * cm, height=2.4 * cm),
+        ],
+        [
+            Paragraph(f"<b>Portal PNCP Oficial</b><br/><font color='#0284c7'><u><a href='{pncp_url}'>Acessar Portal PNCP</a></u></font><br/><font size='7.5' color='#64748b'>Consulta por Objeto / CATMAT</font>", st_cell_txt_center),
+            Paragraph(f"<b>Painel de Preços Federal</b><br/><font color='#0284c7'><u><a href='{painel_url}'>Acessar Painel de Preços</a></u></font><br/><font size='7.5' color='#64748b'>paineldeprecos.planejamento.gov.br</font>", st_cell_txt_center),
+            Paragraph(f"<b>Compra Pública / Ata</b><br/><font color='#0284c7'><u><a href='{first_q_url}'>Acessar Compra Homologada</a></u></font><br/><font size='7.5' color='#64748b'>Dossiê Oficial da Licitação</font>", st_cell_txt_center),
+        ]
+    ]
+    t_qr = Table(qr_pdf_data, colWidths=[6.0 * cm, 6.0 * cm, 6.0 * cm])
+    t_qr.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(t_qr)
+    story.append(Spacer(1, 3 * mm))
+
+    # SEÇÃO 7: ASSINATURAS
     today = datetime.now()
     mes_nome = _get_mes_extenso(today.month)
     data_str = f"{today.day} de {mes_nome} de {today.year}."
@@ -929,18 +1121,15 @@ def build_in65_pdf_bytes(
     t_sig.setStyle(TableStyle([
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
-        ("TOPPADDING", (0, 0), (-1, -1), 1),
     ]))
     story.append(KeepTogether(t_sig))
-    story.append(Spacer(1, 4 * mm))
-    pass  # Rodapé de sistema removido a pedido
 
     doc.build(story)
     return buf.getvalue()
 
 
 # =============================================================================
+
 # 3. GERADOR DO DESPACHO DE JUSTIFICATIVA CIRCUNSTANCIADA (WORD .DOCX)
 #    (Art. 6º, § 5º da Instrução Normativa SEGES/ME nº 65/2021)
 # =============================================================================
