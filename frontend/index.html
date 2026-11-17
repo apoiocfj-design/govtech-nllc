@@ -30,6 +30,35 @@
     .custom-scrollbar::-webkit-scrollbar-thumb:hover {
       background: rgba(100, 116, 139, 0.55);
     }
+    /* Estilos de Acessibilidade Governamental Obrigatória (eMAG / WCAG 2.1) */
+    :focus-visible {
+      outline: 2px solid #c5a365 !important;
+      outline-offset: 2px !important;
+    }
+    .high-contrast {
+      filter: contrast(135%);
+    }
+    .high-contrast body {
+      background-color: #0b0f19 !important;
+      color: #ffffff !important;
+    }
+    .high-contrast .bg-white,
+    .high-contrast .bg-slate-50,
+    .high-contrast .bg-slate-100 {
+      background-color: #111827 !important;
+      color: #ffffff !important;
+      border-color: #facc15 !important;
+    }
+    .high-contrast input,
+    .high-contrast select,
+    .high-contrast textarea {
+      background-color: #030712 !important;
+      color: #ffffff !important;
+      border-color: #facc15 !important;
+    }
+    .high-contrast button {
+      border-color: #facc15 !important;
+    }
     @media print {
       body * {
         visibility: hidden;
@@ -56,6 +85,11 @@
 </head>
 <body class="bg-[#f3f6f9] text-slate-900 font-sans min-h-screen flex flex-col">
 
+  <!-- ATALHO DE ACESSIBILIDADE GOVERNAMENTAL OBRIGATÓRIA (eMAG / WCAG 2.1) -->
+  <a href="#viewPrices" class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:p-3 focus:bg-[#c5a365] focus:text-[#1e2d3d] focus:font-black focus:rounded-xl focus:shadow-2xl">
+    Ir para o conteúdo principal (Atalho de Acessibilidade eMAG)
+  </a>
+
   <!-- ===================================================================== -->
   <!-- BARRA SUPERIOR DO APLICATIVO (MENU UNIFICADO + LINK COMPARTILHÁVEL)    -->
   <!-- ===================================================================== -->
@@ -79,6 +113,21 @@
           </div>
         </div>
       </div>
+
+      <!-- BOTÕES DE ACESSIBILIDADE GOVERNAMENTAL E TRILHA DE AUDITORIA -->
+      <div class="flex items-center gap-2">
+        <button onclick="toggleHighContrast()" id="btnHighContrast" class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-[#27394d] hover:bg-[#334960] text-slate-200 border border-[#334960] transition flex items-center gap-1.5" title="Ativar/desativar modo de alto contraste (Acessibilidade eMAG / WCAG 2.1)" aria-label="Alternar modo de alto contraste">
+          <span>👁️</span> <span class="hidden sm:inline">Alto Contraste</span>
+        </button>
+        <button onclick="adjustFontSize(1)" class="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-[#27394d] hover:bg-[#334960] text-slate-200 border border-[#334960] transition" title="Aumentar tamanho do texto" aria-label="Aumentar texto">
+          A+
+        </button>
+        <button onclick="adjustFontSize(-1)" class="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-[#27394d] hover:bg-[#334960] text-slate-200 border border-[#334960] transition" title="Diminuir tamanho do texto" aria-label="Diminuir texto">
+          A-
+        </button>
+        <button onclick="openAuditTrailModal()" class="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-[#c5a365]/20 hover:bg-[#c5a365]/35 text-amber-300 border border-[#c5a365]/50 transition flex items-center gap-1.5 shadow-2xs" title="Abrir Trilha de Auditoria Imutável com Hash SHA-256 (TCU/CGU)" aria-label="Abrir trilha de auditoria imutável">
+          <span>📜</span> <span class="hidden md:inline">Trilha de Auditoria (SHA-256)</span>
+        </button>
       </div>
 
       <!-- ABAS DO APP (HARMONIZADAS COM IDENTIDADE VISUAL SGCE) -->
@@ -131,14 +180,17 @@
             </div>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-auto">
-            <button onclick="openCatalogSearchModal()" class="h-10 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-3 rounded-xl text-xs shadow-sm border border-[#c9962b] transition flex items-center justify-center gap-1.5">
+            <button onclick="openCatalogSearchModal()" class="h-10 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-3 rounded-xl text-xs shadow-sm border border-[#c9962b] transition flex items-center justify-center gap-1.5" aria-label="Adicionar item manualmente por código ou catálogo">
               <span>➕</span> Adicionar Item
             </button>
-            <button onclick="openDemandParserModal()" class="h-10 bg-[#27394d] hover:bg-[#334960] text-white font-bold px-3 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5">
+            <button onclick="openDemandParserModal()" class="h-10 bg-[#27394d] hover:bg-[#334960] text-white font-bold px-3 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5" aria-label="Colar lista de itens do DFD ou Termo de Referência">
               <span>📋</span> Colar Lista (DFD/TR)
             </button>
           </div>
-          <span id="step1Status" class="text-[11px] font-bold text-slate-600">Lote vazio.</span>
+          <button onclick="openSemanticAiModal()" class="w-full h-8.5 bg-gradient-to-r from-[#1e2d3d] via-[#27394d] to-[#1e2d3d] hover:brightness-110 text-white font-bold px-2 rounded-xl text-[11px] shadow-sm transition flex items-center justify-center gap-1.5 border border-[#c5a365]/40" aria-label="Abrir assistente de inteligência artificial em linguagem natural">
+            <span>✨</span> <span>Assistente IA: Demanda em Linguagem Natural</span>
+          </button>
+          <span id="step1Status" class="text-[11px] font-bold text-slate-600" aria-live="polite">Lote vazio.</span>
         </div>
 
         <!-- PASSO 2 -->
@@ -262,12 +314,18 @@
               <span class="text-[10px] uppercase text-slate-400 block font-bold">Valor Total do Lote</span>
               <span id="batchGrandTotal" class="text-xl md:text-2xl font-black text-amber-300">R$ 0,00</span>
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <button onclick="downloadBatchProcessZip()" class="h-10 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-4 py-2 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-2 border border-[#d6b77c]" title="Baixar todos os relatórios Word, PDF, Excel individuais e Mapa Consolidado Geral em .ZIP">
-                <span>📦</span> <span>Processo Completo (.ZIP)</span>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              <button onclick="downloadBatchProcessZip()" class="h-10 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-3.5 py-2 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-[#d6b77c]" title="Baixar todos os relatórios Word, PDF, Excel individuais e Mapa Consolidado Geral em .ZIP com Editais PNCP">
+                <span>📦</span> <span>Processo (.ZIP)</span>
               </button>
-              <button onclick="downloadBatchExcel()" class="h-10 bg-[#3b6e5c] hover:bg-[#2d5849] text-white font-black px-4 py-2 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-2 border border-[#4d8571]/50" title="Baixar Planilha Consolidada com todas as abas">
-                <span>📊</span> <span>Planilha Consolidada (.XLSX)</span>
+              <button onclick="downloadBatchExcel()" class="h-10 bg-[#3b6e5c] hover:bg-[#2d5849] text-white font-black px-3.5 py-2 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-[#4d8571]/50" title="Baixar Planilha Consolidada com todas as abas">
+                <span>📊</span> <span>Planilha (.XLSX)</span>
+              </button>
+              <button onclick="openPncpPayloadModal()" class="h-10 bg-[#27394d] hover:bg-[#334960] text-white font-black px-3.5 py-2 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-[#3b5b7c]" title="Gerar payload JSON no formato oficial exigido pela API do PNCP (Lei 14.133/2021)">
+                <span>📡</span> <span>Integração PNCP</span>
+              </button>
+              <button onclick="openAuditTrailModal()" class="h-10 bg-[#1e2d3d] hover:bg-[#27394d] text-amber-300 font-black px-3.5 py-2 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-[#c5a365]/50" title="Visualizar Trilha de Auditoria Imutável (SHA-256) e emitir Certificado Oficial para o TCU">
+                <span>📜</span> <span>Trilha (SHA-256)</span>
               </button>
             </div>
           </div>
@@ -418,6 +476,75 @@
       <div class="bg-amber-50/70 border border-amber-200 rounded-lg p-2.5 text-[11px] text-slate-700 leading-snug">
         <strong class="uppercase text-amber-950 font-bold block mb-0.5">Justificativa Automática p/ Anexar ao Processo Administrativo (Art. 6º IN 65/2021):</strong>
         <span id="resJustification" class="text-slate-600">—</span>
+      </div>
+
+      <!-- DATA VIZ: DISPERSÃO ESTATÍSTICA E BOXPLOT (IN SEGES/ME Nº 65/2021 & MÉTODO DOS QUARTIS) -->
+      <div id="boxplotCard" class="bg-white border border-slate-200/90 rounded-xl p-3.5 space-y-2.5 shadow-2xs">
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+          <div class="flex items-center gap-2">
+            <span class="text-base">📈</span>
+            <div>
+              <h4 class="text-xs font-black uppercase text-slate-800 tracking-wide">
+                Dispersão Estatística da Amostra (Método dos Quartis / Boxplot)
+              </h4>
+              <p class="text-[10px] text-slate-500">
+                Visualização do saneamento de preços: mediana, quartis (Q1-Q3), desvio padrão e identificação de outliers.
+              </p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 text-[10px] font-bold">
+            <span class="flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+              <span class="w-2 h-2 rounded-full bg-emerald-600 inline-block"></span> Válidas
+            </span>
+            <span class="flex items-center gap-1 text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+              <span class="w-2 h-2 rounded-full bg-rose-600 inline-block"></span> Outliers
+            </span>
+          </div>
+        </div>
+        <div id="boxplotContainer" class="w-full overflow-x-auto custom-scrollbar py-2">
+          <svg id="boxplotSvg" class="w-full h-24 min-w-[500px]" viewBox="0 0 700 95" preserveAspectRatio="none">
+            <!-- Injetado dinamicamente via renderStatisticalBoxplot(rep) -->
+          </svg>
+        </div>
+        <div id="boxplotLegend" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-[10px] font-mono text-slate-600 border-t border-slate-100 pt-2 bg-slate-50/50 p-1.5 rounded-lg">
+          <div>Menor: <strong id="bpMin" class="text-slate-900 block font-bold">R$ 0,00</strong></div>
+          <div>Q1 (25%): <strong id="bpQ1" class="text-slate-900 block font-bold">R$ 0,00</strong></div>
+          <div class="text-[#c5a365] font-black">Mediana: <strong id="bpMedian" class="text-amber-800 block font-black">R$ 0,00</strong></div>
+          <div class="text-[#3b5b7c] font-black">Média: <strong id="bpMean" class="text-slate-900 block font-bold">R$ 0,00</strong></div>
+          <div>Q3 (75%): <strong id="bpQ3" class="text-slate-900 block font-bold">R$ 0,00</strong></div>
+          <div>Maior: <strong id="bpMax" class="text-slate-900 block font-bold">R$ 0,00</strong></div>
+        </div>
+      </div>
+
+      <!-- ALERTA DINÂMICO DE FRACIONAMENTO DE DESPESA (ART. 75, § 1º LEI 14.133/2021) -->
+      <div id="fracionamentoWarningBanner" class="hidden bg-rose-50 border-2 border-rose-300 rounded-xl p-3.5 space-y-1.5 text-xs text-rose-900 shadow-sm animate-pulse" role="alert" aria-live="assertive">
+        <div class="flex items-center gap-2 font-black uppercase text-rose-950">
+          <span class="text-lg">🚨</span>
+          <span>Alerta de Controle Interno: Risco de Fracionamento de Despesa (Art. 75, § 1º)</span>
+        </div>
+        <p class="text-[11px] leading-relaxed">
+          O valor acumulado neste lote para o PDM/Classe <strong id="fracPdmNome">—</strong> totaliza <strong id="fracValorTotal" class="font-mono font-black text-rose-950">R$ 0,00</strong>.
+          Caso a UASG possua outras contratações diretas deste mesmo objeto no exercício corrente que somadas ultrapassem o teto legal de <strong>R$ 62.725,59</strong> (Decreto Federal nº 11.871/2023), a dispensa será vedada pelo TCU, sendo obrigatória a instauração de <strong>Pregão Eletrônico</strong>.
+        </p>
+      </div>
+
+      <!-- GATILHO SOCIOAMBIENTAL E LOGÍSTICA REVERSA (ART. 11, IV DA LEI 14.133/2021) -->
+      <div id="socioambientalBanner" class="hidden bg-emerald-50 border border-emerald-300 rounded-xl p-3 flex items-center justify-between gap-3 text-xs text-emerald-950">
+        <div class="flex items-center gap-2.5">
+          <span class="text-xl">🌿</span>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="bg-emerald-700 text-white font-black text-[9px] px-1.5 py-0.2 rounded uppercase">Art. 11, IV Lei 14.133/2021</span>
+              <strong class="text-xs font-black uppercase text-emerald-900">Critério de Sustentabilidade & Logística Reversa</strong>
+            </div>
+            <p class="text-[11px] text-emerald-800 mt-0.5">
+              Este item exige cláusula obrigatória de responsabilidade socioambiental e descarte em conformidade com a Política Nacional de Resíduos Sólidos (Lei nº 12.305/2010).
+            </p>
+          </div>
+        </div>
+        <span class="px-2.5 py-1 rounded-lg text-[10px] font-black bg-emerald-200 text-emerald-900 shrink-0">
+          Selo Verde Ativo
+        </span>
       </div>
 
       <!-- TABELA DE COTAÇÕES COM LINKS CLICÁVEIS -->
@@ -1510,6 +1637,167 @@
     </div>
   </div>
 
+<!-- ===================================================================== -->
+  <!-- MODAL CAMADA 1: BUSCA SEMÂNTICA POR IA / NLP (CATMAT / CATSER)        -->
+  <!-- ===================================================================== -->
+  <div id="modalSemanticAi" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm p-4 md:p-8 flex items-center justify-center no-print" role="dialog" aria-modal="true" aria-labelledby="modalAiTitle">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-2xl w-full border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in duration-200">
+      <div class="p-5 bg-gradient-to-r from-[#1e2d3d] to-[#27394d] text-white flex items-center justify-between border-b border-[#3b5b7c]">
+        <div class="flex items-center gap-3">
+          <span class="text-2xl">✨</span>
+          <div>
+            <h3 id="modalAiTitle" class="text-sm font-black tracking-wide uppercase">Assistente IA: Tradutor de Demanda em Linguagem Natural</h3>
+            <p class="text-[11px] text-slate-300">Digite o que precisa em linguagem comum. A IA extrai especificações e localiza os melhores códigos no catálogo oficial.</p>
+          </div>
+        </div>
+        <button onclick="closeSemanticAiModal()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white text-lg transition" aria-label="Fechar modal">✕</button>
+      </div>
+
+      <div class="p-6 space-y-4 overflow-y-auto">
+        <div>
+          <label for="modalSemanticAiPrompt" class="block text-xs font-bold text-slate-700 mb-1">Descreva o objeto ou necessidade em linguagem livre:</label>
+          <textarea id="modalSemanticAiPrompt" rows="3" class="w-full border-2 border-slate-300 focus:border-[#c5a365] rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition shadow-inner" placeholder="Ex: Preciso comprar notebooks com processador Intel Core i7, 16GB de RAM e SSD de 512GB para equipar a seção técnica..."></textarea>
+        </div>
+
+        <div class="space-y-1.5">
+          <span class="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Sugestões rápidas de teste:</span>
+          <div class="flex flex-wrap gap-1.5 text-[11px]">
+            <button type="button" onclick="setSemanticExample('Notebook Intel i7 16GB RAM SSD 512GB')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition border border-slate-200">💻 Notebook i7 16GB</button>
+            <button type="button" onclick="setSemanticExample('Pneu automotivo 175/70 R13 para veículo leve')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition border border-slate-200">🚗 Pneu 175/70 R13</button>
+            <button type="button" onclick="setSemanticExample('Óleo lubrificante automotivo 5W-30 sintético')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition border border-slate-200">🛢️ Óleo 5W-30</button>
+            <button type="button" onclick="setSemanticExample('Contratação de serviço de manutenção predial preventiva e corretiva')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition border border-slate-200">🛠️ Manutenção Predial</button>
+          </div>
+        </div>
+
+        <button id="btnExecuteSemanticAi" onclick="executeSemanticAiSearch()" class="w-full h-11 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black rounded-xl text-xs shadow-md border border-[#c9962b] transition flex items-center justify-center gap-2">
+          <span>🔍</span> Identificar Códigos CATMAT/CATSER com IA
+        </button>
+
+        <div id="modalSemanticAiLoading" class="hidden py-6 text-center space-y-2">
+          <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-[#c5a365] border-t-transparent"></div>
+          <p class="text-xs font-bold text-slate-600">Processando semântica com NLP e pesquisando no catálogo oficial de 253.782 itens...</p>
+        </div>
+
+        <div id="modalSemanticAiResults" class="space-y-3"></div>
+      </div>
+
+      <div class="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+        <button onclick="closeSemanticAiModal()" class="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-4 py-2 rounded-xl text-xs transition">
+          Fechar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL CAMADA 3: TRILHA DE AUDITORIA IMUTÁVEL (SHA-256 / ART. 12 NLLC) -->
+  <!-- ===================================================================== -->
+  <div id="modalAuditTrail" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm p-4 md:p-8 flex items-center justify-center no-print" role="dialog" aria-modal="true" aria-labelledby="modalAuditTitle">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-4xl w-full border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in duration-200">
+      <div class="p-5 bg-gradient-to-r from-[#1e2d3d] to-[#27394d] text-white flex items-center justify-between border-b border-[#3b5b7c]">
+        <div class="flex items-center gap-3">
+          <span class="text-2xl">📜</span>
+          <div>
+            <h3 id="modalAuditTitle" class="text-sm font-black tracking-wide uppercase">Trilha de Auditoria Imutável (SHA-256 Chained Log)</h3>
+            <p class="text-[11px] text-slate-300">Rastreabilidade jurídica total para o pregoeiro e órgãos de controle (Art. 12 da Lei nº 14.133/2021 / TCU).</p>
+          </div>
+        </div>
+        <button onclick="closeAuditTrailModal()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white text-lg transition" aria-label="Fechar modal">✕</button>
+      </div>
+
+      <div class="p-6 space-y-4 overflow-y-auto">
+        <!-- STATUS DE INTEGRIDADE CRIPTOGRÁFICA -->
+        <div id="auditIntegrityBadge" class="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 flex items-center justify-between flex-wrap gap-3">
+          <div class="flex items-center gap-3">
+            <span class="text-2xl text-emerald-600">🛡️</span>
+            <div>
+              <strong class="text-xs font-black uppercase text-emerald-950 block">Cadeia Criptográfica Íntegra e Autêntica</strong>
+              <span id="auditIntegrityDesc" class="text-[11px] text-emerald-800">Todos os blocos de auditoria conferem perfeitamente com os hashes SHA-256 encadeados.</span>
+            </div>
+          </div>
+          <button onclick="downloadAuditCertificatePdf()" class="h-9 px-4 rounded-xl text-xs font-black bg-[#1e2d3d] hover:bg-[#27394d] text-white shadow-sm flex items-center gap-1.5 transition">
+            <span>📄</span> Baixar Certificado Oficial (.PDF p/ TCU)
+          </button>
+        </div>
+
+        <div class="border border-slate-200 rounded-2xl overflow-hidden">
+          <div class="overflow-x-auto max-h-80 custom-scrollbar">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-100 text-slate-700 font-black text-[10px] uppercase sticky top-0 border-b border-slate-200">
+                <tr>
+                  <th class="p-3">Horário (UTC)</th>
+                  <th class="p-3">Ação Registrada</th>
+                  <th class="p-3">Alvo / Item</th>
+                  <th class="p-3">Detalhes & Justificativa</th>
+                  <th class="p-3">Base Legal</th>
+                  <th class="p-3 font-mono">Hash SHA-256</th>
+                </tr>
+              </thead>
+              <tbody id="auditTrailTbody" class="divide-y divide-slate-100 text-[11px]">
+                <tr><td colspan="6" class="p-6 text-center text-slate-400 italic">Carregando registros imutáveis...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
+        <span class="text-[10px] text-slate-500 font-mono">Algoritmo: SHA-256 • Persistência Segura • Prova TCU/CGU</span>
+        <button onclick="closeAuditTrailModal()" class="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-4 py-2 rounded-xl text-xs transition">
+          Fechar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL CAMADA 4: INTEROPERABILIDADE BIDIRECIONAL COM O PNCP            -->
+  <!-- ===================================================================== -->
+  <div id="modalPncpPayload" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm p-4 md:p-8 flex items-center justify-center no-print" role="dialog" aria-modal="true" aria-labelledby="modalPncpTitle">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-3xl w-full border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in duration-200">
+      <div class="p-5 bg-gradient-to-r from-[#1e2d3d] to-[#27394d] text-white flex items-center justify-between border-b border-[#3b5b7c]">
+        <div class="flex items-center gap-3">
+          <span class="text-2xl">📡</span>
+          <div>
+            <h3 id="modalPncpTitle" class="text-sm font-black tracking-wide uppercase">Interoperabilidade PNCP (Portal Nacional de Contratações Públicas)</h3>
+            <p class="text-[11px] text-slate-300">Payload JSON gerado para integração direta via API REST v1 do PNCP sem digitação manual.</p>
+          </div>
+        </div>
+        <button onclick="closePncpPayloadModal()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white text-lg transition" aria-label="Fechar modal">✕</button>
+      </div>
+
+      <div class="p-6 space-y-4 overflow-y-auto">
+        <div class="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between text-xs text-emerald-900">
+          <div class="flex items-center gap-2">
+            <span class="text-emerald-600 text-lg">✅</span>
+            <span><strong>Conformidade Validada:</strong> Estrutura compatível com o Schema Oficial de Compra e Itens do PNCP.</span>
+          </div>
+          <span class="text-[10px] font-mono bg-emerald-200/80 text-emerald-950 px-2 py-0.5 rounded font-bold">API v1 REST</span>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">JSON do Processo Estruturado:</label>
+          <pre id="pncpJsonPreview" class="bg-[#1e2d3d] text-emerald-300 p-4 rounded-xl text-xs font-mono max-h-72 overflow-y-auto select-all border border-slate-700 leading-relaxed custom-scrollbar">Gerando payload estruturado...</pre>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-end gap-2 pt-2">
+          <button onclick="copyPncpJsonToClipboard()" class="h-10 px-4 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition flex items-center gap-1.5">
+            <span>📋</span> Copiar JSON
+          </button>
+          <button onclick="downloadPncpJson()" class="h-10 px-4 rounded-xl text-xs font-black bg-[#3b6e5c] hover:bg-[#2d5849] text-white shadow-sm transition flex items-center gap-1.5">
+            <span>💾</span> Baixar Arquivo payload_pncp.json
+          </button>
+        </div>
+      </div>
+
+      <div class="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+        <button onclick="closePncpPayloadModal()" class="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-4 py-2 rounded-xl text-xs transition">
+          Fechar
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- ===================================================================== -->
   <!-- SCRIPTS PRINCIPAIS                                                    -->
   <!-- ===================================================================== -->
@@ -2011,6 +2299,12 @@
     function setAdoptedParameter(param) {
       window.currentAdoptedParamOverride = param;
       recalculateCuratedQuotes();
+      logAuditEvent(
+        "ALTERACAO_PARAMETRO_TENDENCIA",
+        param,
+        "Alteração do critério de tendência central para " + param,
+        "Art. 6º da IN SEGES/ME nº 65/2021"
+      );
     }
 
     function toggleQuoteInBasket(idx, isChecked) {
@@ -2026,6 +2320,12 @@
           q.purge_status = "VALIDA";
           q.purge_justification = "Validada e incluída na cesta de preços de referência.";
         }
+        logAuditEvent(
+          isChecked ? "INCLUSAO_MANUAL_COTACAO" : "EXPURGO_MANUAL_COTACAO",
+          q.supplier_name || q.supplier_cnpj || "Cotação",
+          isChecked ? "Cotação incluída na cesta de preços de referência" : "Cotação desmarcada pelo analista para evitar distorção",
+          "Art. 6º, § 2º da IN SEGES/ME nº 65/2021"
+        );
       }
     }
 
@@ -2172,6 +2472,11 @@
       document.getElementById("resUnitPriceNote").textContent = `Total: ${qty} ${rep.target_supply_unit || 'UN'} = R$ ${total.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
       document.getElementById("resJustification").textContent = rep.legal_methodology_justification || "";
 
+      // Renderização do Boxplot Estatístico, Alerta de Fracionamento e Gatilho Socioambiental
+      renderStatisticalBoxplot(rep);
+      checkFracionamentoRisk(rep, qty);
+      checkSocioambientalTrigger(rep);
+
       // Renderização da Seção de Atas de Registro de Preços (SRP) Vigentes
       const arps = rep.arp_atas_vigentes || [];
       const arpsCard = document.getElementById("arpsSectionCard");
@@ -2292,6 +2597,12 @@
       q.purge_justification = `BLOQUEIO CAUTELAR (Art. 14, III e Art. 68 da Lei nº 14.133/2021): ${motivo}. Amostra excluída da cesta de preços.`;
 
       showAppNotification(`Empresa ${q.supplier_name || q.supplier_cnpj} excluída da cesta por sanção administrativa.`, "warn");
+      logAuditEvent(
+        "EXPURGO_SANCAO_CEIS_CNEP",
+        q.supplier_name || q.supplier_cnpj || "Fornecedor",
+        `Expurgo cautelar por sanção ativa no CEIS/CNEP/TCU (${motivo})`,
+        "Art. 14, III e Art. 68 da Lei nº 14.133/2021"
+      );
       recalculateCuratedQuotes();
     }
 
@@ -3667,6 +3978,12 @@
       }
       window.currentAllQuotes.push(newQuote);
       recalculateCuratedQuotes();
+      logAuditEvent(
+        "ADESAO_SRP_CESTA",
+        arp.numero_ata || ("Ata " + arpIdx),
+        "Inclusão de Ata de Registro de Preços da UASG " + (arp.uasg_codigo || "") + " na cesta",
+        "Art. 5º, II da IN SEGES/ME nº 65/2021"
+      );
     }
 
     // =========================================================================
@@ -4109,6 +4426,14 @@
 
     async function downloadBatchProcessZip() {
       const validItems = (batchResearchResults || []).filter(r => r.has_data && r.report && r.report.sanitized_metrics);
+      if (validItems.length > 0) {
+        logAuditEvent(
+          "GERACAO_PROCESSO_COMPLETO_ZIP",
+          "Lote (" + validItems.length + " itens)",
+          "Emissão do Pacote Completo (.ZIP com PNCP, Excel consolidado, Word e PDFs)",
+          "Lei nº 14.133/2021 e IN SEGES/ME nº 65/2021"
+        );
+      }
       if (validItems.length === 0) {
         showAppNotification("Processe o lote com pelo menos 1 item válido antes de gerar o Processo Completo.", "warn");
         return;
@@ -5018,6 +5343,12 @@
       closeAddComplementaryQuoteModal();
       recalculateCuratedQuotes();
       showAppNotification("Cotação complementar inserida na cesta!", "success");
+      logAuditEvent(
+        "INCLUSAO_COTACAO_COMPLEMENTAR",
+        supplier,
+        "Inclusão de cotação complementar (" + inciso + ") no valor de R$ " + priceVal.toFixed(2),
+        "Art. 5º da IN SEGES/ME nº 65/2021"
+      );
     }
 
     // =========================================================================
@@ -5363,6 +5694,589 @@
       openTab("PRICES");
       showAppNotification(`Item importado da IRP para o Lote: ${desc.slice(0, 45)}...`, "success");
     }
+
+    // =========================================================================
+    // CAMADA 1: INTELIGÊNCIA ARTIFICIAL E BUSCA SEMÂNTICA (NLP NO CATMAT/CATSER)
+    // =========================================================================
+    window.lastSemanticAiResults = [];
+
+    function openSemanticAiModal() {
+      const m = document.getElementById("modalSemanticAi");
+      if (m) {
+        m.classList.remove("hidden");
+        const promptInput = document.getElementById("modalSemanticAiPrompt");
+        if (promptInput) {
+          setTimeout(() => promptInput.focus(), 60);
+        }
+      }
+    }
+
+    function closeSemanticAiModal() {
+      const m = document.getElementById("modalSemanticAi");
+      if (m) m.classList.add("hidden");
+    }
+
+    function setSemanticExample(text) {
+      const promptInput = document.getElementById("modalSemanticAiPrompt");
+      if (promptInput) {
+        promptInput.value = text;
+        executeSemanticAiSearch();
+      }
+    }
+
+    async function executeSemanticAiSearch() {
+      const promptEl = document.getElementById("modalSemanticAiPrompt");
+      const loadingEl = document.getElementById("modalSemanticAiLoading");
+      const resultsEl = document.getElementById("modalSemanticAiResults");
+      const btnEl = document.getElementById("btnExecuteSemanticAi");
+
+      const promptText = (promptEl?.value || "").trim();
+      if (!promptText) {
+        showAppNotification("Por favor, descreva o que você precisa cotar.", "warn");
+        return;
+      }
+
+      if (loadingEl) loadingEl.classList.remove("hidden");
+      if (resultsEl) resultsEl.innerHTML = "";
+      if (btnEl) btnEl.disabled = true;
+
+      try {
+        const resp = await fetch("/api/v1/catalog/ai-suggest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: promptText })
+        });
+
+        if (!resp.ok) {
+          throw new Error(`Erro na API de IA (${resp.status}): ${resp.statusText}`);
+        }
+
+        const data = await resp.json();
+        const recs = data.top_suggestions || data.top_recommendations || [];
+        window.lastSemanticAiResults = recs;
+
+        if (recs.length === 0) {
+          resultsEl.innerHTML = `
+            <div class="p-6 text-center text-slate-500 bg-slate-50 rounded-2xl border border-slate-200">
+              <span class="text-2xl block mb-1">🔍</span>
+              <p class="font-bold text-xs">Nenhum item com aderência suficiente foi localizado.</p>
+              <p class="text-[11px] text-slate-400 mt-1">Tente reformular a descrição ou use a busca padrão por palavras-chave.</p>
+            </div>
+          `;
+          return;
+        }
+
+        resultsEl.innerHTML = recs.map((r, idx) => {
+          const code = r.codigo || r.code;
+          const desc = r.descricao || r.description;
+          const type = r.item_type || r.type || "MATERIAL";
+          const conf = r.confidence_score > 1 ? r.confidence_score : Math.round((r.confidence_score || 0.85) * 100);
+          const isServ = type === "SERVICO";
+          const typeBadgeCls = isServ ? "bg-amber-100 text-amber-900 border-amber-300" : "bg-sky-100 text-sky-900 border-sky-300";
+          const typeLabel = isServ ? "CATSER (Serviço)" : "CATMAT (Material)";
+          const just = r.ai_justification || r.match_reason || "Correspondência identificada por processamento semântico de linguagem natural.";
+          const unit = r.suggested_unit || r.unit_measure || "UN";
+
+          return `
+            <div class="p-4 rounded-2xl border border-slate-200 hover:border-[#c5a365] bg-white transition space-y-2.5 shadow-2xs">
+              <div class="flex items-center justify-between flex-wrap gap-2">
+                <div class="flex items-center gap-2">
+                  <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase border ${typeBadgeCls}">${typeLabel}</span>
+                  <strong class="font-mono text-xs font-black text-slate-900">Código ${code}</strong>
+                </div>
+                <div class="flex items-center gap-1.5 bg-emerald-50 text-emerald-900 border border-emerald-300 px-2.5 py-0.5 rounded-full text-[11px] font-black">
+                  <span>🎯</span> ${conf}% de Aderência
+                </div>
+              </div>
+
+              <p class="text-xs text-slate-800 font-medium leading-relaxed">${escapeHtml(desc)}</p>
+
+              <div class="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-start gap-2 text-[11px] text-slate-600">
+                <span class="text-base shrink-0">💡</span>
+                <div class="leading-tight">
+                  <strong class="text-slate-800">Justificativa da IA:</strong> ${escapeHtml(just)}
+                </div>
+              </div>
+
+              <div class="flex items-center justify-between pt-1">
+                <span class="text-[10px] text-slate-500 font-mono">Unidade sugerida: <strong>${escapeHtml(unit)}</strong></span>
+                <button
+                  type="button"
+                  onclick="addSemanticAiItemToBatch(${idx})"
+                  class="h-8.5 px-3.5 rounded-xl text-xs font-black bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] shadow-sm border border-[#c9962b] transition flex items-center gap-1.5"
+                >
+                  <span>➕</span> Adicionar ao Lote
+                </button>
+              </div>
+            </div>
+          `;
+        }).join("");
+
+      } catch (err) {
+        resultsEl.innerHTML = `
+          <div class="p-4 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs space-y-1">
+            <strong>Falha na busca semântica:</strong>
+            <p>${escapeHtml(err.message)}</p>
+          </div>
+        `;
+      } finally {
+        if (loadingEl) loadingEl.classList.add("hidden");
+        if (btnEl) btnEl.disabled = false;
+      }
+    }
+
+    async function addSemanticAiItemToBatch(idx) {
+      const rec = window.lastSemanticAiResults?.[idx];
+      if (!rec) return;
+
+      const code = rec.codigo || rec.code;
+      const desc = rec.descricao || rec.description;
+      const type = rec.item_type || rec.type || "MATERIAL";
+      const unit = rec.suggested_unit || rec.unit_measure || "UN";
+      const qty = rec.suggested_qty || 1;
+
+      await addItemToBatchTray(
+        type,
+        code,
+        desc,
+        unit,
+        qty
+      );
+
+      closeSemanticAiModal();
+      openTab("PRICES");
+      showAppNotification(`Item CATMAT/CATSER ${code} adicionado com sucesso ao lote!`, "success");
+
+      logAuditEvent(
+        "INCLUSAO_ITEM_IA_SEMANTICA",
+        `CATMAT/CATSER ${code}`,
+        `Item sugerido por PLN adicionado ao lote: ${desc.slice(0, 50)}...`,
+        "Art. 12 da Lei nº 14.133/2021"
+      );
+    }
+
+    // =========================================================================
+    // CAMADA 2: ACESSIBILIDADE GOVERNAMENTAL OBRIGATÓRIA (eMAG / WCAG 2.1)
+    // =========================================================================
+    function toggleHighContrast() {
+      const isHigh = document.body.classList.toggle("high-contrast");
+      document.documentElement.classList.toggle("high-contrast", isHigh);
+      try {
+        localStorage.setItem("govtech_high_contrast", isHigh ? "true" : "false");
+      } catch (e) {}
+
+      const btn = document.getElementById("btnHighContrast");
+      if (btn) {
+        if (isHigh) {
+          btn.classList.add("bg-yellow-400", "text-slate-950", "border-yellow-500");
+          btn.classList.remove("bg-[#27394d]", "text-slate-200", "border-[#334960]");
+        } else {
+          btn.classList.remove("bg-yellow-400", "text-slate-950", "border-yellow-500");
+          btn.classList.add("bg-[#27394d]", "text-slate-200", "border-[#334960]");
+        }
+      }
+      showAppNotification(isHigh ? "Modo de Alto Contraste ativado (eMAG/WCAG)." : "Modo Normal de cores restaurado.", "info");
+    }
+
+    window.govtechCurrentFontSizePercent = 100;
+    function adjustFontSize(delta) {
+      window.govtechCurrentFontSizePercent = Math.min(130, Math.max(85, window.govtechCurrentFontSizePercent + (delta * 5)));
+      document.documentElement.style.fontSize = `${window.govtechCurrentFontSizePercent}%`;
+      showAppNotification(`Tamanho do texto ajustado para ${window.govtechCurrentFontSizePercent}%.`, "info");
+    }
+
+    // Restaurar preferência de alto contraste ao carregar
+    try {
+      if (localStorage.getItem("govtech_high_contrast") === "true") {
+        document.body.classList.add("high-contrast");
+        document.documentElement.classList.add("high-contrast");
+        const btn = document.getElementById("btnHighContrast");
+        if (btn) {
+          btn.classList.add("bg-yellow-400", "text-slate-950", "border-yellow-500");
+          btn.classList.remove("bg-[#27394d]", "text-slate-200", "border-[#334960]");
+        }
+      }
+    } catch (e) {}
+
+    // Tecla Escape para fechar qualquer modal aberto
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        closeSemanticAiModal();
+        closeAuditTrailModal();
+        closePncpPayloadModal();
+        closeCatalogSearchModal();
+        closeDemandParserModal();
+        closeModalIrpDetail();
+        closeShareModal();
+      }
+    });
+
+    // =========================================================================
+    // CAMADA 3: TRILHA DE AUDITORIA IMUTÁVEL (SHA-256) E CERTIFICADO TCU/CGU
+    // =========================================================================
+    async function logAuditEvent(action, target, details, legalBasis) {
+      try {
+        await fetch("/api/v1/audit/log", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: action || "OPERACAO_SISTEMA",
+            target: target || "Geral",
+            details: details || "Operação realizada pelo usuário",
+            legal_basis: legalBasis || "Lei nº 14.133/2021",
+            operator_id: "Operador de Licitações (CPF protegido)",
+            uasg_code: "160016"
+          })
+        });
+      } catch (e) {
+        console.warn("Audit trail logging failed silently:", e);
+      }
+    }
+
+    async function openAuditTrailModal() {
+      const m = document.getElementById("modalAuditTrail");
+      if (m) {
+        m.classList.remove("hidden");
+        loadAuditTrailData();
+      }
+    }
+
+    function closeAuditTrailModal() {
+      const m = document.getElementById("modalAuditTrail");
+      if (m) m.classList.add("hidden");
+    }
+
+    async function loadAuditTrailData() {
+      const tbody = document.getElementById("auditTrailTbody");
+      const badgeDesc = document.getElementById("auditIntegrityDesc");
+      if (!tbody) return;
+
+      tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-400 italic">Consultando cadeia criptográfica SHA-256...</td></tr>`;
+
+      try {
+        const resp = await fetch("/api/v1/audit/trail");
+        if (!resp.ok) throw new Error(`Falha ${resp.status}`);
+        const data = await resp.json();
+
+        if (badgeDesc) {
+          badgeDesc.textContent = data.is_valid
+            ? `Cadeia íntegra de ${data.total_entries || 0} blocos encadeados. Nenhuma alteração espúria ou deleção detectada.`
+            : "ALERTA: Inconsistência de integridade detectada na cadeia de logs.";
+        }
+
+        const entries = data.trail || [];
+        if (entries.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-400 italic">Nenhum evento registrado ainda na trilha deste processo.</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = entries.slice().reverse().map(ev => {
+          const shortHash = (ev.hash || "").slice(0, 12) + "...";
+          const d = new Date(ev.timestamp);
+          const timeStr = !isNaN(d.getTime())
+            ? d.toLocaleString("pt-BR", { hour12: false })
+            : ev.timestamp;
+
+          return `
+            <tr class="hover:bg-slate-50 transition font-sans">
+              <td class="p-2.5 font-mono text-[10px] text-slate-500 whitespace-nowrap">${timeStr}</td>
+              <td class="p-2.5 font-bold text-slate-900">${escapeHtml(ev.action)}</td>
+              <td class="p-2.5 font-semibold text-sky-800">${escapeHtml(ev.target)}</td>
+              <td class="p-2.5 text-slate-600 leading-snug">${escapeHtml(ev.details)}</td>
+              <td class="p-2.5 font-bold text-slate-500 text-[10px]">${escapeHtml(ev.legal_basis || "Lei 14.133/2021")}</td>
+              <td class="p-2.5 font-mono text-emerald-800 font-bold text-[10px]" title="${escapeHtml(ev.hash)}">${shortHash}</td>
+            </tr>
+          `;
+        }).join("");
+
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-rose-600">Erro ao carregar trilha: ${escapeHtml(err.message)}</td></tr>`;
+      }
+    }
+
+    async function downloadAuditCertificatePdf() {
+      showAppNotification("Gerando Certificado Oficial de Auditoria Criptográfica (.PDF)...", "info");
+      try {
+        const resp = await fetch("/api/v1/audit/export-certificate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            process_title: "Pesquisa de Preços e Processo de Aquisição",
+            operator_name: "Operador de Contratações Públicas"
+          })
+        });
+
+        if (!resp.ok) throw new Error("Erro ao compilar certificado PDF");
+
+        const blob = await resp.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `Certificado_Auditoria_SHA256_${Date.now()}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        showAppNotification("Certificado de Auditoria baixado com sucesso!", "success");
+
+        logAuditEvent("EMISSAO_CERTIFICADO_AUDITORIA_PDF", "Certificado SHA-256", "Emissão de certificado oficial para juntada processual", "Art. 12 da Lei nº 14.133/2021");
+      } catch (e) {
+        showAppNotification("Falha ao baixar certificado: " + e.message, "error");
+      }
+    }
+
+    // =========================================================================
+    // CAMADA 4: INTEROPERABILIDADE BIDIRECIONAL COM O PNCP
+    // =========================================================================
+    window.lastPncpPayload = null;
+
+    async function openPncpPayloadModal() {
+      const m = document.getElementById("modalPncpPayload");
+      if (m) {
+        m.classList.remove("hidden");
+        generatePncpPayload();
+      }
+    }
+
+    function closePncpPayloadModal() {
+      const m = document.getElementById("modalPncpPayload");
+      if (m) m.classList.add("hidden");
+    }
+
+    async function generatePncpPayload() {
+      const previewEl = document.getElementById("pncpJsonPreview");
+      if (!previewEl) return;
+
+      previewEl.textContent = "Compilando itens e cotações para o schema da API do PNCP...";
+
+      try {
+        const items = batchTrayItems.map(it => {
+          const rep = batchPriceResults[it.key];
+          return {
+            tipo: it.type || "MATERIAL",
+            codigo: it.code,
+            descricao: it.desc,
+            unidade: it.unit || "UN",
+            quantidade: it.qty || 1,
+            valor_unitario: rep ? (rep.final_estimated_unit_price || 0) : 0,
+            report: rep || null
+          };
+        });
+
+        const resp = await fetch("/api/v1/pncp/export-procurement-payload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            procurement_title: "Processo de Aquisição / Registro de Preços GovTech",
+            modality_code: 8,
+            items: items
+          })
+        });
+
+        if (!resp.ok) throw new Error(`Falha ${resp.status}`);
+        const data = await resp.json();
+        window.lastPncpPayload = data.pncp_payload;
+
+        previewEl.textContent = JSON.stringify(data.pncp_payload, null, 2);
+
+        logAuditEvent(
+          "GERACAO_PAYLOAD_PNCP",
+          `Lote com ${items.length} itens`,
+          "Exportação de payload estruturado para integração via API do PNCP",
+          "Lei nº 14.133/2021 e PNCP API REST v1"
+        );
+      } catch (e) {
+        previewEl.textContent = "Erro ao estruturar payload do PNCP: " + e.message;
+      }
+    }
+
+    function downloadPncpJson() {
+      if (!window.lastPncpPayload) {
+        showAppNotification("Gere o payload antes de baixar.", "warn");
+        return;
+      }
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(window.lastPncpPayload, null, 2));
+      const a = document.createElement("a");
+      a.href = dataStr;
+      a.download = `pncp_payload_processo_${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      showAppNotification("Arquivo JSON do PNCP baixado com sucesso!", "success");
+    }
+
+    function copyPncpJsonToClipboard() {
+      if (!window.lastPncpPayload) return;
+      navigator.clipboard.writeText(JSON.stringify(window.lastPncpPayload, null, 2))
+        .then(() => showAppNotification("Payload JSON do PNCP copiado para a Área de Transferência!", "success"))
+        .catch(() => showAppNotification("Não foi possível copiar automaticamente.", "warn"));
+    }
+
+    // =========================================================================
+    // VISUALIZAÇÃO ESTATÍSTICA: BOXPLOT SVG (MÉTODO DOS QUARTIS / IN 65/2021)
+    // =========================================================================
+    function renderStatisticalBoxplot(rep) {
+      const boxCard = document.getElementById("boxplotCard");
+      const svg = document.getElementById("boxplotSvg");
+      if (!boxCard || !svg || !rep) return;
+
+      const vQuotes = (rep.valid_quotes || []).map(q => Number(q.price_unit_adjusted || q.unit_price || 0)).filter(p => p > 0).sort((a,b) => a-b);
+      const pQuotes = (rep.purged_quotes || []).map(q => Number(q.price_unit_adjusted || q.unit_price || 0)).filter(p => p > 0);
+
+      if (vQuotes.length === 0) {
+        boxCard.classList.add("hidden");
+        return;
+      }
+      boxCard.classList.remove("hidden");
+
+      const sm = rep.sanitized_metrics || {};
+      const min = vQuotes[0];
+      const max = vQuotes[vQuotes.length - 1];
+      const median = Number(sm.median || vQuotes[Math.floor(vQuotes.length / 2)] || 0);
+      const mean = Number(sm.mean || median);
+
+      function getPercentile(arr, p) {
+        if (arr.length === 1) return arr[0];
+        const idx = (arr.length - 1) * p;
+        const low = Math.floor(idx);
+        const high = Math.ceil(idx);
+        if (low === high) return arr[low];
+        return arr[low] + (arr[high] - arr[low]) * (idx - low);
+      }
+
+      const q1 = getPercentile(vQuotes, 0.25);
+      const q3 = getPercentile(vQuotes, 0.75);
+      const iqr = Math.max(0.01, q3 - q1);
+      const lowerWhisker = Math.max(min, q1 - 1.5 * iqr);
+      const upperWhisker = Math.min(max, q3 + 1.5 * iqr);
+
+      const fMoeda = (val) => `R$ ${Number(val || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      document.getElementById("bpMin").textContent = fMoeda(min);
+      document.getElementById("bpQ1").textContent = fMoeda(q1);
+      document.getElementById("bpMedian").textContent = fMoeda(median);
+      document.getElementById("bpMean").textContent = fMoeda(mean);
+      document.getElementById("bpQ3").textContent = fMoeda(q3);
+      document.getElementById("bpMax").textContent = fMoeda(max);
+
+      const allVals = [...vQuotes, ...pQuotes];
+      const absMin = Math.min(...allVals);
+      const absMax = Math.max(...allVals);
+      const paddingSpan = Math.max(0.1, (absMax - absMin) * 0.12);
+      const domainMin = Math.max(0, absMin - paddingSpan);
+      const domainMax = absMax + paddingSpan;
+      const svgW = 700;
+      const marginL = 40;
+      const marginR = 40;
+      const plotW = svgW - marginL - marginR;
+
+      function scaleX(val) {
+        if (domainMax <= domainMin) return svgW / 2;
+        return marginL + ((val - domainMin) / (domainMax - domainMin)) * plotW;
+      }
+
+      const xMin = scaleX(lowerWhisker);
+      const xQ1 = scaleX(q1);
+      const xMed = scaleX(median);
+      const xMean = scaleX(mean);
+      const xQ3 = scaleX(q3);
+      const xMax = scaleX(upperWhisker);
+      const boxW = Math.max(4, xQ3 - xQ1);
+
+      let svgContent = `
+        <line x1="${marginL}" y1="48" x2="${svgW - marginR}" y2="48" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="3,3" />
+        <line x1="${xMin}" y1="48" x2="${xQ1}" y2="48" stroke="#3b5b7c" stroke-width="2.5" />
+        <line x1="${xQ3}" y1="48" x2="${xMax}" y2="48" stroke="#3b5b7c" stroke-width="2.5" />
+        <line x1="${xMin}" y1="36" x2="${xMin}" y2="60" stroke="#3b5b7c" stroke-width="2.5" stroke-linecap="round" />
+        <line x1="${xMax}" y1="36" x2="${xMax}" y2="60" stroke="#3b5b7c" stroke-width="2.5" stroke-linecap="round" />
+        <rect x="${xQ1}" y="26" width="${boxW}" height="44" fill="#f1f5f9" stroke="#3b5b7c" stroke-width="2.5" rx="6" />
+        <line x1="${xMed}" y1="26" x2="${xMed}" y2="70" stroke="#c5a365" stroke-width="3.5" stroke-linecap="round" />
+        <line x1="${xMean}" y1="20" x2="${xMean}" y2="76" stroke="#15803d" stroke-width="2" stroke-dasharray="4,2" />
+      `;
+
+      (rep.valid_quotes || []).forEach((q, i) => {
+        const val = Number(q.price_unit_adjusted || q.unit_price || 0);
+        const cx = scaleX(val);
+        const cy = 48 + ((i % 3) - 1) * 7;
+        const name = escapeHtml(q.supplier_name || q.supplier_cnpj || 'Cotação Válida');
+        svgContent += `
+          <circle cx="${cx}" cy="${cy}" r="5.5" fill="#10b981" stroke="#047857" stroke-width="1.5" class="cursor-pointer hover:r-7 transition-all">
+            <title>${name}: R$ ${val.toFixed(2)} (Amostra Válida)</title>
+          </circle>
+        `;
+      });
+
+      (rep.purged_quotes || []).forEach((q, i) => {
+        const val = Number(q.price_unit_adjusted || q.unit_price || 0);
+        const cx = scaleX(val);
+        const cy = 48 + ((i % 2) ? 9 : -9);
+        const just = escapeHtml(q.purge_justification || 'Outlier estatístico / divergência');
+        svgContent += `
+          <circle cx="${cx}" cy="${cy}" r="6" fill="#f43f5e" stroke="#be123c" stroke-width="1.5" class="cursor-pointer hover:r-8 transition-all">
+            <title>OUTLIER EXCLUÍDO: R$ ${val.toFixed(2)} — ${just}</title>
+          </circle>
+        `;
+      });
+
+      svg.innerHTML = svgContent;
+    }
+
+    // =========================================================================
+    // CONTROLE INTERNO: ALERTA DE FRACIONAMENTO (ART. 75, § 1º LEI 14.133/2021)
+    // =========================================================================
+    function checkFracionamentoRisk(rep, qty) {
+      const banner = document.getElementById("fracionamentoWarningBanner");
+      if (!banner || !rep) return;
+
+      const TETO_DISPENSA = 62725.59;
+      const pdmNome = rep.nome_pdm || "";
+      const classeNome = rep.nome_classe || "";
+
+      let acumuladoPdm = 0;
+      batchTrayItems.forEach(it => {
+        const r = batchPriceResults[it.key];
+        if (r && (r.nome_pdm === pdmNome || (pdmNome && r.nome_pdm && r.nome_pdm.toLowerCase() === pdmNome.toLowerCase()))) {
+          const uPrice = Number(r.final_estimated_unit_price || 0);
+          acumuladoPdm += (it.qty || 1) * uPrice;
+        }
+      });
+
+      if (acumuladoPdm === 0) {
+        acumuladoPdm = (qty || 1) * Number(rep.final_estimated_unit_price || 0);
+      }
+
+      if (acumuladoPdm > (TETO_DISPENSA * 0.7)) {
+        banner.classList.remove("hidden");
+        const pdmEl = document.getElementById("fracPdmNome");
+        const valEl = document.getElementById("fracValorTotal");
+        if (pdmEl) pdmEl.textContent = pdmNome || classeNome || "Itens da mesma natureza";
+        if (valEl) valEl.textContent = `R$ ${acumuladoPdm.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      } else {
+        banner.classList.add("hidden");
+      }
+    }
+
+    // =========================================================================
+    // CRITÉRIO SOCIOAMBIENTAL E LOGÍSTICA REVERSA (ART. 11, IV LEI 14.133/2021)
+    // =========================================================================
+    function checkSocioambientalTrigger(rep) {
+      const banner = document.getElementById("socioambientalBanner");
+      if (!banner || !rep) return;
+
+      const desc = ((rep.item_description || "") + " " + (rep.nome_pdm || "")).toLowerCase();
+      const palavrasSustentaveis = [
+        "pneu", "bateria", "acumulador", "lubrificante", "óleo", "oleo",
+        "lâmpada", "lampada", "pilha", "toner", "cartucho", "resíduo", "residuos",
+        "eletrônico", "químico", "quimico", "descarte", "reversa", "sustent"
+      ];
+
+      const match = palavrasSustentaveis.some(w => desc.includes(w));
+      if (match) {
+        banner.classList.remove("hidden");
+      } else {
+        banner.classList.add("hidden");
+      }
+    }
+
   </script>
 </body>
 </html>

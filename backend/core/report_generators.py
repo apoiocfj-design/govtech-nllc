@@ -9,7 +9,8 @@ import io
 import os
 import re
 import zipfile
-from datetime import datetime
+import json
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 # python-docx
@@ -1405,3 +1406,206 @@ def build_batch_zip_bytes(
                     zf.writestr(f"{folder}/Editais_Gov_PNCP/PNCP_Edital_Compra_{c_num}.pdf", pdf_b)
 
     return z_buf.getvalue()
+
+
+# =============================================================================
+# 7. CERTIFICADO OFICIAL DE TRILHA DE AUDITORIA IMUTÁVEL (SHA-256 / TCU)
+# =============================================================================
+def build_audit_certificate_pdf_bytes(
+    om_name: str = "MARINHA DO BRASIL",
+    user_name: str = "OPERADOR DO SETOR DE OBTENÇÃO",
+) -> bytes:
+    """
+    Gera o Certificado de Trilha de Auditoria Imutável em formato PDF A4 oficial.
+    Comprova perante TCU, CGU e CISET a idoneidade, rastreabilidade e imutabilidade dos cálculos.
+    """
+    from audit_trail import audit_trail_manager
+
+    integrity = audit_trail_manager.verify_integrity()
+    entries = audit_trail_manager.get_recent_entries(limit=40)
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=1.8 * cm,
+        rightMargin=1.8 * cm,
+        topMargin=1.8 * cm,
+        bottomMargin=1.8 * cm,
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "CertTitle",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=12,
+        leading=15,
+        alignment=1,  # Center
+        textColor=colors.HexColor("#1E2D3D"),
+    )
+    subtitle_style = ParagraphStyle(
+        "CertSubtitle",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=9,
+        leading=12,
+        alignment=1,
+        textColor=colors.HexColor("#475569"),
+    )
+    cell_style = ParagraphStyle(
+        "CertCell",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=7.5,
+        leading=9.5,
+        textColor=colors.HexColor("#1E293B"),
+    )
+    cell_mono = ParagraphStyle(
+        "CertMono",
+        parent=styles["Normal"],
+        fontName="Courier",
+        fontSize=6.5,
+        leading=8,
+        textColor=colors.HexColor("#334155"),
+    )
+    cell_bold = ParagraphStyle(
+        "CertCellBold",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=7.5,
+        leading=9.5,
+        textColor=colors.HexColor("#1E293B"),
+    )
+
+    elements = []
+
+    # 1. Brasão Oficial se existir
+    if os.path.exists(BRASAO_PATH):
+        try:
+            elements.append(RLImage(BRASAO_PATH, width=2.0 * cm, height=2.0 * cm))
+            elements.append(Spacer(1, 4))
+        except Exception:
+            pass
+
+    # 2. Cabeçalho Oficial
+    elements.append(Paragraph(om_name.upper(), title_style))
+    elements.append(Paragraph("SISTEMA GOVTECH NLLC • MÓDULO DE COMPRAS PÚBLICAS & AUDITORIA", subtitle_style))
+    elements.append(Spacer(1, 4))
+    elements.append(Paragraph("CERTIFICADO DE TRILHA DE AUDITORIA E INTEGRIDADE CRIPTOGRÁFICA", title_style))
+    elements.append(Paragraph("Conformidade com a Instrução Normativa SEGES/ME nº 65/2021 e Lei nº 14.133/2021", subtitle_style))
+    elements.append(Spacer(1, 10))
+
+    # 3. Painel de Status de Integridade Criptográfica
+    is_valid = integrity.get("valid", True)
+    status_text = "INTEGRIDADE CRIPTOGRÁFICA REGULAR • ZERO VIOLAÇÕES DETECTADAS" if is_valid else "ALERTA: QUEBRA DE INTEGRIDADE DETECTADA"
+    status_bg = colors.HexColor("#D1FAE5") if is_valid else colors.HexColor("#FEE2E2")
+    status_fg = colors.HexColor("#065F46") if is_valid else colors.HexColor("#991B1B")
+
+    info_data = [
+        [
+            Paragraph("<b>SITUAÇÃO DO ENCADIAMENTO:</b>", cell_style),
+            Paragraph(f"<b><font color='{status_fg.hexval()}'>{status_text}</font></b>", cell_style),
+        ],
+        [
+            Paragraph("<b>ÚLTIMO HASH SHA-256 (BLOCKCHAIN TRAIL):</b>", cell_style),
+            Paragraph(f"<code>{integrity.get('latest_hash', 'N/A')}</code>", cell_mono),
+        ],
+        [
+            Paragraph("<b>TOTAL DE EVENTOS ENCADERNADOS:</b>", cell_style),
+            Paragraph(f"{integrity.get('total_entries', len(entries))} registros imutáveis gravados", cell_style),
+        ],
+        [
+            Paragraph("<b>AGENTE RESPONSÁVEL / OPERADOR:</b>", cell_style),
+            Paragraph(user_name, cell_style),
+        ],
+        [
+            Paragraph("<b>DATA E HORA DA CERTIFICAÇÃO (UTC):</b>", cell_style),
+            Paragraph(datetime.now(timezone.utc).strftime("%d/%m/%Y às %H:%M:%S UTC"), cell_style),
+        ],
+    ]
+    t_info = Table(info_data, colWidths=[6.0 * cm, 11.4 * cm])
+    t_info.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8FAFC")),
+        ("BACKGROUND", (0, 0), (-1, 0), status_bg),
+        ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#CBD5E1")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("PADDING", (0, 0), (-1, -1), 5),
+    ]))
+    elements.append(t_info)
+    elements.append(Spacer(1, 12))
+
+    # 4. Tabela de Registros da Trilha de Auditoria
+    elements.append(Paragraph("<b>HISTÓRICO RECENTE DE EVENTOS AUDITÁVEIS ENCADEADOS:</b>", cell_bold))
+    elements.append(Spacer(1, 4))
+
+    table_data = [
+        [
+            Paragraph("<b>#</b>", cell_bold),
+            Paragraph("<b>Data/Hora (UTC)</b>", cell_bold),
+            Paragraph("<b>Ação Operacional</b>", cell_bold),
+            Paragraph("<b>Alvo / Código</b>", cell_bold),
+            Paragraph("<b>Base Legal / Detalhes</b>", cell_bold),
+            Paragraph("<b>Hash SHA-256</b>", cell_bold),
+        ]
+    ]
+
+    for e in entries[:25]:
+        det = e.get("details")
+        det_str = json.dumps(det, ensure_ascii=False) if isinstance(det, dict) else str(det or "")
+        if len(det_str) > 70:
+            det_str = det_str[:67] + "..."
+        h = e.get("sha256_hash", "")
+        h_short = f"{h[:10]}...{h[-8:]}" if len(h) >= 18 else h
+        t_stamp = e.get("timestamp", "").replace("T", " ")[:19]
+
+        table_data.append([
+            Paragraph(str(e.get("sequence", "")), cell_style),
+            Paragraph(t_stamp, cell_mono),
+            Paragraph(str(e.get("action", "")), cell_style),
+            Paragraph(str(e.get("target_item", "")), cell_style),
+            Paragraph(f"<b>{e.get('legal_basis', '')}:</b> {det_str}", cell_style),
+            Paragraph(f"<code>{h_short}</code>", cell_mono),
+        ])
+
+    t_entries = Table(table_data, colWidths=[0.9 * cm, 2.7 * cm, 3.2 * cm, 2.4 * cm, 5.4 * cm, 2.8 * cm])
+    t_entries.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E2D3D")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+        ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#CBD5E1")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("PADDING", (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(t_entries)
+    elements.append(Spacer(1, 14))
+
+    # 5. Declaração Legal e Assinatura
+    decl_p = (
+        "<b>DECLARAÇÃO DE IDONEIDADE PROCESSUAL:</b> Atesta-se que todos os registros acima transcritos "
+        "foram gerados de forma automática e vinculados a um encadeamento criptográfico irreversível (SHA-256). "
+        "A integridade dos registros comprova a inexistência de alteração arbitrária de preços, exclusões não motivadas "
+        "ou manipulações nos cálculos de tendência central, assegurando conformidade com o Art. 19 da Lei nº 14.133/2021."
+    )
+    elements.append(Paragraph(decl_p, cell_style))
+    elements.append(Spacer(1, 24))
+
+    # Linhas de Assinatura
+    sig_data = [
+        [
+            Paragraph("____________________________________________<br/><b>AGENTE DE CONTRATAÇÃO / PREGOEIRO</b>", subtitle_style),
+            Paragraph("____________________________________________<br/><b>ENCARREGADO DO SETOR DE OBTENÇÃO</b>", subtitle_style),
+        ]
+    ]
+    t_sig = Table(sig_data, colWidths=[8.7 * cm, 8.7 * cm])
+    t_sig.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    elements.append(t_sig)
+
+    doc.build(elements)
+    return buf.getvalue()
+

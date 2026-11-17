@@ -1,0 +1,86 @@
+[
+  {
+    "sequence": 1,
+    "timestamp": "2026-11-17T11:35:37.246255+00:00",
+    "user": "Pregoeiro SECOM",
+    "action": "TESTE_VERIFICACAO",
+    "target_item": "Item 1 CATMAT 475109",
+    "legal_basis": "Art. 12 da Lei nº 14.133/2021",
+    "details": {
+      "motivo": "Teste de trilha encadeada SHA-256"
+    },
+    "ip_address": "127.0.0.1",
+    "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sha256_hash": "2c49c90e65d4cb0accbbc6e08076432207d3c3817a0e12eb4024d84a2bae5436"
+  },
+  {
+    "sequence": 2,
+    "timestamp": "2026-11-17T11:39:41.560301+00:00",
+    "user": "Pregoeiro SECOM",
+    "action": "TESTE_VERIFICACAO",
+    "target_item": "Item 1 CATMAT 475109",
+    "legal_basis": "Art. 12 da Lei nº 14.133/2021",
+    "details": {
+      "motivo": "Teste de trilha encadeada SHA-256"
+    },
+    "ip_address": "127.0.0.1",
+    "previous_hash": "2c49c90e65d4cb0accbbc6e08076432207d3c3817a0e12eb4024d84a2bae5436",
+    "sha256_hash": "d7a67e0b61843befcdf101c670ed952b00a980839f556f46903db1d18971e64e"
+  },
+  {
+    "sequence": 3,
+    "timestamp": "2026-11-17T11:40:13.361927+00:00",
+    "user": "Pregoeiro SECOM",
+    "action": "TESTE_VERIFICACAO",
+    "target_item": "Item 1 CATMAT 475109",
+    "legal_basis": "Art. 12 da Lei nº 14.133/2021",
+    "details": {
+      "motivo": "Teste de trilha encadeada SHA-256"
+    },
+    "ip_address": "127.0.0.1",
+    "previous_hash": "d7a67e0b61843befcdf101c670ed952b00a980839f556f46903db1d18971e64e",
+    "sha256_hash": "e72b03228394057ea56eb5f1f3c03581dfa420d2bebb9fc5076870fdc127f81c"
+  },
+  {
+    "sequence": 4,
+    "timestamp": "2026-11-17T11:44:22.409844+00:00",
+    "user": "Pregoeiro SECOM",
+    "action": "TESTE_VERIFICACAO",
+    "target_item": "Item 1 CATMAT 475109",
+    "legal_basis": "Art. 12 da Lei nº 14.133/2021",
+    "details": {
+      "motivo": "Teste de trilha encadeada SHA-256"
+    },
+    "ip_address": "127.0.0.1",
+    "previous_hash": "e72b03228394057ea56eb5f1f3c03581dfa420d2bebb9fc5076870fdc127f81c",
+    "sha256_hash": "a7a172875799b75c61c33930e290e5d84855912d47f4a29de3be87c2a55ec88b"
+  },
+  {
+    "sequence": 5,
+    "timestamp": "2026-11-17T11:45:03.732395+00:00",
+    "user": "Pregoeiro SECOM",
+    "action": "TESTE_VERIFICACAO",
+    "target_item": "Item 1 CATMAT 475109",
+    "legal_basis": "Art. 12 da Lei nº 14.133/2021",
+    "details": {
+      "motivo": "Teste de trilha encadeada SHA-256"
+    },
+    "ip_address": "127.0.0.1",
+    "previous_hash": "a7a172875799b75c61c33930e290e5d84855912d47f4a29de3be87c2a55ec88b",
+    "sha256_hash": "24daa30d4aa3413697d0ccbf9dfab5d41df96b204c737c54811114ba226b0fbd"
+  },
+  {
+    "sequence": 6,
+    "timestamp": "2026-11-17T11:45:33.152287+00:00",
+    "user": "Pregoeiro SECOM",
+    "action": "TESTE_VERIFICACAO",
+    "target_item": "Item 1 CATMAT 475109",
+    "legal_basis": "Art. 12 da Lei nº 14.133/2021",
+    "details": {
+      "motivo": "Teste de trilha encadeada SHA-256"
+    },
+    "ip_address": "127.0.0.1",
+    "previous_hash": "24daa30d4aa3413697d0ccbf9dfab5d41df96b204c737c54811114ba226b0fbd",
+    "sha256_hash": "015f4ee2e66ff33098e474ad5a77a698dcbf5b937c9bbd839790b3770155c448"
+  }
+]

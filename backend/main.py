@@ -45,6 +45,7 @@ from report_generators import (
     build_in65_justificativa_pdf_bytes,
     build_consolidated_in65_excel_bytes,
     build_batch_zip_bytes,
+    build_audit_certificate_pdf_bytes,
 )
 from pncp_extractor import (
     resolve_pncp_compra,
@@ -56,6 +57,8 @@ from pncp_extractor import (
 )
 from irp_client import search_irps, get_irp_detail
 from sanctions_checker import check_supplier_sanctions
+from audit_trail import audit_trail_manager
+from pncp_integration import build_pncp_procurement_payload, validate_pncp_payload
 
 price_controller = PriceResearchController()
 rag_auditor = RAGLegalAuditor(similarity_threshold=0.45)
@@ -863,12 +866,118 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 self._send_json(500, {"status": "ERROR", "error": str(exc), "itens": [], "arquivos": []})
             return
 
+        # 15. Trilha de Auditoria Imutável (Consulta e Verificação de Integridade Criptográfica SHA-256)
+        if path == "/api/v1/audit/trail":
+            integrity = audit_trail_manager.verify_integrity()
+            entries = audit_trail_manager.get_recent_entries(limit=100)
+            self._send_json(200, {
+                "status": "SUCCESS",
+                "integrity": integrity,
+                "total_recorded": len(entries),
+                "entries": entries,
+            })
+            return
+
         self._send_json(404, {"error": "Rota não encontrada."})
 
     def do_POST(self):
         parsed = urlparse(self.path)
         length = int(self.headers.get("Content-Length", "0"))
         raw_body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
+
+        # 0.001 Assistente de IA e Busca Semântica em Linguagem Natural (NLP)
+        if parsed.path == "/api/v1/catalog/ai-suggest":
+            try:
+                data = json.loads(raw_body)
+                prompt = data.get("prompt", "")
+                result = catalog_engine.semantic_ai_suggest(prompt)
+                self._send_json(200, result)
+            except Exception as exc:
+                self._send_json(400, {"status": "ERROR", "error": str(exc), "top_suggestions": []})
+            return
+
+        # 0.002 Registro de Evento na Trilha de Auditoria Imutável (SHA-256)
+        if parsed.path == "/api/v1/audit/log":
+            try:
+                data = json.loads(raw_body)
+                user = data.get("user") or "OPERADOR DO SISTEMA"
+                action = data.get("action") or "ACAO_DESCONHECIDA"
+                target_item = str(data.get("target_item") or "")
+                details = data.get("details") or {}
+                legal_basis = data.get("legal_basis") or "IN SEGES/ME nº 65/2021"
+                ip_addr = self.client_address[0] if self.client_address else "127.0.0.1"
+                entry = audit_trail_manager.record_event(
+                    user=user,
+                    action=action,
+                    target_item=target_item,
+                    details=details,
+                    legal_basis=legal_basis,
+                    ip_address=ip_addr,
+                )
+                self._send_json(200, {"status": "SUCCESS", "entry": entry})
+            except Exception as exc:
+                self._send_json(400, {"status": "ERROR", "error": str(exc)})
+            return
+
+        # 0.003 Emissão de Certificado Oficial da Trilha de Auditoria (.PDF)
+        if parsed.path == "/api/v1/audit/export-certificate":
+            try:
+                data = json.loads(raw_body)
+                om_name = data.get("om_name") or "MARINHA DO BRASIL"
+                user_name = data.get("user_name") or "OPERADOR DO SISTEMA"
+                pdf_bytes = build_audit_certificate_pdf_bytes(om_name=om_name, user_name=user_name)
+                self._send_binary(pdf_bytes, "application/pdf", f"Certificado_Trilha_Auditoria_{int(time.time())}.pdf")
+            except Exception as exc:
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        # 0.004 Interoperabilidade Bidirecional: Gerar Payload de Integração Oficial PNCP (.JSON)
+        if parsed.path == "/api/v1/pncp/export-procurement-payload":
+            try:
+                data = json.loads(raw_body)
+                items_in = data.get("items", [])
+                om_name = data.get("om_name") or "MARINHA DO BRASIL"
+                uasg_code = data.get("uasg_code") or "785000"
+                cnpj_orgao = data.get("cnpj_orgao") or "00394502000144"
+                modalidade_id = int(data.get("modalidade_id") or 8)
+                numero_compra = data.get("numero_compra") or "00001/2026"
+                ano_compra = int(data.get("ano_compra") or 2026)
+                processo_nup = data.get("processo_nup") or ""
+                objeto_desc = data.get("objeto_descricao") or ""
+
+                integrity = audit_trail_manager.verify_integrity()
+                latest_hash = integrity.get("latest_hash") or "N/A"
+
+                payload = build_pncp_procurement_payload(
+                    items_list=items_in,
+                    om_name=om_name,
+                    uasg_code=uasg_code,
+                    cnpj_orgao=cnpj_orgao,
+                    numero_compra=numero_compra,
+                    ano_compra=ano_compra,
+                    modalidade_id=modalidade_id,
+                    processo_nup=processo_nup,
+                    objeto_descricao=objeto_desc,
+                    hash_auditoria=latest_hash,
+                )
+                validation = validate_pncp_payload(payload)
+
+                audit_trail_manager.record_event(
+                    user=om_name,
+                    action="EXPORTACAO_PAYLOAD_PNCP",
+                    target_item=f"LOTE_{len(items_in)}_ITENS",
+                    details={"numeroCompra": numero_compra, "valorTotal": payload.get("valorTotalEstimado")},
+                    legal_basis="Lei nº 14.133/2021 (Integração PNCP)",
+                )
+
+                self._send_json(200, {
+                    "status": "SUCCESS",
+                    "validation": validation,
+                    "pncp_payload": payload,
+                })
+            except Exception as exc:
+                self._send_json(400, {"status": "ERROR", "error": str(exc)})
+            return
 
         # 0. Parser de Lista de Demanda Livre (Extração NLP -> CATMAT/CATSER)
         if parsed.path == "/api/v1/catalog/parse-demand":
