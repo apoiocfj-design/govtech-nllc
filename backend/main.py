@@ -50,6 +50,12 @@ from report_generators import (
     build_supplier_compliance_dossier_docx_bytes,
     build_supplier_compliance_dossier_pdf_bytes,
 )
+from audited_document_engine import (
+    DocumentLayoutParser,
+    DocumentLegalAuditor,
+    build_audited_document_docx_bytes,
+    build_audited_document_pdf_bytes,
+)
 from pncp_extractor import (
     resolve_pncp_compra,
     fetch_pncp_arquivos,
@@ -379,6 +385,25 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
                 return
             self._send_json(404, {"error": "Logo não encontrado."})
+            return
+
+        # 1.2 Brasão Oficial da República
+        if path == "/brasao_oficial.png":
+            brasao_path = os.path.join(BASE_DIR, "brasao_oficial.png")
+            if not os.path.exists(brasao_path):
+                brasao_path = os.path.join(BASE_DIR, "..", "frontend", "brasao_oficial.png")
+            if os.path.exists(brasao_path):
+                with open(brasao_path, "rb") as f:
+                    data = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "image/png")
+                self.send_header("Cache-Control", "public, max-age=86400")
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            self._send_json(404, {"error": "Brasão não encontrado."})
             return
 
         # 2. Healthcheck
@@ -1479,17 +1504,15 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 file_b64 = data.get("file_base64", "")
                 raw_text = data.get("text", "")
 
-                extracted_lines = []
+                doc_structure = None
                 if file_b64:
                     file_bytes = base64.b64decode(file_b64)
                     if filename.lower().endswith(".pdf"):
-                        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-                            for pg in pdf.pages:
-                                t = pg.extract_text() or ""
-                                extracted_lines.extend([l.strip() for l in t.split("\n") if l.strip()])
+                        doc_structure = DocumentLayoutParser.parse_pdf(file_bytes, filename=filename)
                         
-                        # Fallback de Visão Computacional (Google Cloud Vision API - OCR para PDFs digitalizados)
-                        if sum(len(l) for l in extracted_lines) < 100:
+                        # Fallback de Visão Computacional se PDF for escaneado (< 100 caracteres legíveis)
+                        total_chars = sum(len(e.get("text", "")) for e in doc_structure.get("elements", []))
+                        if total_chars < 100:
                             try:
                                 from google.cloud import vision
                                 client = vision.ImageAnnotatorClient()
@@ -1502,47 +1525,120 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                                     for page_resp in file_resp.responses:
                                         if page_resp.full_text_annotation and page_resp.full_text_annotation.text:
                                             ocr_lines.extend([l.strip() for l in page_resp.full_text_annotation.text.split("\n") if l.strip()])
-                                if sum(len(l) for l in ocr_lines) >= 100:
-                                    extracted_lines = ocr_lines
+                                if ocr_lines:
+                                    doc_structure = DocumentLayoutParser.parse_text("\n".join(ocr_lines), filename=filename)
                             except Exception as ocr_err:
                                 print(f"[Cloud Vision OCR Notice] {ocr_err}")
-                    elif filename.lower().endswith(".docx"):
-                        tmp_path = os.path.join(BASE_DIR, "_tmp_upload.docx")
-                        with open(tmp_path, "wb") as f:
-                            f.write(file_bytes)
-                        extracted_lines = OpenXMLDocxReader.extract_paragraphs_from_docx(tmp_path)
-                    else:
-                        extracted_lines = [l.strip() for l in file_bytes.decode("utf-8", errors="ignore").split("\n") if l.strip()]
-                else:
-                    extracted_lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
 
-                chunks = AGUClauseChunker.chunk_paragraphs(extracted_lines, artifact_type=artifact_type)
-                audit_report = rag_auditor.audit_user_chunks(chunks, target_artifact_type=artifact_type)
-                audit_report["clauses"] = [
-                    {
-                        "num": c.clause_number,
-                        "title": c.section_title,
-                        "text": c.text,
-                        "modified": False,
-                    }
-                    for c in chunks[:60]
-                ]
-                self._send_json(200, audit_report)
+                    elif filename.lower().endswith(".docx"):
+                        doc_structure = DocumentLayoutParser.parse_docx(file_bytes, filename=filename)
+                    else:
+                        doc_structure = DocumentLayoutParser.parse_text(file_bytes.decode("utf-8", errors="ignore"), filename=filename)
+                else:
+                    doc_structure = DocumentLayoutParser.parse_text(raw_text, filename=filename or "minuta_texto.txt")
+
+                if not doc_structure:
+                    doc_structure = DocumentLayoutParser.parse_text(raw_text or "", filename=filename or "minuta.txt")
+
+                # Auditoria Jurídica e Geração de Diffs com Marcação Amarelo/Vermelho Tachado
+                audited_doc = DocumentLegalAuditor.audit_and_diff(doc_structure)
+
+                # Estruturação retrocompatível de cláusulas para o frontend
+                clauses_list = []
+                for el in audited_doc.get("elements", []):
+                    if el.get("type") in ["CLAUSE", "PARAGRAPH"]:
+                        clauses_list.append({
+                            "num": el.get("clause_number") or el.get("number") or "",
+                            "title": el.get("section_title") or el.get("title") or "Cláusula Contratual",
+                            "text": el.get("revised_text") or el.get("text") or "",
+                            "modified": bool(el.get("modified")),
+                            "diff_segments": el.get("diff_segments", []),
+                        })
+
+                response_payload = {
+                    "status": "SUCCESS",
+                    "doc_structure": audited_doc,
+                    "title": audited_doc.get("title", "DOCUMENTO AUDITADO (LEI 14.133/2021)"),
+                    "original_format": audited_doc.get("original_format", "pdf"),
+                    "elements": audited_doc.get("elements", []),
+                    "clauses": clauses_list,
+                    "findings": audited_doc.get("audit_summary", {}).get("findings", []),
+                    "compliance_score": audited_doc.get("audit_summary", {}).get("compliance_score", 100.0),
+                    "audit_summary": audited_doc.get("audit_summary", {}),
+                    "signatures": audited_doc.get("signatures", []),
+                }
+                self._send_json(200, response_payload)
             except Exception as exc:
                 self._send_json(400, {"error": str(exc)})
             return
 
-        # 2. Exportar Documento Word (.DOCX) com Destaque Amarelo
+        # 2. Exportar Documento Word (.DOCX) com Layout Preservado, Tabelas e Destaque Amarelo / Vermelho Tachado
         if parsed.path == "/api/v1/rag/export-docx":
             try:
                 data = json.loads(raw_body)
-                title = data.get("title", "TERMO DE REFERÊNCIA AUDITADO (LEI 14.133/2021)")
-                clauses = data.get("clauses", [])
-                docx_bytes = build_highlighted_docx_bytes(title, clauses)
+                doc_structure = data.get("doc_structure")
+                if not doc_structure:
+                    title = data.get("title", "DOCUMENTO AUDITADO (LEI 14.133/2021)")
+                    clauses = data.get("clauses", [])
+                    doc_structure = {
+                        "title": title,
+                        "original_format": "docx",
+                        "elements": [
+                            {
+                                "type": "CLAUSE",
+                                "clause_number": c.get("num") or c.get("clause_number") or "",
+                                "section_title": c.get("title") or "",
+                                "text": c.get("text") or "",
+                                "modified": bool(c.get("modified")),
+                                "diff_segments": c.get("diff_segments") or [
+                                    {"type": "added" if c.get("modified") else "equal", "text": c.get("text") or ""}
+                                ],
+                            }
+                            for c in clauses
+                        ],
+                    }
+                docx_bytes = build_audited_document_docx_bytes(doc_structure)
+                safe_title = re.sub(r"[^a-zA-Z0-9_-]", "_", doc_structure.get("title", "Minuta_Auditada"))
                 self._send_binary(
                     docx_bytes,
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    "Documento_Auditado_AGU_Marcado_Amarelo.docx",
+                    f"{safe_title}_Marcado_Amarelo.docx",
+                )
+            except Exception as exc:
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        # 3. Exportar Documento PDF (.PDF) com Layout Preservado, Tabelas e Destaque Amarelo / Vermelho Tachado
+        if parsed.path == "/api/v1/rag/export-pdf":
+            try:
+                data = json.loads(raw_body)
+                doc_structure = data.get("doc_structure")
+                if not doc_structure:
+                    title = data.get("title", "DOCUMENTO AUDITADO (LEI 14.133/2021)")
+                    clauses = data.get("clauses", [])
+                    doc_structure = {
+                        "title": title,
+                        "original_format": "pdf",
+                        "elements": [
+                            {
+                                "type": "CLAUSE",
+                                "clause_number": c.get("num") or c.get("clause_number") or "",
+                                "section_title": c.get("title") or "",
+                                "text": c.get("text") or "",
+                                "modified": bool(c.get("modified")),
+                                "diff_segments": c.get("diff_segments") or [
+                                    {"type": "added" if c.get("modified") else "equal", "text": c.get("text") or ""}
+                                ],
+                            }
+                            for c in clauses
+                        ],
+                    }
+                pdf_bytes = build_audited_document_pdf_bytes(doc_structure)
+                safe_title = re.sub(r"[^a-zA-Z0-9_-]", "_", doc_structure.get("title", "Minuta_Auditada"))
+                self._send_binary(
+                    pdf_bytes,
+                    "application/pdf",
+                    f"{safe_title}_Marcado_Amarelo.pdf",
                 )
             except Exception as exc:
                 self._send_json(500, {"error": str(exc)})
