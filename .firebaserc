@@ -1,6 +1,6 @@
 {
   "projects": {
-    "default": "govtech-nllc-app"
+    "default": "admin-cfj"
   },
   "targets": {
     "admin-cfj": {

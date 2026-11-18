@@ -309,3 +309,33 @@ exports.auditMinutaStorageWorker = onObjectFinalized(
     return null;
   }
 );
+
+// ============================================================================
+// ÉPICO 1: TELEMETRIA E OBSERVABILIDADE (LOGS ESTRUTURADOS GOOGLE CLOUD)
+// ============================================================================
+/**
+ * Emite Structured Logs padrão Google Cloud Logging para monitoramento de APIs externas.
+ * O formato JSON emitido em stdout/stderr é ingerido diretamente pelo Cloud Logging
+ * no GCP, permitindo criar métricas baseadas em logs (Log-based Metrics) e alertas no Cloud Monitoring.
+ */
+function logExternalApiTelemetry({ severity = "WARNING", service = "compras-gov-api", latency, endpoint, statusCode, error }) {
+  const structuredEntry = {
+    severity,
+    service,
+    latency_ms: latency || 0,
+    endpoint: endpoint || "https://dadosabertos.compras.gov.br",
+    status_code: statusCode || null,
+    error: error ? (error.message || String(error)) : null,
+    timestamp: new Date().toISOString(),
+    message: `[GovTech Telemetry] ${service}: ${statusCode ? `HTTP ${statusCode}` : "Error"} (${latency || 0}ms) - ${endpoint}`
+  };
+
+  // Google Cloud Logging ingere JSON estruturado nativamente de stdout/stderr
+  console.log(JSON.stringify(structuredEntry));
+}
+
+module.exports = {
+  ...module.exports,
+  logExternalApiTelemetry
+};
+

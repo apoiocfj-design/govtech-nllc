@@ -1,0 +1,77 @@
+name: CI/CD Pipeline - PR Preview Channel (Homologação Efêmera)
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  validate-and-preview:
+    name: Testes Matemáticos IN 65 & Deploy Canal Efêmero
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout do Repositório
+        uses: actions/checkout@v4
+
+      - name: 🟢 Configurar Node.js (v20 LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: 🐍 Configurar Python (v3.11)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 🧪 Executar Testes Unitários de Conformidade Legal (IN SEGES/ME nº 65/2021)
+        run: |
+          echo "================================================================"
+          echo "EXECUTANDO SUÍTE DE TESTES: MOTOR MATEMÁTICO DA IN 65/2021"
+          echo "================================================================"
+          npm test
+          python -m unittest discover -s backend/tests
+
+      - name: 🚀 Deploy para Canal de Pré-visualização Efêmero (Firebase Hosting)
+        id: deploy-preview
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: "${{ secrets.GITHUB_TOKEN }}"
+          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_ADMIN_CFJ }}"
+          projectId: admin-cfj
+          target: govtech
+          channelId: "pr-${{ github.event.number }}"
+          expires: 7d
+        env:
+          FIREBASE_CLI_PREVIEWS: hostingchannels
+          CI: "true"
+
+      - name: 📝 Comentário Automático no Pull Request com URL de Homologação
+        if: steps.deploy-preview.outputs.details_url != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = '${{ steps.deploy-preview.outputs.details_url }}';
+            const expireTime = '${{ steps.deploy-preview.outputs.expire_time }}';
+            const body = `### 🚀 Ambiente Efêmero de Homologação Criado com Sucesso!\n\n` +
+                         `Os testes matemáticos da **IN SEGES/ME nº 65/2021** foram aprovados com sucesso.\n\n` +
+                         `* **URL de Preview:** [${url}](${url})\n` +
+                         `* **Validade do Canal:** Expira em 7 dias (${expireTime})\n` +
+                         `* **Commit:** \`${{ github.sha }}\`\n\n` +
+                         `> ⚠️ Homologue as minutas e a pesquisa de preços neste ambiente antes de aprovar o *Merge* para a branch \`main\`.`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });

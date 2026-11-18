@@ -70,12 +70,15 @@ class GovProcurementAPIClient:
 
     def _get_with_retry(self, url: str, params: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Executa GET HTTP com Exponential Backoff + Jitter para suportar oscilações do SERPRO/PNCP.
+        Executa GET HTTP com Exponential Backoff + Jitter para suportar oscilações do SERPRO/PNCP,
+        registrando logs estruturados (Google Cloud Logging / Observabilidade) de latência e falhas.
         """
         last_error: Optional[Exception] = None
         for attempt in range(1, self.max_retries + 1):
+            start_time = time.perf_counter()
             try:
                 resp = self.session.get(url, params=params, timeout=self.timeout_seconds)
+                latency_ms = int((time.perf_counter() - start_time) * 1000)
 
                 # 200 OK
                 if resp.status_code == 200:
@@ -89,25 +92,47 @@ class GovProcurementAPIClient:
                 if resp.status_code == 400:
                     # Compras.gov.br retorna 400 intermitente com "Erro ao efetuar a consulta" quando o SERPRO oscila
                     if "Erro ao efetuar a consulta" in resp.text:
-                        logger.warning(
-                            f"API Gov retornou 400 transitório ('Erro ao efetuar a consulta') na tentativa {attempt}/{self.max_retries} ({url})"
-                        )
+                        structured_log = {
+                            "severity": "WARNING",
+                            "service": "compras-gov-api",
+                            "latency": latency_ms,
+                            "endpoint": url,
+                            "status_code": 400,
+                            "attempt": attempt,
+                            "message": "API Gov retornou 400 transitório ('Erro ao efetuar a consulta')",
+                        }
+                        logger.warning(json.dumps(structured_log))
                     else:
                         raise ValueError(f"Erro 400 (Parâmetro Inválido na API Gov): {resp.text[:400]}")
 
-                # 429 Too Many Requests ou 5xx Server Error -> Retry com Backoff
+                # 429 Too Many Requests ou 5xx Server Error -> Retry com Backoff e Log Estruturado
                 if resp.status_code in (429, 500, 502, 503, 504):
-                    logger.warning(
-                        f"API Gov retornou HTTP {resp.status_code} na tentativa {attempt}/{self.max_retries} ({url})"
-                    )
+                    structured_log = {
+                        "severity": "WARNING",
+                        "service": "compras-gov-api",
+                        "latency": latency_ms,
+                        "endpoint": url,
+                        "status_code": resp.status_code,
+                        "attempt": attempt,
+                        "message": f"Instabilidade em gateway governamental: HTTP {resp.status_code}",
+                    }
+                    logger.warning(json.dumps(structured_log))
                 else:
                     resp.raise_for_status()
 
             except requests.RequestException as exc:
+                latency_ms = int((time.perf_counter() - start_time) * 1000)
                 last_error = exc
-                logger.warning(
-                    f"Falha de rede/timeout na tentativa {attempt}/{self.max_retries} para {url}: {exc}"
-                )
+                structured_log = {
+                    "severity": "WARNING",
+                    "service": "compras-gov-api",
+                    "latency": latency_ms,
+                    "endpoint": url,
+                    "attempt": attempt,
+                    "error": str(exc),
+                    "message": f"Falha de rede ou timeout ao consultar API governamental: {exc}",
+                }
+                logger.warning(json.dumps(structured_log))
 
             if attempt < self.max_retries:
                 sleep_time = (self.base_backoff_seconds ** attempt) + random.uniform(0.1, 0.6)

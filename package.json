@@ -1,0 +1,24 @@
+{
+  "name": "govtech-nllc",
+  "version": "2.1.0",
+  "description": "Sistema GovTech NLLC - Plataforma de Inteligência em Licitações Públicas (Lei nº 14.133/2021 & IN SEGES/ME nº 65/2021)",
+  "scripts": {
+    "test": "node --test tests/in65_math_engine.test.js",
+    "test:python": "python -m unittest discover -s backend/tests",
+    "test:all": "npm run test && npm run test:python",
+    "predeploy:hosting": "node scripts/check_ci_deploy_lock.js",
+    "deploy:preview": "firebase hosting:channel:deploy",
+    "deploy:prod": "firebase deploy --only hosting"
+  },
+  "keywords": [
+    "licitacoes",
+    "govtech",
+    "comprasnet",
+    "pncp",
+    "in65-2021",
+    "lei-14133"
+  ],
+  "author": "Equipe GovTech / Marinha do Brasil",
+  "license": "UNLICENSED",
+  "private": true
+}

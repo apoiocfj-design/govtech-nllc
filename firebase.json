@@ -2,6 +2,9 @@
   "hosting": {
     "target": "govtech",
     "public": "frontend",
+    "predeploy": [
+      "node scripts/check_ci_deploy_lock.js"
+    ],
     "ignore": [
       "firebase.json",
       "**/.*"
@@ -18,6 +21,11 @@
   },
   "storage": {
     "rules": "storage.rules"
+  },
+  "extensions": {
+    "firestore-bigquery-export-lotes": "firebase/firestore-bigquery-export@^0.1.48",
+    "firestore-bigquery-export-itens": "firebase/firestore-bigquery-export@^0.1.48",
+    "firestore-bigquery-export-saneados": "firebase/firestore-bigquery-export@^0.1.48"
   },
   "functions": [
     {

@@ -27,3 +27,6 @@ _tmp*
 .system_generated/
 .user_uploaded/
 sample_*.html
+
+# CI/CD local staging (requires GitHub PAT with 'workflow' scope)
+.github/

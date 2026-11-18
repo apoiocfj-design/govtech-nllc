@@ -1,0 +1,53 @@
+name: CI/CD Pipeline - Produção (Deploy Oficial)
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  validate-and-deploy-prod:
+    name: Testes de Regressão & Deploy Produção Oficial
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout do Repositório
+        uses: actions/checkout@v4
+
+      - name: 🟢 Configurar Node.js (v20 LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: 🐍 Configurar Python (v3.11)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 🧪 Executar Testes Unitários de Homologação (IN SEGES/ME nº 65/2021)
+        run: |
+          echo "================================================================"
+          echo "VALIDAÇÃO FINAL ANTES DO DEPLOY EM PRODUÇÃO OFICIAL"
+          echo "================================================================"
+          npm test
+          python -m unittest discover -s backend/tests
+
+      - name: 🌐 Deploy em Produção (Live Channel - govtech-cfj.web.app)
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: "${{ secrets.GITHUB_TOKEN }}"
+          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_ADMIN_CFJ }}"
+          projectId: admin-cfj
+          target: govtech
+          channelId: live
+        env:
+          FIREBASE_CLI_PREVIEWS: hostingchannels
+          CI: "true"

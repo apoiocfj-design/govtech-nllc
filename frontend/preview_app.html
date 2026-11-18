@@ -109,6 +109,43 @@
   </a>
 
   <!-- ===================================================================== -->
+  <!-- BANNER DINÂMICO DE TELEMETRIA E OBSERVABILIDADE (HEALTH CHECK APIS GOV)-->
+  <!-- ===================================================================== -->
+  <aside
+    id="govApiHealthBanner"
+    class="hidden bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 text-amber-950 px-6 py-2.5 border-b border-amber-600 font-semibold text-xs md:text-sm flex items-center justify-between sticky top-0 z-50 transition-all duration-300 shadow-lg no-print"
+    role="alert"
+    aria-live="assertive"
+  >
+    <div class="flex items-center gap-3">
+      <span class="text-lg animate-bounce select-none">⚠️</span>
+      <div>
+        <span class="font-black uppercase tracking-wider text-[10px] bg-amber-950/20 px-2 py-0.5 rounded text-amber-950 mr-1.5">Telemetria de Rede</span>
+        <span><strong>Instabilidade detectada nos servidores do Compras.gov.br / PNCP.</strong> Consultas aos catálogos e cotações podem apresentar lentidão ou tempo limite esgotado (503/504).</span>
+        <span id="govHealthFailureDetails" class="text-[11px] font-mono opacity-80 ml-2 hidden"></span>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 shrink-0">
+      <button
+        onclick="checkGovHealthManually()"
+        id="btnRetryGovHealth"
+        class="px-3 py-1 bg-amber-950/15 hover:bg-amber-950/25 text-amber-950 rounded-lg border border-amber-950/30 text-xs font-bold transition flex items-center gap-1 shadow-xs cursor-pointer"
+        title="Executar verificação imediata da conectividade das APIs do Governo"
+      >
+        <span>🔄</span> <span>Testar Novamente</span>
+      </button>
+      <button
+        onclick="dismissGovHealthBanner()"
+        class="text-amber-950 hover:bg-amber-950/20 rounded-md p-1 transition font-bold cursor-pointer"
+        title="Ocultar aviso temporariamente"
+        aria-label="Ocultar alerta"
+      >
+        ✕
+      </button>
+    </div>
+  </aside>
+
+  <!-- ===================================================================== -->
   <!-- BARRA SUPERIOR DO APLICATIVO (MENU UNIFICADO + LINK COMPARTILHÁVEL)    -->
   <!-- ===================================================================== -->
   <header class="bg-[#1e2d3d] text-white px-6 py-3.5 shadow-md border-b border-[#27394d] sticky top-0 z-40 no-print">
@@ -1922,11 +1959,135 @@
       return base ? `${base}${cleanPath}` : cleanPath;
     }
 
-    // Interceptador global e transparente de fetch para /api/
+    // =========================================================================
+    // ÉPICO 1: TELEMETRIA E OBSERVABILIDADE (HTTP INTERCEPTOR & HEALTH CHECK)
+    // =========================================================================
+    window.GovTelemetryState = {
+      consecutiveErrors: 0,
+      consecutiveSuccesses: 0,
+      thresholdErrors: 2,         // 2 falhas consecutivas ativam o alerta visual
+      thresholdRecovery: 2,       // 2 sucessos consecutivos restauram o status normal
+      isDegraded: false,
+      lastStatusCode: null,
+      lastFailedEndpoint: null,
+      dismissed: false
+    };
+
+    function updateGovHealthBannerUI() {
+      const banner = document.getElementById("govApiHealthBanner");
+      const details = document.getElementById("govHealthFailureDetails");
+      if (!banner) return;
+      if (window.GovTelemetryState.isDegraded && !window.GovTelemetryState.dismissed) {
+        banner.classList.remove("hidden");
+        if (details && window.GovTelemetryState.lastStatusCode) {
+          details.textContent = `[Falha: HTTP ${window.GovTelemetryState.lastStatusCode} • ${new Date().toLocaleTimeString("pt-BR")}]`;
+          details.classList.remove("hidden");
+        }
+      } else {
+        banner.classList.add("hidden");
+      }
+    }
+
+    function recordGovSuccess(url) {
+      window.GovTelemetryState.consecutiveErrors = 0;
+      window.GovTelemetryState.consecutiveSuccesses += 1;
+      if (window.GovTelemetryState.isDegraded && window.GovTelemetryState.consecutiveSuccesses >= window.GovTelemetryState.thresholdRecovery) {
+        window.GovTelemetryState.isDegraded = false;
+        window.GovTelemetryState.dismissed = false;
+        window.dispatchEvent(new CustomEvent("gov-api-health-change", {
+          detail: { status: "healthy", endpoint: url }
+        }));
+        updateGovHealthBannerUI();
+      }
+    }
+
+    function recordGovFailure(url, statusCode, errorMsg) {
+      window.GovTelemetryState.consecutiveSuccesses = 0;
+      window.GovTelemetryState.consecutiveErrors += 1;
+      window.GovTelemetryState.lastStatusCode = statusCode || "TIMEOUT";
+      window.GovTelemetryState.lastFailedEndpoint = url;
+
+      // Log estruturado no console para observabilidade (Cloud Logging / Sentry)
+      console.warn(JSON.stringify({
+        severity: "WARNING",
+        service: "compras-gov-frontend-telemetry",
+        endpoint: url,
+        statusCode: statusCode,
+        consecutiveErrors: window.GovTelemetryState.consecutiveErrors,
+        timestamp: new Date().toISOString(),
+        error: errorMsg || "Instabilidade ou timeout detectado na API Governamental"
+      }));
+
+      if (window.GovTelemetryState.consecutiveErrors >= window.GovTelemetryState.thresholdErrors) {
+        if (!window.GovTelemetryState.isDegraded) {
+          window.GovTelemetryState.isDegraded = true;
+          window.GovTelemetryState.dismissed = false;
+          window.dispatchEvent(new CustomEvent("gov-api-health-change", {
+            detail: { 
+              status: "degraded", 
+              statusCode: statusCode, 
+              endpoint: url, 
+              consecutiveErrors: window.GovTelemetryState.consecutiveErrors 
+            }
+          }));
+        }
+        updateGovHealthBannerUI();
+      }
+    }
+
+    window.dismissGovHealthBanner = function() {
+      window.GovTelemetryState.dismissed = true;
+      updateGovHealthBannerUI();
+    };
+
+    window.checkGovHealthManually = async function() {
+      const btn = document.getElementById("btnRetryGovHealth");
+      if (btn) btn.innerHTML = "<span>⏳</span> <span>Verificando...</span>";
+      try {
+        const testUrl = apiUrl("/api/v1/network-info");
+        const res = await window._govtechOrigFetch(testUrl, { cache: "no-store" });
+        if (res.ok) {
+          window.GovTelemetryState.isDegraded = false;
+          window.GovTelemetryState.consecutiveErrors = 0;
+          window.GovTelemetryState.dismissed = false;
+          updateGovHealthBannerUI();
+          if (typeof showToast === "function") {
+            showToast("Servidores Compras.gov.br e PNCP respondendo normalmente!", "success");
+          }
+        } else {
+          throw new Error(`HTTP ${res.status}`);
+        }
+      } catch (err) {
+        window.GovTelemetryState.isDegraded = true;
+        window.GovTelemetryState.dismissed = false;
+        updateGovHealthBannerUI();
+        if (typeof showToast === "function") {
+          showToast("Servidores governamentais continuam instáveis (503/504).", "warning");
+        }
+      } finally {
+        if (btn) btn.innerHTML = "<span>🔄</span> <span>Testar Novamente</span>";
+      }
+    };
+
+    // Interceptador global e transparente de fetch para /api/ com Telemetria e Health Check
     (function setupApiInterceptor() {
       if (window._govtechApiInterceptorInstalled) return;
       window._govtechApiInterceptorInstalled = true;
       const origFetch = window.fetch;
+      window._govtechOrigFetch = origFetch;
+
+      function isGovEndpoint(url) {
+        if (!url) return false;
+        const s = String(url).toLowerCase();
+        return s.includes('/api/v1/prices') || 
+               s.includes('/api/v1/catalog') || 
+               s.includes('/api/v1/pncp') || 
+               s.includes('/api/v1/irp') ||
+               s.includes('compras.dados.gov.br') || 
+               s.includes('pncp.gov.br') ||
+               s.includes('dadosabertos.compras.gov.br');
+      }
+
       window.fetch = async function(input, init) {
         let url = typeof input === "string" ? input : (input && input.url ? input.url : "");
         if (typeof url === "string" && url.startsWith("/api/")) {
@@ -1937,7 +2098,25 @@
             input = new Request(resolved, input);
           }
         }
-        return origFetch.call(this, input, init);
+
+        const isGov = isGovEndpoint(url);
+
+        try {
+          const response = await origFetch.call(this, input, init);
+          if (isGov) {
+            if (response.status === 502 || response.status === 503 || response.status === 504) {
+              recordGovFailure(url, response.status, `HTTP ${response.status}`);
+            } else if (response.ok) {
+              recordGovSuccess(url);
+            }
+          }
+          return response;
+        } catch (err) {
+          if (isGov) {
+            recordGovFailure(url, 0, err.message || "Network Timeout / Service Unavailable");
+          }
+          throw err;
+        }
       };
     })();
 
