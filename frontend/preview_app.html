@@ -878,21 +878,27 @@
       <div>
         <h2 id="ragViewDocTitle" class="text-lg font-extrabold text-[#1e2d3d]">Auditor e Editor Jurídico de Minutas (Lei 14.133/2021 & AGU)</h2>
         <p class="text-xs text-slate-500 mt-0.5">
-          Anexe sua minuta em Word (.docx), PDF ou TXT. O sistema analisa automaticamente as cláusulas, exibe a réplica jurídica e permite baixar o mesmo arquivo com as alterações grifadas em amarelo.
+          Anexe seu PDF ou Word (.docx). O sistema audita cláusulas e tabelas, aguarda <strong>sua permissão individual</strong> para cada alteração e devolve o arquivo em <strong>.DOCX no mesmo formato e diagramação original</strong> com <mark class="bg-yellow-200 px-1 font-bold">amarelo</mark> no alterado e <del class="text-rose-700 font-bold">vermelho tachado</del> no retirado.
         </p>
       </div>
       <div id="ragTopActions" class="hidden flex flex-wrap items-center gap-2">
         <span id="ragOriginalFormatBadge" class="px-2.5 py-1 rounded-full text-[11px] font-black bg-indigo-50 text-indigo-700 border border-indigo-200">
           Formato: PDF Original
         </span>
-        <button onclick="applyAllAGUFixes()" class="bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-3.5 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5" title="Aplicar automaticamente todas as cláusulas padrão da AGU">
-          <span>⚡</span> Aplicar Correções AGU
+        <span id="ragPermissionCounterBadge" class="px-2.5 py-1 rounded-full text-[11px] font-black bg-amber-50 text-amber-900 border border-amber-300">
+          Aprovadas: 0 de 0
+        </span>
+        <button onclick="applyAllAGUFixes()" class="bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-3 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5" title="Permitir todas as sugestões jurídicas da AGU/Lei 14.133">
+          <span>✅</span> Permitir Todas
         </button>
-        <button onclick="downloadAuditedDocx()" class="bg-[#1e3a5f] hover:bg-[#152840] text-white font-black px-3.5 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5" title="Baixar Minuta Auditada com Layout e Marcações em Word (.DOCX)">
-          <span>📄</span> Baixar em Word (.DOCX)
+        <button onclick="rejectAllAGUFixes()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl text-xs border border-slate-300 transition flex items-center gap-1" title="Recusar todas as sugestões e manter o texto original intacto">
+          <span>↩️</span> Manter Original
         </button>
-        <button onclick="downloadAuditedPdf()" class="bg-[#991b1b] hover:bg-[#7f1d1d] text-white font-black px-3.5 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5" title="Baixar Minuta Auditada com Layout e Marcações em PDF (.PDF)">
-          <span>📕</span> Baixar em PDF (.PDF)
+        <button onclick="downloadAuditedDocx()" class="bg-[#1e3a5f] hover:bg-[#152840] text-white font-black px-3.5 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5" title="Baixar em Word (.DOCX) preservando formato/diagramação original com Amarelo (alterado) e Vermelho (retirado)">
+          <span>📄</span> Baixar Word (.DOCX) Original
+        </button>
+        <button onclick="downloadAuditedPdf()" class="bg-[#991b1b] hover:bg-[#7f1d1d] text-white font-black px-3.5 py-2 rounded-xl text-xs shadow transition flex items-center gap-1.5" title="Baixar Minuta Revisada em PDF (.PDF)">
+          <span>📕</span> Baixar PDF (.PDF)
         </button>
         <button onclick="resetRAGUpload()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-3 py-2 rounded-xl text-xs transition">
           🔄 Novo Arquivo
@@ -3801,8 +3807,13 @@
     function resetRAGUpload() {
       state.clauses = [];
       state.findings = [];
+      state.elements = [];
+      state.doc_structure = null;
+      state.doc_session_id = null;
       const dz = document.getElementById("ragUploadDropzone");
       if (dz) dz.classList.remove("hidden");
+      const pc = document.getElementById("ragProgressCard");
+      if (pc) pc.classList.add("hidden");
       const ed = document.getElementById("ragEditorSection");
       if (ed) ed.classList.add("hidden");
       const acts = document.getElementById("ragTopActions");
@@ -3813,7 +3824,7 @@
       if (fileInput) fileInput.value = "";
     }
 
-        function escapeHtml(str) {
+    function escapeHtml(str) {
       if (!str) return "";
       return String(str)
         .replace(/&/g, "&amp;")
@@ -3823,108 +3834,165 @@
         .replace(/'/g, "&#039;");
     }
 
+    function renderDiffSegmentsHtml(segments) {
+      if (!Array.isArray(segments) || segments.length === 0) return "";
+      return segments.map(seg => {
+        const txt = escapeHtml(seg.text || "");
+        if (seg.type === "added") {
+          return `<mark class="bg-yellow-200 text-slate-950 font-bold px-1 py-0.5 rounded-xs" title="Alterado / Inserido com sua permissão (Lei nº 14.133/2021)">${txt}</mark>`;
+        }
+        if (seg.type === "removed") {
+          return `<del class="bg-rose-100 text-rose-700 font-bold px-1 py-0.5 rounded-xs line-through" title="Retirado / Revogado com sua permissão">${txt}</del>`;
+        }
+        return txt;
+      }).join(" ");
+    }
+
+    // Calcula diff simples em palavras no cliente para prévia instantânea ao editar texto customizado
+    function computeClientWordDiff(origStr, newStr) {
+      const a = String(origStr || "").trim();
+      const b = String(newStr || "").trim();
+      if (!a && !b) return [];
+      if (!a) return [{ type: "added", text: b }];
+      if (!b) return [{ type: "removed", text: a }];
+      if (a === b) return [{ type: "equal", text: a }];
+      const wa = a.split(/\s+/);
+      const wb = b.split(/\s+/);
+      let start = 0;
+      while (start < wa.length && start < wb.length && wa[start] === wb[start]) start++;
+      let endA = wa.length - 1, endB = wb.length - 1;
+      while (endA >= start && endB >= start && wa[endA] === wb[endB]) { endA--; endB--; }
+      const segs = [];
+      if (start > 0) segs.push({ type: "equal", text: wa.slice(0, start).join(" ") });
+      if (endA >= start) segs.push({ type: "removed", text: wa.slice(start, endA + 1).join(" ") });
+      if (endB >= start) segs.push({ type: "added", text: wb.slice(start, endB + 1).join(" ") });
+      if (endA + 1 < wa.length) segs.push({ type: "equal", text: wa.slice(endA + 1).join(" ") });
+      return segs;
+    }
+
+    function getApprovedDecisions() {
+      return (state.findings || []).map(f => ({
+        id: f.id,
+        approved: Boolean(f.approved),
+        custom_text: f.customText && f.customText.trim() ? f.customText.trim() : null
+      }));
+    }
+
     function renderRAG() {
       const docEl = document.getElementById("docClauseContainer");
       const findEl = document.getElementById("findingsContainer");
       const scoreEl = document.getElementById("ragScoreBadge");
+      const permBadge = document.getElementById("ragPermissionCounterBadge");
 
-      const pendingCount = (state.findings || []).filter(f => !f.resolved).length;
-      const score = Math.max(0, 100 - pendingCount * 13);
+      const findings = state.findings || [];
+      const approvedCount = findings.filter(f => f.approved).length;
+      const pendingCount = findings.filter(f => !f.approved).length;
+      const score = Math.max(0, Math.round(100 - pendingCount * 12));
+
       if (scoreEl) {
         scoreEl.textContent = `Conformidade: ${score}%`;
-        scoreEl.className = score === 100
+        scoreEl.className = score >= 95
           ? "bg-emerald-600 text-white px-2.5 py-0.5 rounded font-black"
-          : "bg-rose-600 text-white px-2.5 py-0.5 rounded font-black";
+          : "bg-amber-600 text-white px-2.5 py-0.5 rounded font-black";
+      }
+      if (permBadge) {
+        permBadge.textContent = `Permitidas: ${approvedCount} de ${findings.length}`;
       }
 
       const fmtLabel = (state.original_format || "pdf").toUpperCase();
+
+      // Indexa alterações aprovadas por elemento e célula de tabela para prévia fiel em tempo real
+      const approvedByElement = {};
+      const approvedByCell = {};
+      const approvedAppends = [];
+      findings.forEach(f => {
+        if (!f.approved) return;
+        const effectiveText = (f.customText && f.customText.trim()) ? f.customText.trim() : f.aguText;
+        const diffs = (f.customText && f.customText.trim())
+          ? computeClientWordDiff(f.originalText || "", effectiveText)
+          : (Array.isArray(f.previewDiff) && f.previewDiff.length ? f.previewDiff : computeClientWordDiff(f.originalText || "", effectiveText));
+
+        if (f.targetType === "table_cell" && f.elementIdx !== null && f.elementIdx !== undefined) {
+          approvedByCell[`${f.elementIdx}_${f.rowIdx}_${f.colIdx}`] = diffs;
+        } else if (f.targetType === "append_clause") {
+          approvedAppends.push({ title: f.title, clause: f.clause, text: effectiveText });
+        } else if (f.elementIdx !== null && f.elementIdx !== undefined) {
+          approvedByElement[f.elementIdx] = diffs;
+        }
+      });
 
       let bodyHtml = `
         <div class="text-center pb-4 border-b border-slate-200 mb-4">
           <img src="/brasao_oficial.png" class="h-14 w-auto object-contain mx-auto mb-1" alt="Brasão da República" />
           <h3 class="text-xs font-bold text-slate-800 uppercase tracking-widest">República Federativa do Brasil</h3>
           <p class="text-[11px] text-slate-500 font-semibold uppercase">${escapeHtml(state.docTitle || "Documento Administrativo Auditado")}</p>
-          <div class="mt-2 inline-flex items-center gap-2">
+          <div class="mt-2 inline-flex flex-wrap justify-center items-center gap-2">
             <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-50 text-indigo-700 border border-indigo-200">
-              Formato de Origem: ${fmtLabel}
+              Formato Original: ${fmtLabel} (Preservado no .DOCX)
             </span>
             <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
-              Auditoria NLLC (Lei 14.133/2021)
+              ${approvedCount} alteração(ões) autorizada(s) por você
             </span>
           </div>
         </div>
       `;
 
-      // Legenda oficial de auditoria com destaque visual
       bodyHtml += `
-        <div class="mb-4 p-3 bg-amber-50/70 border border-amber-200 rounded-xl text-xs space-y-1.5 shadow-2xs">
+        <div class="mb-4 p-3 bg-amber-50/70 border border-amber-200 rounded-xl text-xs space-y-1.5">
           <div class="flex items-center gap-1.5 font-black text-amber-950 uppercase text-[10.5px]">
-            <span>📋</span>
-            <span>Convenção Visual de Auditoria Jurídica (AGU / Lei nº 14.133/2021):</span>
+            <span>🛡️</span>
+            <span>Controle de Permissão — Nada é alterado sem sua autorização expressa:</span>
           </div>
           <div class="flex flex-wrap items-center gap-3 text-[11px] text-slate-700">
             <span class="inline-flex items-center gap-1.5">
               <span class="w-3.5 h-3.5 bg-yellow-200 border border-yellow-400 rounded-xs inline-block"></span>
-              <span><strong class="text-slate-900">Amarelo:</strong> Dispositivo Atualizado / Inserido (Lei 14.133/2021)</span>
+              <span><strong class="text-slate-900">Amarelo:</strong> Alterado / Inserido com sua permissão</span>
             </span>
             <span class="inline-flex items-center gap-1.5">
               <span class="w-3.5 h-3.5 bg-rose-100 border border-rose-300 rounded-xs inline-block"></span>
-              <span><strong class="text-rose-700 line-through">Vermelho Tachado:</strong> Dispositivo Revogado (Leis 8.666/93 e 10.520/02)</span>
+              <span><strong class="text-rose-700 line-through">Vermelho Tachado:</strong> Retirado / Revogado</span>
             </span>
             <span class="inline-flex items-center gap-1.5">
               <span class="w-3.5 h-3.5 bg-white border border-slate-300 rounded-xs inline-block"></span>
-              <span><strong>Preto:</strong> Redação Original Mantida</span>
+              <span><strong>Original Intacto:</strong> Sem alteração</span>
             </span>
           </div>
         </div>
       `;
 
-      // Renderização com preservação fiel do layout original (tabelas, títulos e seções)
       if (Array.isArray(state.elements) && state.elements.length > 0) {
-        bodyHtml += state.elements.map(el => {
+        bodyHtml += state.elements.map((el, elIdx) => {
           if (el.type === "TITLE") {
-            return `<h1 class="text-sm md:text-base font-black text-center text-slate-900 uppercase tracking-wide my-3">${escapeHtml(el.text)}</h1>`;
+            return `<h1 class="text-sm md:text-base font-black text-center text-slate-900 uppercase tracking-wide my-3">${escapeHtml(el.text || el.title || "")}</h1>`;
           }
           if (el.type === "SUBTITLE") {
-            return `<p class="text-xs text-center text-slate-600 font-bold mb-3">${escapeHtml(el.text)}</p>`;
+            return `<p class="text-xs text-center text-slate-600 font-bold mb-3">${escapeHtml(el.text || el.title || "")}</p>`;
           }
           if (el.type === "HEADING_1") {
+            const hText = el.text || (el.number && el.number !== "+" ? `${el.number}. ${el.title || ""}` : (el.title || ""));
             return `
               <div class="bg-slate-100 border-l-4 border-[#1e2d3d] px-3 py-2 rounded-r-lg mt-5 mb-2">
-                <h2 class="text-xs font-black text-slate-900 uppercase tracking-wide">${escapeHtml(el.text)}</h2>
+                <h2 class="text-xs font-black text-slate-900 uppercase tracking-wide">${escapeHtml(hText)}</h2>
               </div>
             `;
           }
           if (el.type === "HEADING_2") {
             return `
               <div class="pl-2 border-l-2 border-[#c5a365] mt-3 mb-1.5">
-                <h3 class="text-[11.5px] font-bold text-slate-800 uppercase">${escapeHtml(el.text)}</h3>
+                <h3 class="text-[11.5px] font-bold text-slate-800 uppercase">${escapeHtml(el.text || el.title || "")}</h3>
               </div>
             `;
           }
           if (el.type === "CLAUSE" || el.type === "PARAGRAPH") {
-            let innerContent = "";
-            if (Array.isArray(el.diff_segments) && el.diff_segments.length > 0) {
-              innerContent = el.diff_segments.map(seg => {
-                const txt = escapeHtml(seg.text);
-                if (seg.type === "added") {
-                  return `<mark class="bg-yellow-200 text-slate-950 font-bold px-1 py-0.2 rounded-xs" title="Atualizado / Inserido para conformidade com a Lei nº 14.133/2021">${txt}</mark>`;
-                }
-                if (seg.type === "removed") {
-                  return `<del class="bg-rose-100 text-rose-700 font-bold px-1 py-0.2 rounded-xs line-through" title="Dispositivo Revogado (Leis 8.666/93 e 10.520/02)">${txt}</del>`;
-                }
-                return txt;
-              }).join("");
-            } else {
-              innerContent = escapeHtml(el.text || "");
-            }
-
-            const isMod = el.modified || (Array.isArray(el.diff_segments) && el.diff_segments.some(s => s.type !== "equal"));
-            const borderCls = isMod ? "border-amber-300 bg-amber-50/20" : "border-slate-100 bg-white";
-
+            const approvedDiffs = approvedByElement[elIdx];
+            const isMod = Boolean(approvedDiffs);
+            const innerContent = isMod
+              ? renderDiffSegmentsHtml(approvedDiffs)
+              : escapeHtml(el.original_text || el.text || "");
+            const borderCls = isMod ? "border-amber-400 bg-amber-50/30 shadow-2xs" : "border-slate-100 bg-white";
             return `
-              <div class="p-2.5 rounded-lg border ${borderCls} mb-2 transition hover:border-slate-300">
-                ${el.clause_number ? `<span class="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Item ${escapeHtml(el.clause_number)} ${el.section_title ? '• ' + escapeHtml(el.section_title) : ''}</span>` : ''}
+              <div id="ragEl_${elIdx}" class="p-2.5 rounded-lg border ${borderCls} mb-2 transition">
+                ${el.clause_number ? `<span class="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Item ${escapeHtml(el.clause_number)} ${el.section_title ? '• ' + escapeHtml(el.section_title) : ''} ${isMod ? '<span class="ml-1 px-1.5 py-0.2 rounded bg-yellow-200 text-amber-950 font-black">ALTERAÇÃO PERMITIDA</span>' : ''}</span>` : ''}
                 <p class="text-xs leading-relaxed text-slate-800 text-justify font-serif">${innerContent}</p>
               </div>
             `;
@@ -3933,125 +4001,193 @@
             const headers = el.headers || [];
             const rows = el.rows || [];
             return `
-              <div class="overflow-x-auto my-3 border border-slate-300 rounded-lg shadow-2xs">
+              <div id="ragEl_${elIdx}" class="overflow-x-auto my-3 border border-slate-300 rounded-lg shadow-2xs">
                 <table class="w-full text-xs text-left text-slate-700 border-collapse">
                   ${headers.length > 0 ? `
                     <thead class="bg-[#1e2d3d] text-white font-bold uppercase text-[10px]">
                       <tr>
-                        ${headers.map(h => `<th class="px-3 py-2 border-b border-slate-300">${escapeHtml(h)}</th>`).join("")}
+                        ${headers.map((h, ci) => {
+                          const cDiff = approvedByCell[`${elIdx}_0_${ci}`];
+                          return `<th class="px-3 py-2 border-b border-slate-300">${cDiff ? renderDiffSegmentsHtml(cDiff) : escapeHtml(h)}</th>`;
+                        }).join("")}
                       </tr>
                     </thead>
                   ` : ""}
                   <tbody class="divide-y divide-slate-200">
-                    ${rows.map((row, rIdx) => `
-                      <tr class="${rIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50'} hover:bg-amber-50/40 transition">
-                        ${row.map(cell => `<td class="px-3 py-1.5 border-r border-slate-200 last:border-r-0 align-top">${escapeHtml(cell)}</td>`).join("")}
-                      </tr>
-                    `).join("")}
+                    ${rows.map((row, rIdx) => {
+                      const absR = rIdx + (headers.length > 0 ? 1 : 0);
+                      return `
+                        <tr class="${rIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}">
+                          ${row.map((cell, ci) => {
+                            const cDiff = approvedByCell[`${elIdx}_${absR}_${ci}`];
+                            return `<td class="px-3 py-1.5 border-r border-slate-200 last:border-r-0 align-top">${cDiff ? renderDiffSegmentsHtml(cDiff) : escapeHtml(cell)}</td>`;
+                          }).join("")}
+                        </tr>
+                      `;
+                    }).join("")}
                   </tbody>
                 </table>
               </div>
             `;
           }
-          if (el.type === "SIGNATURES" && Array.isArray(el.signers) && el.signers.length > 0) {
-            return `
-              <div class="mt-8 pt-4 border-t border-slate-300 grid grid-cols-1 sm:grid-cols-2 gap-6 text-center text-xs">
-                ${el.signers.map(s => `
-                  <div class="space-y-1">
-                    <div class="w-48 mx-auto border-b border-slate-400 mb-1"></div>
-                    <p class="font-bold text-slate-900 uppercase">${escapeHtml(s.name || s)}</p>
-                    <p class="text-[11px] text-slate-500">${escapeHtml(s.role || "Responsável Técnico / Ordenador")}</p>
-                  </div>
-                `).join("")}
-              </div>
-            `;
-          }
           return "";
         }).join("");
-      } else {
-        // Fallback: renderiza state.clauses se elements não foi preenchido
-        bodyHtml += (state.clauses || []).map((c, idx) => {
-          const isMod = c.modified;
-          const cls = isMod ? "border-amber-400 bg-amber-50/50" : "border-slate-200 bg-white";
-          const badge = isMod
-            ? `<span class="bg-yellow-200 text-amber-950 px-2 py-0.5 rounded text-[10px] font-bold font-sans">ALTERADO (LEI 14.133/2021)</span>`
-            : `<span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-[10px] font-bold font-sans">✓ CONFORME</span>`;
 
-          return `
-            <div class="p-4 rounded-xl border ${cls} space-y-2 mb-2">
-              <div class="flex items-center justify-between mb-1">
-                <span class="text-xs font-bold uppercase text-slate-500 font-sans">Cláusula ${escapeHtml(c.num || "")} • ${escapeHtml(c.title || "")}</span>
-                ${badge}
+        // Cláusulas obrigatórias aprovadas para inclusão ao final do documento
+        if (approvedAppends.length > 0) {
+          bodyHtml += approvedAppends.map(ap => `
+            <div class="mt-4 p-3 rounded-xl border-2 border-amber-400 bg-yellow-50/70 space-y-1">
+              <div class="text-[11px] font-black uppercase text-amber-950">
+                <mark class="bg-yellow-200 px-1.5 py-0.5 rounded-xs">+ CLÁUSULA INCLUÍDA COM SUA PERMISSÃO: ${escapeHtml(ap.title)}</mark>
               </div>
-              <textarea
-                rows="3"
-                oninput="state.clauses[${idx}].text = this.value; state.clauses[${idx}].modified = true;"
-                class="w-full bg-transparent border-0 p-0 focus:outline-none focus:ring-1 focus:ring-amber-500 text-slate-900 font-serif text-sm leading-relaxed resize-y"
-              >${escapeHtml(c.text || "")}</textarea>
-            </div>
-          `;
-        }).join("");
-      }
-
-      docEl.innerHTML = bodyHtml;
-
-      // Painel lateral de inconformidades e sugestões da AGU
-      if (findEl) {
-        findEl.innerHTML = (state.findings || []).length === 0
-          ? `<div class="bg-white p-5 rounded-2xl border border-slate-200 text-center text-xs text-slate-500">Nenhuma inconformidade pendente. Documento 100% alinhado aos modelos oficiais da AGU.</div>`
-          : state.findings.map(f => `
-            <div class="bg-white p-5 rounded-2xl border ${f.resolved ? 'border-emerald-300 opacity-75' : 'border-slate-200'} shadow-sm mb-3">
-              <div class="flex items-center justify-between mb-1">
-                <span class="text-[10px] font-black px-2 py-0.5 rounded uppercase ${f.type === 'VULNERABILIDADE_JURIDICA' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-900'}">${escapeHtml(f.type || "")}</span>
-                <span class="text-xs font-mono text-slate-500">Item ${escapeHtml(f.clause || "")}</span>
-              </div>
-              <h3 class="font-bold text-sm text-slate-900">${escapeHtml(f.title || "")}</h3>
-              <p class="text-xs text-slate-600 mt-1">${escapeHtml(f.explanation || "")}</p>
-              <div class="bg-yellow-100 border border-amber-400 p-3 rounded-lg mt-2 text-xs text-slate-900 font-medium">
-                <strong class="block text-[10px] uppercase text-amber-900">Sugestão Oficial da AGU:</strong>
-                "${escapeHtml(f.aguText || "")}"
-              </div>
-              <div class="mt-3 flex justify-end">
-                ${f.resolved
-                  ? `<span class="text-xs font-bold text-emerald-700">✓ Aplicado em Amarelo</span>`
-                  : `<button onclick="applyFinding('${f.id}')" class="bg-[#1e2d3d] hover:bg-slate-800 text-amber-300 font-bold text-xs px-4 py-2 rounded-lg transition">Substituir em Amarelo</button>`
-                }
-              </div>
+              <p class="text-xs leading-relaxed font-serif text-slate-900">
+                <mark class="bg-yellow-200 font-bold px-1 py-0.5 rounded-xs">${escapeHtml(ap.clause ? ap.clause + ": " : "")}${escapeHtml(ap.text)}</mark>
+              </p>
             </div>
           `).join("");
+        }
+      }
+
+      if (docEl) docEl.innerHTML = bodyHtml;
+
+      // Painel lateral de apontamentos com PERMISSÃO INDIVIDUAL + EDIÇÃO
+      if (findEl) {
+        if (findings.length === 0) {
+          findEl.innerHTML = `
+            <div class="bg-white p-6 rounded-2xl border border-emerald-200 text-center space-y-2">
+              <div class="text-2xl">✅</div>
+              <p class="text-sm font-black text-emerald-900">Minuta 100% Conforme à Lei nº 14.133/2021!</p>
+              <p class="text-xs text-slate-500">Nenhuma vulnerabilidade jurídica ou omissão obrigatória detectada.</p>
+            </div>`;
+        } else {
+          findEl.innerHTML = `
+            <div class="bg-[#1e2d3d] text-white p-4 rounded-2xl shadow-sm flex items-center justify-between gap-2 mb-3">
+              <div>
+                <div class="text-[10px] font-black uppercase text-[#c5a365] tracking-wider">Auditoria Jurídica AGU / Lei 14.133</div>
+                <div class="text-xs font-bold">${findings.length} apontamento(s) encontrado(s) • ${approvedCount} autorizado(s)</div>
+              </div>
+              <div class="flex gap-1.5">
+                <button onclick="applyAllAGUFixes()" class="bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black text-[11px] px-2.5 py-1.5 rounded-lg transition">✅ Permitir Todas</button>
+                <button onclick="rejectAllAGUFixes()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold text-[11px] px-2.5 py-1.5 rounded-lg transition">↩️ Limpar</button>
+              </div>
+            </div>
+          ` + findings.map(f => {
+            const sevBadge = f.severity === "CRITICA"
+              ? "bg-rose-600 text-white"
+              : (f.severity === "ALTA" ? "bg-amber-600 text-white" : "bg-sky-600 text-white");
+            const cardBorder = f.approved
+              ? "border-emerald-400 ring-1 ring-emerald-200 bg-emerald-50/20"
+              : "border-slate-200 bg-white";
+            const previewHtml = Array.isArray(f.previewDiff) && f.previewDiff.length
+              ? renderDiffSegmentsHtml(f.previewDiff)
+              : `<mark class="bg-yellow-200 font-bold px-1">${escapeHtml(f.aguText || "")}</mark>`;
+
+            return `
+              <div class="p-4 rounded-2xl border ${cardBorder} shadow-sm mb-3 space-y-2.5 transition">
+                <div class="flex flex-wrap items-center justify-between gap-1.5">
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-[10px] font-black px-2 py-0.5 rounded uppercase ${sevBadge}">${escapeHtml(f.severity || "ALTA")}</span>
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 uppercase">${f.type === "OMISSAO_OBRIGATORIA" ? "Omissão Obrigatória" : "Correção Normativa"}</span>
+                  </div>
+                  <span class="text-[11px] font-mono font-bold text-slate-500">${escapeHtml(f.clause || "")}</span>
+                </div>
+
+                <h3 class="font-extrabold text-xs sm:text-sm text-slate-900">${escapeHtml(f.title || "Revisão Jurídica")}</h3>
+                <p class="text-xs text-slate-600 leading-relaxed">${escapeHtml(f.explanation || "")}</p>
+                <p class="text-[11px] font-semibold text-indigo-800 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100">
+                  ⚖️ Base Legal: ${escapeHtml(f.legal || "Lei nº 14.133/2021")}
+                </p>
+
+                <div class="bg-slate-50 border border-slate-200 p-3 rounded-xl text-xs leading-relaxed font-serif text-slate-900">
+                  <span class="block text-[10px] font-sans font-black uppercase text-slate-500 mb-1">Prévia da Alteração (Vermelho = Retirado | Amarelo = Novo):</span>
+                  ${previewHtml}
+                </div>
+
+                ${f.editing ? `
+                  <div class="space-y-1.5">
+                    <label class="block text-[10px] font-black uppercase text-amber-900">Editar redação final antes de aprovar:</label>
+                    <textarea id="editFnd_${f.id}" rows="3" class="w-full p-2.5 rounded-lg border border-amber-400 bg-yellow-50 text-xs font-serif text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500">${escapeHtml(f.customText || f.aguText || "")}</textarea>
+                    <div class="flex justify-end gap-2">
+                      <button onclick="cancelEditFinding('${f.id}')" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200">Cancelar</button>
+                      <button onclick="saveAndApproveFinding('${f.id}')" class="px-3 py-1 rounded-lg text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700">💾 Salvar e Permitir</button>
+                    </div>
+                  </div>
+                ` : `
+                  <div class="pt-1 flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex items-center gap-1.5">
+                      ${f.elementIdx !== null && f.elementIdx !== undefined ? `<button onclick="scrollToRagElement(${f.elementIdx})" class="text-[11px] font-bold text-slate-500 hover:text-slate-800 underline">Ver no texto</button>` : ""}
+                      <button onclick="startEditFinding('${f.id}')" class="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 transition">✏️ Editar</button>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                      ${f.approved
+                        ? `<span class="text-xs font-black text-emerald-700 px-2 py-1 bg-emerald-100 rounded-lg">✅ Permitida</span>
+                           <button onclick="setFindingDecision('${f.id}', false)" class="text-xs font-bold text-slate-600 hover:text-rose-700 px-2.5 py-1.5 rounded-lg border border-slate-300 hover:border-rose-300 transition">❌ Desfazer</button>`
+                        : `<button onclick="setFindingDecision('${f.id}', true)" class="bg-[#1e2d3d] hover:bg-slate-800 text-amber-300 font-black text-xs px-3.5 py-1.5 rounded-lg shadow-xs transition">✅ Permitir Alteração</button>`
+                      }
+                    </div>
+                  </div>
+                `}
+              </div>
+            `;
+          }).join("");
+        }
       }
     }
 
-    function applyFinding(id) {
+    function scrollToRagElement(elIdx) {
+      const target = document.getElementById(`ragEl_${elIdx}`);
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
+    function setFindingDecision(id, approved) {
       const f = (state.findings || []).find(x => x.id === id);
       if (!f) return;
-      f.resolved = true;
-      const existing = (state.clauses || []).find(c => c.num === f.clause);
-      if (existing) {
-        existing.text = f.aguText;
-        existing.modified = true;
-      } else {
-        state.clauses.push({ num: f.clause, title: f.title, text: f.aguText, modified: true });
-        state.clauses.sort((a, b) => (a.num || "").localeCompare(b.num || "", undefined, { numeric: true }));
-      }
-
-      // Se temos elements estruturados, também atualiza o element correspondente
-      if (Array.isArray(state.elements)) {
-        const el = state.elements.find(e => e.clause_number === f.clause || (e.text && e.text.includes(f.clause)));
-        if (el) {
-          el.modified = true;
-          el.diff_segments = [
-            { type: "removed", text: el.text },
-            { type: "added", text: f.aguText }
-          ];
-          el.text = f.aguText;
-        }
-      }
+      f.approved = Boolean(approved);
+      f.resolved = Boolean(approved);
+      f.editing = false;
       renderRAG();
     }
 
+    function startEditFinding(id) {
+      const f = (state.findings || []).find(x => x.id === id);
+      if (!f) return;
+      f.editing = true;
+      renderRAG();
+    }
+
+    function cancelEditFinding(id) {
+      const f = (state.findings || []).find(x => x.id === id);
+      if (!f) return;
+      f.editing = false;
+      renderRAG();
+    }
+
+    function saveAndApproveFinding(id) {
+      const f = (state.findings || []).find(x => x.id === id);
+      const ta = document.getElementById(`editFnd_${id}`);
+      if (!f || !ta) return;
+      f.customText = ta.value.trim();
+      f.previewDiff = computeClientWordDiff(f.originalText || "", f.customText || f.aguText);
+      f.approved = true;
+      f.resolved = true;
+      f.editing = false;
+      renderRAG();
+    }
+
+    function applyFinding(id) {
+      setFindingDecision(id, true);
+    }
+
     function applyAllAGUFixes() {
-      (state.findings || []).forEach(f => { if (!f.resolved) applyFinding(f.id); });
+      (state.findings || []).forEach(f => { f.approved = true; f.resolved = true; f.editing = false; });
+      renderRAG();
+      showAppNotification("Todas as alterações jurídicas foram autorizadas. Confira o preview em amarelo/vermelho antes de baixar.", "success");
+    }
+
+    function rejectAllAGUFixes() {
+      (state.findings || []).forEach(f => { f.approved = false; f.resolved = false; f.editing = false; });
+      renderRAG();
+      showAppNotification("Todas as alterações foram desmarcadas. O texto original permanece intacto.", "info");
     }
 
     // =========================================================================
@@ -4123,7 +4259,7 @@
     }
 
     function onRAGJobCompleted(data, fileName) {
-      updateRAGProgress(100, "Concluído", "Minuta auditada com sucesso pelo Worker!");
+      updateRAGProgress(100, "Concluído", "Análise jurídica concluída! Revise e autorize as alterações desejadas.");
       const completedActions = document.getElementById("ragCompletedActions");
       const statusBadge = document.getElementById("ragStatusBadge");
 
@@ -4134,8 +4270,8 @@
 
       if (completedActions) completedActions.classList.remove("hidden");
 
-      // Salva doc_structure e metadados no state
       const extFormat = (fileName || "").toLowerCase().endsWith(".pdf") ? "pdf" : ((fileName || "").toLowerCase().endsWith(".docx") ? "docx" : "txt");
+      state.doc_session_id = data.doc_session_id || null;
       state.original_format = data.original_format || extFormat;
       state.docTitle = data.title || fileName || "DOCUMENTO AUDITADO (LEI 14.133/2021)";
       state.doc_structure = data.doc_structure || {
@@ -4148,33 +4284,45 @@
       };
       state.elements = data.elements || state.doc_structure.elements || [];
       state.signatures = data.signatures || state.doc_structure.signatures || [];
+      state.clauses = Array.isArray(data.clauses) ? data.clauses : [];
 
-      // Atualiza badge de formato original
+      const rawFindings = data.findings || (data.audit_summary && data.audit_summary.findings) || [];
+      state.findings = rawFindings.map((x, idx) => ({
+        id: x.id || ("FND_" + String(idx + 1).padStart(3, "0")),
+        type: x.finding_type || x.type || "VULNERABILIDADE_JURIDICA",
+        severity: x.severity || "ALTA",
+        clause: x.clause_reference || x.original_clause || `Cláusula ${idx + 1}`,
+        title: x.title || x.section_title || "Revisão Jurídica (AGU / NLLC)",
+        explanation: x.explanation || x.reason || "",
+        legal: x.legal_foundation || "Lei nº 14.133/2021",
+        originalText: x.original_text || "",
+        aguText: x.suggested_text || x.agu_standard_clause || "",
+        customText: "",
+        previewDiff: Array.isArray(x.preview_diff) ? x.preview_diff : [],
+        targetType: x.target_type || "element",
+        elementIdx: (x.element_idx !== undefined && x.element_idx !== null) ? x.element_idx : null,
+        rowIdx: x.row_idx,
+        colIdx: x.col_idx,
+        approved: false,
+        resolved: false,
+        editing: false
+      }));
+
       const fmtBadge = document.getElementById("ragOriginalFormatBadge");
       if (fmtBadge) {
-        const fmtName = state.original_format.toUpperCase() === "PDF" ? "PDF Original (Compras.gov.br)" : "Word Original (.DOCX)";
+        const fmtName = state.original_format.toUpperCase() === "PDF" ? "PDF Original (Reconstrução Fiel)" : "Word Original (.DOCX Cirúrgico)";
         fmtBadge.textContent = `Formato: ${fmtName}`;
       }
 
       const tEl = document.getElementById("ragViewDocTitle");
       if (tEl) tEl.textContent = state.docTitle;
 
-      // Se retornou cláusulas auditadas, já deixa pronto no state
-      if (data.clauses && Array.isArray(data.clauses)) {
-        state.clauses = data.clauses;
-        state.findings = (data.findings || []).map((x, idx) => ({
-          id: "UF_" + idx,
-          type: x.finding_type || "RECOMENDACAO",
-          clause: x.clause_reference || `Cláusula ${idx + 1}`,
-          title: x.section_title || "Revisão Jurídica",
-          explanation: x.explanation || "",
-          legal: x.legal_foundation || "Lei nº 14.133/2021",
-          aguText: x.agu_standard_clause || "",
-          resolved: false
-        }));
-      }
-
-      showAppNotification(`Minuta auditada com sucesso! Formato original: ${state.original_format.toUpperCase()}`, "success");
+      // Abre automaticamente o editor interativo lado a lado para o usuário conceder permissão!
+      showRAGEditorView();
+      showAppNotification(
+        `Análise concluída: ${state.findings.length} sugestão(ões) encontrada(s). Nenhuma alteração foi aplicada ainda — revise e clique em "Permitir Alteração" nas que desejar.`,
+        "success"
+      );
     }
 
     function onRAGJobError(errorMessage) {
@@ -4200,120 +4348,33 @@
       renderRAG();
     }
 
-    function resetRAGUpload() {
-      const dropzone = document.getElementById("ragUploadDropzone");
-      const progCard = document.getElementById("ragProgressCard");
-      const editorSec = document.getElementById("ragEditorSection");
-      const topActions = document.getElementById("ragTopActions");
-      const fileInput = document.getElementById("fileInputRAG");
-
-      if (fileInput) fileInput.value = "";
-      if (dropzone) dropzone.classList.remove("hidden");
-      if (progCard) progCard.classList.add("hidden");
-      if (editorSec) editorSec.classList.add("hidden");
-      if (topActions) topActions.classList.add("hidden");
-    }
-
     async function handleUploadFile() {
       const fileInput = document.getElementById("fileInputRAG");
-      if (!fileInput.files.length) return;
+      if (!fileInput || !fileInput.files.length) return;
       const file = fileInput.files[0];
 
-      const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
-      const jobId = "job_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
-
+      const jobId = "doc_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
       showRAGProgressUI(jobId, file.name, file.size);
-
-      // FASE 1: Ingestão Desacoplada e Controle de Estado (Frontend -> Firestore -> Storage)
-      if (fbFirestore && fbStorage) {
-        try {
-          updateRAGProgress(10, "Gravando na Fila", "Criando documento em jobs_auditoria no Firestore...");
-          await fbFirestore.collection("jobs_auditoria").doc(jobId).set({
-            job_id: jobId,
-            status: "pendente",
-            progresso: 0,
-            filename: file.name,
-            file_size: file.size,
-            artifact_type: ext.replace(".", "").toUpperCase(),
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
-
-          // FASE 3: Transmissão em Tempo Real (Firestore -> Frontend via onSnapshot)
-          let unsubscribe = null;
-          let fallbackTimer = null;
-
-          unsubscribe = fbFirestore.collection("jobs_auditoria").doc(jobId).onSnapshot((doc) => {
-            if (!doc.exists) return;
-            const data = doc.data();
-            const status = data.status || "pendente";
-            const progress = data.progresso || 10;
-            const msg = data.mensagem || "Processando minuta...";
-
-            updateRAGProgress(progress, status === "processando" ? "Worker em Execução" : (status === "concluido" ? "Concluído" : "Processando"), msg);
-
-            if (status === "concluido") {
-              if (fallbackTimer) clearTimeout(fallbackTimer);
-              if (unsubscribe) unsubscribe();
-              onRAGJobCompleted(data, file.name);
-            } else if (status === "erro") {
-              if (fallbackTimer) clearTimeout(fallbackTimer);
-              if (unsubscribe) unsubscribe();
-              onRAGJobError(data.mensagem || "O arquivo está corrompido ou protegido por senha.");
-            }
-          }, (err) => {
-            console.warn("Firestore snapshot listener alert:", err);
-          });
-
-          // Upload direto para /uploads_minutas/{jobId}.ext
-          updateRAGProgress(20, "Upload para Nuvem", "Enviando arquivo diretamente para o Cloud Storage...");
-          const storageRef = fbStorage.ref().child(`uploads_minutas/${jobId}${ext}`);
-          const uploadTask = storageRef.put(file);
-
-          uploadTask.on(
-            "state_changed",
-            (snapshot) => {
-              const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 20) + 20;
-              updateRAGProgress(pct, "Enviando Minuta", `Upload Storage: ${Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)}% concluído...`);
-            },
-            (err) => {
-              console.warn("Storage put error, switching to direct fallback:", err);
-              if (unsubscribe) unsubscribe();
-              fallbackSyncUpload(file, jobId);
-            },
-            () => {
-              updateRAGProgress(45, "Worker Disparado", "Arquivo no Storage. Worker Cloud Functions acionado em background...");
-              fallbackTimer = setTimeout(() => {
-                fallbackSyncUpload(file, jobId);
-              }, 12000);
-            }
-          );
-          return;
-        } catch (fbErr) {
-          console.warn("Firebase event-driven flow encountered an issue, running API fallback:", fbErr);
-        }
-      }
-
-      // FASE 4 Fallback: Execução via backend HTTP API direto
-      fallbackSyncUpload(file, jobId);
+      await fallbackSyncUpload(file, jobId);
     }
 
     async function fallbackSyncUpload(file, jobId) {
-      updateRAGProgress(50, "Processando Minuta", "Extraindo cláusulas e executando auditoria jurídica AGU...");
+      updateRAGProgress(25, "Lendo Arquivo", "Extraindo estrutura, tabelas, fontes e diagramação original...");
       const reader = new FileReader();
       reader.onload = async function() {
         try {
           const b64 = reader.result.split(",")[1];
-          updateRAGProgress(75, "Auditando Regras", "Aplicando regras da Lei nº 14.133/2021...");
+          updateRAGProgress(60, "Auditando Cláusulas", "Executando auditoria jurídica Lei nº 14.133/2021, AGU e TCU...");
           const resp = await fetch("/api/v1/rag/audit-upload", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ filename: file.name, file_base64: b64, artifact_type: "TR" })
           });
           const data = await resp.json();
-          if (data.clauses) {
+          if (resp.ok && (data.elements || data.clauses)) {
             onRAGJobCompleted(data, file.name);
           } else {
-            onRAGJobError(data.error || "Não foi possível extrair cláusulas deste arquivo.");
+            onRAGJobError(data.error || "Não foi possível extrair o conteúdo deste arquivo.");
           }
         } catch (e) {
           onRAGJobError("Falha na comunicação com o servidor de auditoria: " + e.message);
@@ -4324,8 +4385,15 @@
 
     async function downloadAuditedDocx() {
       try {
-        showAppNotification("Gerando documento Word (.DOCX) com layout e marcações...", "info");
+        const decisions = getApprovedDecisions();
+        const approvedCount = decisions.filter(d => d.approved).length;
+        showAppNotification(
+          `Gerando Word (.DOCX) preservando a diagramação original (${approvedCount} alteração(ões) autorizada(s))...`,
+          "info"
+        );
         const payload = {
+          doc_session_id: state.doc_session_id || null,
+          approved_decisions: decisions,
           doc_structure: state.doc_structure || {
             title: state.docTitle || "DOCUMENTO AUDITADO (LEI 14.133/2021)",
             original_format: state.original_format || "docx",
@@ -4340,18 +4408,22 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
-        if (!resp.ok) throw new Error(`Falha ${resp.status}`);
+        if (!resp.ok) {
+          let errMsg = `Falha HTTP ${resp.status}`;
+          try { const j = await resp.json(); errMsg = j.error || errMsg; } catch (e) {}
+          throw new Error(errMsg);
+        }
         const blob = await resp.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        const safeTitle = (state.docTitle || "Minuta_Auditada").replace(/[^a-zA-Z0-9_-]/g, "_");
-        a.download = `${safeTitle}_Marcado_Amarelo.docx`;
+        const safeTitle = (state.docTitle || "Minuta_Auditada").replace(/[^a-zA-Z0-9_-]/g, "_").substring(0, 70);
+        a.download = `${safeTitle}_Revisado_Amarelo_Vermelho.docx`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        showAppNotification("Download Word (.DOCX) concluído com sucesso!", "success");
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        showAppNotification("Download Word (.DOCX) no formato original concluído com sucesso!", "success");
       } catch (err) {
         showAppNotification("Erro ao baixar documento Word: " + err.message, "error");
       }
@@ -4359,8 +4431,15 @@
 
     async function downloadAuditedPdf() {
       try {
-        showAppNotification("Gerando documento PDF oficial com layout e marcações...", "info");
+        const decisions = getApprovedDecisions();
+        const approvedCount = decisions.filter(d => d.approved).length;
+        showAppNotification(
+          `Gerando PDF oficial com layout preservado (${approvedCount} alteração(ões) autorizada(s))...`,
+          "info"
+        );
         const payload = {
+          doc_session_id: state.doc_session_id || null,
+          approved_decisions: decisions,
           doc_structure: state.doc_structure || {
             title: state.docTitle || "DOCUMENTO AUDITADO (LEI 14.133/2021)",
             original_format: state.original_format || "pdf",
@@ -4375,17 +4454,21 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
-        if (!resp.ok) throw new Error(`Falha ${resp.status}`);
+        if (!resp.ok) {
+          let errMsg = `Falha HTTP ${resp.status}`;
+          try { const j = await resp.json(); errMsg = j.error || errMsg; } catch (e) {}
+          throw new Error(errMsg);
+        }
         const blob = await resp.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        const safeTitle = (state.docTitle || "Minuta_Auditada").replace(/[^a-zA-Z0-9_-]/g, "_");
-        a.download = `${safeTitle}_Marcado_Amarelo.pdf`;
+        const safeTitle = (state.docTitle || "Minuta_Auditada").replace(/[^a-zA-Z0-9_-]/g, "_").substring(0, 70);
+        a.download = `${safeTitle}_Revisado_Amarelo_Vermelho.pdf`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
         showAppNotification("Download PDF (.PDF) concluído com sucesso!", "success");
       } catch (err) {
         showAppNotification("Erro ao baixar documento PDF: " + err.message, "error");
@@ -4642,40 +4725,17 @@
         showAppNotification("Selecione pelo menos um item para gerar o pacote ZIP.", "warn");
         return;
       }
-      try {
-        const resp = await fetch("/api/v1/prices/export-batch-zip", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            items: selected.map(it => {
-              const matched = (batchResearchResults || []).find(r => String(r.code) === String(it.code));
-              return {
-                code: it.code,
-                type: it.type || "MATERIAL",
-                unit: it.unit || "UN",
-                qty: it.qty || 1,
-                report: it.report || (matched ? matched.report : null)
-              };
-            }),
-            om_name: getGlobalOrgName()
-          })
-        });
-        if (!resp.ok) {
-          showAppNotification("Erro ao gerar pacote ZIP dos selecionados.", "error");
-          return;
-        }
-        const blob = await resp.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `Pacote_IN65_Selecionados_${selected.length}itens.zip`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        showAppNotification("Download do pacote ZIP iniciado com sucesso!", "success");
-      } catch (e) {
-        showAppNotification("Erro no download do ZIP: " + e.message, "error");
-      }
+      const mapped = selected.map(it => {
+        const matched = (batchResearchResults || []).find(r => String(r.code) === String(it.code));
+        return {
+          code: it.code,
+          type: it.type || "MATERIAL",
+          unit: it.unit || "UN",
+          qty: it.qty || 1,
+          report: it.report || (matched ? matched.report : null)
+        };
+      });
+      await downloadBatchZipAsync(mapped, "auto");
     }
 
     async function downloadSelectedBatchXlsx() {
@@ -4786,6 +4846,180 @@
       if (pct) pct.textContent = "100%";
       if (step) step.textContent = "Concluído!";
       setTimeout(() => { if (modal) modal.classList.add("hidden"); }, 350);
+    }
+
+    function updateCountdownRealProgress(percent, stageText, elapsedSec) {
+      clearInterval(countdownInterval);
+      const bar = document.getElementById("countdownProgressBar");
+      const pct = document.getElementById("countdownProgressPercent");
+      const step = document.getElementById("countdownProgressStep");
+      const secText = document.getElementById("countdownSecondsText");
+      const safePct = Math.max(0, Math.min(100, Math.round(percent || 0)));
+      if (bar) bar.style.width = `${safePct}%`;
+      if (pct) pct.textContent = `${safePct}%`;
+      if (step && stageText) step.textContent = stageText;
+      if (secText && elapsedSec !== undefined) secText.textContent = `${Number(elapsedSec).toFixed(1)}s decorridos`;
+    }
+
+    // Enxuga o payload JSON antes de enviar lotes grandes (50-300+ itens) reduzindo tráfego em ~65%
+    function slimBatchItemsForExport(items) {
+      return (items || []).map(it => {
+        const rep = it.report || {};
+        const slimQuotes = (rep.valid_quotes || []).map(q => ({
+          unit_price: q.unit_price,
+          price: q.price,
+          supplier_name: q.supplier_name,
+          supplier_cnpj: q.supplier_cnpj,
+          purchase_date: q.purchase_date,
+          organ_name: q.organ_name,
+          uasg_code: q.uasg_code,
+          uf: q.uf,
+          municipality: q.municipality,
+          supply_unit: q.supply_unit,
+          purchase_key: q.purchase_key,
+          purchase_number_year: q.purchase_number_year,
+          pncp_or_compras_uri: q.pncp_or_compras_uri,
+          source_label: q.source_label
+        }));
+        const slimPurged = (rep.purged_quotes || []).slice(0, 15).map(q => ({
+          unit_price: q.unit_price,
+          supplier_name: q.supplier_name,
+          purge_reason: q.purge_reason,
+          purge_status: q.purge_status
+        }));
+        return {
+          item_index: it.item_index,
+          code: it.code,
+          type: it.type || "MATERIAL",
+          unit: it.unit || rep.target_supply_unit || "UN",
+          qty: it.qty || 1,
+          report: {
+            catmat_catser_code: rep.catmat_catser_code || it.code,
+            item_description: rep.item_description || it.description || "Item demandado",
+            target_supply_unit: rep.target_supply_unit || it.unit || "UN",
+            item_type: rep.item_type || it.type || "MATERIAL",
+            final_estimated_unit_price: rep.final_estimated_unit_price,
+            final_metric_used: rep.final_metric_used || rep.adopted_parameter || "MEDIANA",
+            adopted_parameter: rep.adopted_parameter || rep.final_metric_used || "MEDIANA",
+            is_homogeneous: rep.is_homogeneous,
+            has_minimum_three_quotes: rep.has_minimum_three_quotes,
+            legal_methodology_justification: rep.legal_methodology_justification || "",
+            sanitized_metrics: rep.sanitized_metrics,
+            raw_metrics: rep.raw_metrics,
+            valid_quotes: slimQuotes,
+            purged_quotes: slimPurged
+          }
+        };
+      });
+    }
+
+    // Pipeline Enterprise Assíncrono para Geração de ZIP (Zero HTTP 504 para 50, 150, 300+ itens)
+    async function downloadBatchZipAsync(itemsList, mode = "auto") {
+      const validItems = (itemsList || []).filter(r => r && r.report && r.report.sanitized_metrics);
+      if (validItems.length === 0) {
+        showAppNotification("Nenhum item válido com cotações homologadas para gerar o pacote ZIP.", "warn");
+        return;
+      }
+      const p = getReportParams();
+      const slimItems = slimBatchItemsForExport(validItems);
+      const fallbackName = `Processo_Completo_IN65_${validItems.length}_itens.zip`;
+
+      showCountdownProgress({
+        title: `Gerando Processo Completo (${validItems.length} itens)`,
+        subtitle: "Processamento assíncrono em alta performance com streaming direto em disco (zero risco de timeout).",
+        estimatedSeconds: Math.max(4, Math.ceil(validItems.length * 0.25)),
+        icon: "📦",
+        steps: [
+          "Enviando lote enxugado para fila assíncrona...",
+          "Gerando Planilha Mestre, Caderno PDF, Caderno Word e Raio-X...",
+          "Compilando relatórios individuais dos itens...",
+          "Preparando download em streaming..."
+        ]
+      });
+
+      try {
+        // 1. Dispara Job Assíncrono (retorna 202 em < 100ms)
+        const startResp = await fetch("/api/v1/jobs/batch-zip", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: slimItems,
+            om_name: getGlobalOrgName(),
+            elaborador: p.elab,
+            ordenador: p.orden,
+            mode: mode
+          })
+        });
+
+        // Fallback automático caso o servidor em nuvem ainda esteja concluindo o rebuild
+        if (startResp.status === 404) {
+          hideCountdownProgress();
+          await downloadFromPost(
+            "/api/v1/prices/export-batch-zip",
+            { items: slimItems, om_name: getGlobalOrgName(), elaborador: p.elab, ordenador: p.orden },
+            fallbackName,
+            `Gerando Processo Completo (${validItems.length} itens)`,
+            Math.min(20, Math.max(3, Math.ceil(validItems.length * 0.15)))
+          );
+          return;
+        }
+
+        if (!startResp.ok) {
+          let errMsg = `Erro HTTP ${startResp.status}`;
+          try { const j = await startResp.json(); errMsg = j.error || errMsg; } catch (e) {}
+          hideCountdownProgress();
+          showAppNotification("Falha ao iniciar fila do ZIP: " + errMsg, "error");
+          return;
+        }
+
+        const jobInit = await startResp.json();
+        const jobId = jobInit.job_id;
+        updateCountdownRealProgress(5, jobInit.stage || "Job iniciado em background...", 0.2);
+
+        // 2. Polling leve de progresso real (sem timeout de 100s!)
+        const maxWaitMs = 10 * 60 * 1000; // até 10 minutos para lotes massivos
+        const tStart = Date.now();
+        let finishedJob = null;
+
+        while (Date.now() - tStart < maxWaitMs) {
+          await new Promise(res => setTimeout(res, 1100));
+          const stResp = await fetch(`/api/v1/jobs/${encodeURIComponent(jobId)}/status`, { method: "GET" });
+          if (!stResp.ok) {
+            if (stResp.status === 404) throw new Error("Job expirou no servidor. Tente gerar novamente.");
+            continue;
+          }
+          const st = await stResp.json();
+          updateCountdownRealProgress(st.percent || 5, st.stage || "Processando lote...", st.elapsed_sec || ((Date.now() - tStart) / 1000));
+          if (st.status === "done") {
+            finishedJob = st;
+            break;
+          }
+          if (st.status === "error") {
+            throw new Error(st.error || "Erro interno ao gerar o pacote ZIP.");
+          }
+        }
+
+        if (!finishedJob) {
+          throw new Error("Tempo limite excedido aguardando conclusão do job.");
+        }
+
+        // 3. Download direto em streaming (chunks de 64 KB do disco do servidor)
+        updateCountdownRealProgress(100, `Concluído (${(finishedJob.file_size / (1024 * 1024)).toFixed(1)} MB)! Iniciando download...`, finishedJob.elapsed_sec);
+        const dlUrl = apiUrl(`/api/v1/jobs/${encodeURIComponent(jobId)}/download`);
+        const a = document.createElement("a");
+        a.href = dlUrl;
+        a.download = finishedJob.filename || fallbackName;
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+        hideCountdownProgress();
+        showAppNotification(`Pacote ZIP de ${validItems.length} itens gerado em ${finishedJob.elapsed_sec}s (${(finishedJob.file_size / (1024 * 1024)).toFixed(1)} MB)!`, "success");
+      } catch (err) {
+        hideCountdownProgress();
+        showAppNotification("Erro na geração do ZIP: " + err.message, "error");
+      }
     }
 
     // PDF do edital no PNCP (gerado a partir do extrato oficial) com contador
@@ -5268,13 +5502,13 @@
       }
     }
 
-    async function downloadBatchProcessZip() {
+    async function downloadBatchProcessZip(mode = "auto") {
       const validItems = (batchResearchResults || []).filter(r => r.has_data && r.report && r.report.sanitized_metrics);
       if (validItems.length > 0) {
         logAuditEvent(
           "GERACAO_PROCESSO_COMPLETO_ZIP",
           "Lote (" + validItems.length + " itens)",
-          "Emissão do Pacote Completo (.ZIP com Caderno Consolidado, Planilha Mestre e Dossiês)",
+          "Emissão Assíncrona do Pacote Completo (.ZIP com Planilha Mestre, Cadernos PDF/DOCX, Raio-X e PDFs Individuais)",
           "Lei nº 14.133/2021 e IN SEGES/ME nº 65/2021"
         );
       }
@@ -5282,37 +5516,11 @@
         showAppNotification("Processe o lote com pelo menos 1 item válido antes de gerar o Processo Completo.", "warn");
         return;
       }
-      const p = getReportParams();
-      const isLarge = validItems.length > 15;
-      const estSec = isLarge ? Math.min(18, Math.max(3, Math.ceil(validItems.length * 0.1))) : Math.max(2, Math.ceil(validItems.length * 0.7));
-      const customSteps = isLarge ? [
-        `Consolidando todos os ${validItems.length} itens no Caderno Oficial (PDF/Word)...`,
-        "Gerando Planilha Mestre (Excel) com memória completa de cálculo e links...",
-        "Formatando relatórios analíticos dos itens representativos...",
-        "Compactando pacote com Cadernos Consolidados e Dossiês do Lote..."
-      ] : [
-        "Consolidando dados de todos os itens homologados...",
-        "Gerando memórias e mapas comparativos em Excel...",
-        "Formatando relatórios individuais em Word e PDF...",
-        "Compactando pacote completo do processo (.ZIP)..."
-      ];
-      await downloadFromPost(
-        "/api/v1/prices/export-batch-zip",
-        {
-          items: validItems,
-          om_name: getGlobalOrgName(),
-          elaborador: p.elab,
-          ordenador: p.orden
-        },
-        `Processo_Completo_IN65_${validItems.length}_itens.zip`,
-        `Gerando Processo Completo (${validItems.length} itens)`,
-        estSec,
-        customSteps
-      );
+      await downloadBatchZipAsync(validItems, mode);
     }
 
     function downloadBatchZip() {
-      return downloadBatchProcessZip();
+      return downloadBatchProcessZip("auto");
     }
 
     async function downloadBatchCadernoPdf() {
@@ -5325,7 +5533,7 @@
       await downloadFromPost(
         "/api/v1/prices/export-batch-pdf",
         {
-          items: validItems,
+          items: slimBatchItemsForExport(validItems),
           om_name: getGlobalOrgName(),
           elaborador: p.elab,
           ordenador: p.orden
@@ -5352,7 +5560,7 @@
       await downloadFromPost(
         "/api/v1/prices/export-batch-docx",
         {
-          items: validItems,
+          items: slimBatchItemsForExport(validItems),
           om_name: getGlobalOrgName(),
           elaborador: p.elab,
           ordenador: p.orden
@@ -5371,16 +5579,16 @@
 
     async function downloadBatchExcel() {
       const validItems = (batchResearchResults || []).filter(r => r.has_data && r.report && r.report.sanitized_metrics);
-      const itemsToUse = validItems.length > 0 ? validItems : batchItemsTray.filter(x => x.selected);
+      const itemsToUse = validItems.length > 0 ? validItems : (batchTrayItems || []).filter(x => x.selected !== false);
       if (itemsToUse.length === 0) {
         showAppNotification("Processe o lote com pelo menos 1 item válido antes de exportar a planilha consolidada.", "warn");
         return;
       }
-      const estSec = Math.max(2, Math.ceil(itemsToUse.length * 0.5));
+      const estSec = Math.max(2, Math.min(8, Math.ceil(itemsToUse.length * 0.05)));
       await downloadFromPost(
         "/api/v1/prices/export-batch-xlsx",
         {
-          items: itemsToUse,
+          items: slimBatchItemsForExport(itemsToUse),
           om_name: getGlobalOrgName()
         },
         `Mapa_Comparativo_Consolidado_Lote_${itemsToUse.length}_itens.xlsx`,
@@ -5675,12 +5883,7 @@
         return;
       }
       closeBatchDocsModal();
-      await downloadFromPost("/api/v1/prices/export-batch-zip", {
-        items: picked,
-        om_name: getGlobalOrgName(),
-        elaborador: getReportParams().elab,
-        ordenador: getReportParams().orden
-      }, `Processo_Completo_IN65_${picked.length}_itens.zip`, `Gerando Processo Completo (${picked.length} itens)`);
+      await downloadBatchZipAsync(picked, "auto");
     }
 
     // Modal de Parser de Demanda

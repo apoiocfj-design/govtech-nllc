@@ -46,17 +46,21 @@ from report_generators import (
     build_consolidated_in65_excel_bytes,
     build_consolidated_in65_pdf_bytes,
     build_consolidated_in65_docx_bytes,
+    build_consolidated_suppliers_dossier_pdf_bytes,
+    build_batch_zip_to_file,
     build_batch_zip_bytes,
     build_audit_certificate_pdf_bytes,
     generate_statistical_infographic,
     build_supplier_compliance_dossier_docx_bytes,
     build_supplier_compliance_dossier_pdf_bytes,
 )
+from job_manager import batch_job_manager
 from audited_document_engine import (
     DocumentLayoutParser,
     DocumentLegalAuditor,
     build_audited_document_docx_bytes,
     build_audited_document_pdf_bytes,
+    document_session_store,
 )
 from pncp_extractor import (
     resolve_pncp_compra,
@@ -313,10 +317,16 @@ def build_highlighted_docx_bytes(title: str, clauses: list, org_name: str = "MAR
 
 class GovTechAppHandler(BaseHTTPRequestHandler):
     def _send_json(self, status_code: int, payload: dict):
-        body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        accept_enc = self.headers.get("Accept-Encoding", "") if self.headers else ""
+        use_gzip = ("gzip" in accept_enc) and (len(body) > 4096)
+        if use_gzip:
+            body = gzip.compress(body, compresslevel=5)
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Access-Control-Allow-Origin", "*")
+        if use_gzip:
+            self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -326,10 +336,27 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Expose-Headers", "Content-Disposition")
+        self.send_header("Access-Control-Expose-Headers", "Content-Disposition, Content-Length")
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
         self.wfile.write(content)
+
+    def _send_file_stream(self, file_path: str, content_type: str, filename: str):
+        """Envia arquivo grande em streaming (chunks de 64 KB) direto do disco sem estourar RAM."""
+        file_size = os.path.getsize(file_path)
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Expose-Headers", "Content-Disposition, Content-Length")
+        self.send_header("Content-Length", str(file_size))
+        self.end_headers()
+        with open(file_path, "rb") as f:
+            while True:
+                chunk = f.read(65536)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
 
     def do_HEAD(self):
         self.send_response(200)
@@ -348,6 +375,28 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
         qs = parse_qs(parsed.query)
+
+        # 0. Status e Download Streaming de Jobs Assíncronos (/api/v1/jobs/<job_id>/status|download)
+        if path.startswith("/api/v1/jobs/"):
+            parts = [p for p in path.split("/") if p]
+            # ['api', 'v1', 'jobs', '<job_id>', 'status'|'download']
+            if len(parts) == 5 and parts[4] == "status":
+                job_info = batch_job_manager.get_status(parts[3])
+                if not job_info:
+                    self._send_json(404, {"error": "Job não encontrado ou expirado."})
+                    return
+                self._send_json(200, job_info)
+                return
+            if len(parts) == 5 and parts[4] == "download":
+                dl = batch_job_manager.get_download_info(parts[3])
+                if not dl:
+                    self._send_json(404, {"error": "Arquivo do job não está pronto ou já expirou."})
+                    return
+                try:
+                    self._send_file_stream(dl["file_path"], dl["content_type"], dl["filename"])
+                except BrokenPipeError:
+                    pass
+                return
 
         # 1. Interface Unificada do Aplicativo
         if path in ("/", "/index.html"):
@@ -1297,6 +1346,61 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 self._send_json(500, {"error": str(exc)})
             return
 
+        # 0.019 Iniciar Job Assíncrono de Pacote ZIP do Lote (Zero HTTP 504 para 50, 150, 300+ itens)
+        if parsed.path == "/api/v1/jobs/batch-zip":
+            try:
+                data = json.loads(raw_body)
+                items_in = data.get("items", [])
+                om_name = str(data.get("om_name", "MARINHA DO BRASIL"))
+                ordenador = str(data.get("ordenador", "ORDENADOR DE DESPESAS"))
+                elaborador = str(data.get("elaborador", "ENCARREGADO DO SETOR DE OBTENÇÃO"))
+                mode = str(data.get("mode", "auto")).strip().lower()
+
+                items_results = []
+                for idx, it in enumerate(items_in, start=1):
+                    rep = it.get("report")
+                    qty = float(it.get("qty", 1) or 1)
+                    if not rep or not rep.get("sanitized_metrics"):
+                        continue
+                    items_results.append({
+                        "item_index": idx,
+                        "code": rep.get("catmat_catser_code", it.get("code")),
+                        "type": it.get("type", "MATERIAL"),
+                        "unit": it.get("unit", rep.get("target_supply_unit", "UN")),
+                        "qty": qty,
+                        "report": rep,
+                    })
+
+                if not items_results:
+                    self._send_json(404, {"error": "Nenhum item do lote possui cotações válidas para exportação."})
+                    return
+
+                fname = f"Processo_Completo_IN65_{len(items_results)}_itens.zip"
+
+                def _worker(out_path: str, progress_cb):
+                    return build_batch_zip_to_file(
+                        items_results=items_results,
+                        output_path=out_path,
+                        om_name=om_name,
+                        ordenador_nome=ordenador,
+                        elaborador_nome=elaborador,
+                        extract_gov_docs=False,
+                        mode=mode,
+                        progress_callback=progress_cb,
+                    )
+
+                job_status = batch_job_manager.submit_file_job(
+                    kind="batch_zip",
+                    filename=fname,
+                    content_type="application/zip",
+                    total_items=len(items_results),
+                    worker_fn=_worker,
+                )
+                self._send_json(202, job_status)
+            except Exception as exc:
+                self._send_json(500, {"error": str(exc)})
+            return
+
         # 0.02 Exportar Pacote ZIP Completo do Lote (.ZIP com relatórios Word, PDF e Excel de todos os itens)
         if parsed.path == "/api/v1/prices/export-batch-zip":
             try:
@@ -1584,7 +1688,7 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 self._send_json(400, {"error": str(exc)})
             return
 
-        # 1. Auditar Arquivo Enviado (PDF ou DOCX em Base64) ou Texto Colado
+        # 1. Auditar Arquivo Enviado (PDF ou DOCX em Base64) ou Texto Colado — COM PERMISSÃO DO USUÁRIO
         if parsed.path == "/api/v1/rag/audit-upload":
             try:
                 data = json.loads(raw_body)
@@ -1594,11 +1698,12 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 raw_text = data.get("text", "")
 
                 doc_structure = None
+                file_bytes = b""
                 if file_b64:
                     file_bytes = base64.b64decode(file_b64)
                     if filename.lower().endswith(".pdf"):
                         doc_structure = DocumentLayoutParser.parse_pdf(file_bytes, filename=filename)
-                        
+
                         # Fallback de Visão Computacional se PDF for escaneado (< 100 caracteres legíveis)
                         total_chars = sum(len(e.get("text", "")) for e in doc_structure.get("elements", []))
                         if total_chars < 100:
@@ -1607,8 +1712,8 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                                 client = vision.ImageAnnotatorClient()
                                 input_config = vision.InputConfig(content=file_bytes, mime_type="application/pdf")
                                 features = [vision.Feature(type_=vision.Feature.Type.DOCUMENT_TEXT_DETECTION)]
-                                requests = [vision.AnnotateFileRequest(features=features, input_config=input_config)]
-                                response = client.batch_annotate_files(requests=requests)
+                                requests_v = [vision.AnnotateFileRequest(features=features, input_config=input_config)]
+                                response = client.batch_annotate_files(requests=requests_v)
                                 ocr_lines = []
                                 for file_resp in response.responses:
                                     for page_resp in file_resp.responses:
@@ -1624,13 +1729,22 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                     else:
                         doc_structure = DocumentLayoutParser.parse_text(file_bytes.decode("utf-8", errors="ignore"), filename=filename)
                 else:
+                    file_bytes = (raw_text or "").encode("utf-8")
                     doc_structure = DocumentLayoutParser.parse_text(raw_text, filename=filename or "minuta_texto.txt")
 
                 if not doc_structure:
                     doc_structure = DocumentLayoutParser.parse_text(raw_text or "", filename=filename or "minuta.txt")
 
-                # Auditoria Jurídica e Geração de Diffs com Marcação Amarelo/Vermelho Tachado
-                audited_doc = DocumentLegalAuditor.audit_and_diff(doc_structure)
+                # Auditoria Jurídica SEM mutação automática: aguarda permissão expressa do usuário!
+                audited_doc = DocumentLegalAuditor.audit_and_diff(doc_structure, require_permission=True)
+
+                # Salva arquivo original em sessão para cirurgia fiel no .DOCX original durante a exportação
+                doc_session_id = document_session_store.save(
+                    original_bytes=file_bytes,
+                    filename=filename or "minuta",
+                    original_format=audited_doc.get("original_format", "docx"),
+                    doc_structure=audited_doc,
+                )
 
                 # Estruturação retrocompatível de cláusulas para o frontend
                 clauses_list = []
@@ -1639,19 +1753,20 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                         clauses_list.append({
                             "num": el.get("clause_number") or el.get("number") or "",
                             "title": el.get("section_title") or el.get("title") or "Cláusula Contratual",
-                            "text": el.get("revised_text") or el.get("text") or "",
+                            "text": el.get("text") or "",
                             "modified": bool(el.get("modified")),
                             "diff_segments": el.get("diff_segments", []),
                         })
 
                 response_payload = {
                     "status": "SUCCESS",
+                    "doc_session_id": doc_session_id,
                     "doc_structure": audited_doc,
                     "title": audited_doc.get("title", "DOCUMENTO AUDITADO (LEI 14.133/2021)"),
                     "original_format": audited_doc.get("original_format", "pdf"),
                     "elements": audited_doc.get("elements", []),
                     "clauses": clauses_list,
-                    "findings": audited_doc.get("audit_summary", {}).get("findings", []),
+                    "findings": audited_doc.get("findings") or audited_doc.get("audit_summary", {}).get("findings", []),
                     "compliance_score": audited_doc.get("audit_summary", {}).get("compliance_score", 100.0),
                     "audit_summary": audited_doc.get("audit_summary", {}),
                     "signatures": audited_doc.get("signatures", []),
@@ -1661,73 +1776,112 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 self._send_json(400, {"error": str(exc)})
             return
 
-        # 2. Exportar Documento Word (.DOCX) com Layout Preservado, Tabelas e Destaque Amarelo / Vermelho Tachado
+        # 2. Exportar Documento Word (.DOCX) — Preservação 100% da Diagramação Original + Amarelo/Vermelho Tachado
         if parsed.path == "/api/v1/rag/export-docx":
             try:
                 data = json.loads(raw_body)
-                doc_structure = data.get("doc_structure")
-                if not doc_structure:
-                    title = data.get("title", "DOCUMENTO AUDITADO (LEI 14.133/2021)")
-                    clauses = data.get("clauses", [])
-                    doc_structure = {
-                        "title": title,
-                        "original_format": "docx",
-                        "elements": [
-                            {
-                                "type": "CLAUSE",
-                                "clause_number": c.get("num") or c.get("clause_number") or "",
-                                "section_title": c.get("title") or "",
-                                "text": c.get("text") or "",
-                                "modified": bool(c.get("modified")),
-                                "diff_segments": c.get("diff_segments") or [
-                                    {"type": "added" if c.get("modified") else "equal", "text": c.get("text") or ""}
-                                ],
-                            }
-                            for c in clauses
-                        ],
-                    }
-                docx_bytes = build_audited_document_docx_bytes(doc_structure)
-                safe_title = re.sub(r"[^a-zA-Z0-9_-]", "_", doc_structure.get("title", "Minuta_Auditada"))
+                doc_session_id = str(data.get("doc_session_id") or "").strip()
+                approved_decisions = data.get("approved_decisions")
+                session_data = document_session_store.get(doc_session_id) if doc_session_id else None
+
+                if session_data:
+                    base_structure = session_data["doc_structure"]
+                    resolved_doc, applied_actions = DocumentLegalAuditor.apply_approved_decisions(
+                        base_structure,
+                        approved_decisions=approved_decisions if isinstance(approved_decisions, list) else [],
+                    )
+                    docx_bytes = build_audited_document_docx_bytes(
+                        resolved_doc,
+                        original_bytes=session_data.get("original_bytes"),
+                        applied_actions=applied_actions,
+                    )
+                    doc_title = resolved_doc.get("title", "Minuta_Auditada")
+                else:
+                    doc_structure = data.get("doc_structure")
+                    if doc_structure and isinstance(approved_decisions, list):
+                        doc_structure, _ = DocumentLegalAuditor.apply_approved_decisions(
+                            doc_structure,
+                            approved_decisions=approved_decisions,
+                        )
+                    elif not doc_structure:
+                        title = data.get("title", "DOCUMENTO AUDITADO (LEI 14.133/2021)")
+                        clauses = data.get("clauses", [])
+                        doc_structure = {
+                            "title": title,
+                            "original_format": "docx",
+                            "elements": [
+                                {
+                                    "type": "CLAUSE",
+                                    "clause_number": c.get("num") or c.get("clause_number") or "",
+                                    "section_title": c.get("title") or "",
+                                    "text": c.get("text") or "",
+                                    "modified": bool(c.get("modified")),
+                                    "diff_segments": c.get("diff_segments") or [
+                                        {"type": "added" if c.get("modified") else "equal", "text": c.get("text") or ""}
+                                    ],
+                                }
+                                for c in clauses
+                            ],
+                        }
+                    docx_bytes = build_audited_document_docx_bytes(doc_structure)
+                    doc_title = doc_structure.get("title", "Minuta_Auditada")
+
+                safe_title = re.sub(r"[^a-zA-Z0-9_-]", "_", str(doc_title))[:80]
                 self._send_binary(
                     docx_bytes,
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    f"{safe_title}_Marcado_Amarelo.docx",
+                    f"{safe_title}_Revisado_Amarelo_Vermelho.docx",
                 )
             except Exception as exc:
                 self._send_json(500, {"error": str(exc)})
             return
 
-        # 3. Exportar Documento PDF (.PDF) com Layout Preservado, Tabelas e Destaque Amarelo / Vermelho Tachado
+        # 3. Exportar Documento PDF (.PDF) com Layout Preservado + Alterações Aprovadas
         if parsed.path == "/api/v1/rag/export-pdf":
             try:
                 data = json.loads(raw_body)
-                doc_structure = data.get("doc_structure")
-                if not doc_structure:
-                    title = data.get("title", "DOCUMENTO AUDITADO (LEI 14.133/2021)")
-                    clauses = data.get("clauses", [])
-                    doc_structure = {
-                        "title": title,
-                        "original_format": "pdf",
-                        "elements": [
-                            {
-                                "type": "CLAUSE",
-                                "clause_number": c.get("num") or c.get("clause_number") or "",
-                                "section_title": c.get("title") or "",
-                                "text": c.get("text") or "",
-                                "modified": bool(c.get("modified")),
-                                "diff_segments": c.get("diff_segments") or [
-                                    {"type": "added" if c.get("modified") else "equal", "text": c.get("text") or ""}
-                                ],
-                            }
-                            for c in clauses
-                        ],
-                    }
+                doc_session_id = str(data.get("doc_session_id") or "").strip()
+                approved_decisions = data.get("approved_decisions")
+                session_data = document_session_store.get(doc_session_id) if doc_session_id else None
+
+                if session_data:
+                    doc_structure, _ = DocumentLegalAuditor.apply_approved_decisions(
+                        session_data["doc_structure"],
+                        approved_decisions=approved_decisions if isinstance(approved_decisions, list) else [],
+                    )
+                else:
+                    doc_structure = data.get("doc_structure")
+                    if doc_structure and isinstance(approved_decisions, list):
+                        doc_structure, _ = DocumentLegalAuditor.apply_approved_decisions(
+                            doc_structure,
+                            approved_decisions=approved_decisions,
+                        )
+                    elif not doc_structure:
+                        title = data.get("title", "DOCUMENTO AUDITADO (LEI 14.133/2021)")
+                        clauses = data.get("clauses", [])
+                        doc_structure = {
+                            "title": title,
+                            "original_format": "pdf",
+                            "elements": [
+                                {
+                                    "type": "CLAUSE",
+                                    "clause_number": c.get("num") or c.get("clause_number") or "",
+                                    "section_title": c.get("title") or "",
+                                    "text": c.get("text") or "",
+                                    "modified": bool(c.get("modified")),
+                                    "diff_segments": c.get("diff_segments") or [
+                                        {"type": "added" if c.get("modified") else "equal", "text": c.get("text") or ""}
+                                    ],
+                                }
+                                for c in clauses
+                            ],
+                        }
                 pdf_bytes = build_audited_document_pdf_bytes(doc_structure)
-                safe_title = re.sub(r"[^a-zA-Z0-9_-]", "_", doc_structure.get("title", "Minuta_Auditada"))
+                safe_title = re.sub(r"[^a-zA-Z0-9_-]", "_", str(doc_structure.get("title", "Minuta_Auditada")))[:80]
                 self._send_binary(
                     pdf_bytes,
                     "application/pdf",
-                    f"{safe_title}_Marcado_Amarelo.pdf",
+                    f"{safe_title}_Revisado_Amarelo_Vermelho.pdf",
                 )
             except Exception as exc:
                 self._send_json(500, {"error": str(exc)})
@@ -1740,10 +1894,15 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8080"))
     lan_ip = get_primary_lan_ip()
     try:
-        from http.server import ThreadingHTTPServer as _Srv
+        from http.server import ThreadingHTTPServer as _BaseSrv
     except ImportError:
-        _Srv = HTTPServer
-    server = _Srv(("0.0.0.0", port), GovTechAppHandler)
+        _BaseSrv = HTTPServer
+
+    class ResilientGovTechServer(_BaseSrv):
+        allow_reuse_address = True
+        daemon_threads = True
+
+    server = ResilientGovTechServer(("0.0.0.0", port), GovTechAppHandler)
     print("=" * 72)
     print("🚀 SISTEMA GOVTECH NLLC ONLINE (LEI 14.133/2021 & IN 65/2021)")
     print("=" * 72)
