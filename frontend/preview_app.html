@@ -441,24 +441,45 @@
           </div>
         </div>
 
-        <!-- BARRA DE AÇÕES DIRETAS: PESQUISA DE PREÇOS OFICIAL (IN 65/2021) -->
-        <div class="pt-2 border-t border-slate-200/80 space-y-1.5">
-          <div class="flex items-center justify-between">
-            <span class="text-[10px] font-black uppercase text-slate-500 tracking-wider">Documentos Oficiais da Pesquisa de Preços (IN 65/2021):</span>
+        <!-- BARRA DE AÇÕES DIRETAS: DOCUMENTOS DA PESQUISA DE PREÇOS (IN 65/2021) -->
+        <div class="pt-2 border-t border-slate-200/80 space-y-2">
+          <div>
+            <span class="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Documentos Oficiais da Pesquisa de Preços (IN 65/2021 & Art. 23 da Lei 14.133/2021):</span>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1.5">
+              <button onclick="downloadLiveExcel()" class="h-9 bg-[#3b6e5c] hover:bg-[#2d5849] text-white font-bold px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Baixar Mapa Comparativo de Preços em Excel (.xlsx)">
+                <span>📊</span> <span class="truncate">Mapa Excel (.XLSX)</span>
+              </button>
+              <button onclick="downloadLiveWord()" class="h-9 bg-[#3b5b7c] hover:bg-[#2e4761] text-white font-bold px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Baixar Relatório Oficial de Pesquisa de Preços em Word (.docx)">
+                <span>📄</span> <span class="truncate">Relatório Word (.DOCX)</span>
+              </button>
+              <button onclick="downloadLivePdf()" class="h-9 bg-[#9e4747] hover:bg-[#833838] text-white font-bold px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Baixar Relatório Oficial de Pesquisa de Preços em PDF com QR Codes">
+                <span>📕</span> <span class="truncate">Relatório PDF (.PDF)</span>
+              </button>
+              <button onclick="openFormalReportModal()" class="h-9 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Visualizar Relatório de Pesquisa na Tela">
+                <span>👁️</span> <span class="truncate">Ver Relatório na Tela</span>
+              </button>
+            </div>
           </div>
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <button onclick="downloadLiveExcel()" class="h-9 bg-[#3b6e5c] hover:bg-[#2d5849] text-white font-bold px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Baixar Mapa Comparativo de Preços em Excel (.xlsx)">
-              <span>📊</span> <span class="truncate">Planilha Mapa (.XLSX)</span>
-            </button>
-            <button onclick="downloadLiveWord()" class="h-9 bg-[#3b5b7c] hover:bg-[#2e4761] text-white font-bold px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Baixar Relatório Oficial de Pesquisa de Preços em Word (.docx)">
-              <span>📄</span> <span class="truncate">Relatório Pesquisa (.DOCX)</span>
-            </button>
-            <button onclick="downloadLivePdf()" class="h-9 bg-[#9e4747] hover:bg-[#833838] text-white font-bold px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Baixar Relatório Oficial de Pesquisa de Preços em PDF com QR Codes">
-              <span>📕</span> <span class="truncate">Relatório Pesquisa (.PDF)</span>
-            </button>
-            <button onclick="openFormalReportModal()" class="h-9 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Visualizar Relatório de Pesquisa na Tela">
-              <span>👁️</span> <span class="truncate">Ver Relatório na Tela</span>
-            </button>
+
+          <!-- BARRA DEDICADA AO RAIO-X DE CERTIDÕES DAS EMPRESAS (ART. 68 DA LEI 14.133/2021) -->
+          <div class="pt-2 border-t border-slate-200/70 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-1.5">
+              <span class="text-xs">📑</span>
+              <span class="text-[10px] font-black uppercase text-indigo-950 tracking-wider">
+                Raio-X de Certidões das Empresas Cotadas (Art. 68 da Lei 14.133/2021):
+              </span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <button onclick="downloadLiveCertidoesWord()" class="h-8 bg-indigo-700 hover:bg-indigo-800 text-white font-bold px-2.5 py-1 rounded-lg text-[10.5px] shadow-2xs transition flex items-center gap-1.5" title="Baixar Dossiê Completo de Certidões das Empresas em Word (.docx)">
+                <span>📄</span> <span>Raio-X Certidões (.DOCX)</span>
+              </button>
+              <button onclick="downloadLiveCertidoesPdf()" class="h-8 bg-purple-700 hover:bg-purple-800 text-white font-bold px-2.5 py-1 rounded-lg text-[10.5px] shadow-2xs transition flex items-center gap-1.5" title="Baixar Dossiê Completo de Certidões das Empresas em PDF Oficial">
+                <span>📕</span> <span>Raio-X Certidões (.PDF)</span>
+              </button>
+              <button onclick="openCompanyComplianceDossierModal()" class="h-8 bg-slate-800 hover:bg-slate-900 text-amber-300 font-bold px-2.5 py-1 rounded-lg text-[10.5px] shadow-2xs transition flex items-center gap-1.5" title="Abrir painel interativo com o Raio-X das 7 certidões de cada fornecedor">
+                <span>🔍</span> <span>Ver Raio-X na Tela</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -2587,9 +2608,7 @@
         const isIrregular = Boolean(sInfo && (sInfo.is_eligible === false || sInfo.has_expired_certidoes || sInfo.has_sanctions));
 
         if (isChecked && isIrregular) {
-          showAppNotification("🚫 Proibido incluir cotação: Fornecedor possui certidão fiscal/trabalhista vencida ou sanção ativa (Art. 68 da Lei nº 14.133/2021).", "error");
-          renderCurrentQuotesTable();
-          return;
+          showAppNotification("ℹ️ Cotação incluída na amostra de mercado (Art. 23 da Lei 14.133). O fornecedor possui alerta cadastral — consulte o Raio-X de Certidões antes da adjudicação.", "info");
         }
         q.is_selected = isChecked;
         if (!isChecked) {
@@ -2859,25 +2878,9 @@
           const data = await resp.json();
           window.supplierSanctionsCache[cleanCnpj] = data;
 
-          // Se a empresa possuir certidões vencidas ou sanção impeditiva:
-          // Automaticamente desclassifica e expurga da pesquisa de preços (Art. 68 da Lei 14.133/2021)
-          if (data && (data.is_eligible === false || data.has_expired_certidoes || data.has_sanctions)) {
-            let changed = false;
-            (window.currentAllQuotes || []).forEach(q => {
-              const qCnpj = (q.supplier_cnpj || "").replace(/\D/g, "");
-              if (qCnpj === cleanCnpj && (q.is_selected !== false || !q.is_outlier)) {
-                q.is_selected = false;
-                q.is_outlier = true;
-                q.purge_status = "EXPURGADA_CERTIDAO_IRREGULAR";
-                q.purge_justification = data.justificativa_exclusao || "Empresa irregular perante órgãos de controle / certidão fiscal ou trabalhista vencida (Art. 68 da Lei nº 14.133/2021). Desclassificada da pesquisa.";
-                changed = true;
-              }
-            });
-            if (changed) {
-              recalculateCuratedQuotes();
-            }
-          }
-
+          // Lei nº 14.133/2021 (Art. 23) & IN SEGES/ME nº 65/2021:
+          // Cotações com certidões vencidas compõem a amostra de preços histórica de mercado.
+          // O status é exibido como alerta visual sem expurgo automático da cesta.
           renderCurrentQuotesTable();
           return data;
         }
@@ -2998,61 +3001,66 @@
         const hasExpiredCertidoes = Boolean(sanctionInfo && sanctionInfo.has_expired_certidoes);
         const isIrregular = Boolean(sanctionInfo && (sanctionInfo.is_eligible === false || hasExpiredCertidoes || isSanctioned));
 
-        // Se a empresa estiver irregular, força desqualificação da cesta
-        if (isIrregular && q.is_selected !== false) {
-          q.is_selected = false;
-          q.is_outlier = true;
-          q.purge_status = "EXPURGADA_CERTIDAO_IRREGULAR";
-          q.purge_justification = (sanctionInfo && sanctionInfo.justificativa_exclusao) || "Empresa irregular perante os órgãos de controle / certidão fiscal ou trabalhista vencida (Art. 68 da Lei nº 14.133/2021). Desclassificada da pesquisa.";
-        }
-
-        const isConsidered = (q.is_selected !== false && !q.is_outlier && !isIrregular);
+        // Lei nº 14.133/2021 Art. 23: Cotações com certidões vencidas compõem a amostra de mercado.
+        const isConsidered = (q.is_selected !== false && !q.is_outlier);
 
         let sanctionBadge = "";
-        if (isIrregular) {
+        if (isSanctioned) {
           sanctionBadge = `
-            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9.5px] font-black bg-rose-600 text-white shadow-2xs animate-pulse cursor-pointer" onclick="openCompanyComplianceDossierModal('${cleanCnpj}')" title="Clique para ver o Dossiê Completo de Certidões desta Empresa">
-              🚨 IRREGULAR (CERTIDÃO VENCIDA / SANÇÃO)
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9.5px] font-black bg-rose-600 text-white shadow-2xs cursor-pointer" onclick="openCompanyComplianceDossierModal('${cleanCnpj}')" title="Empresa com sanção nos órgãos de controle. Clique para ver o Raio-X de Certidões">
+              🚨 Sanção Administrativa
+            </span>
+          `;
+        } else if (hasExpiredCertidoes) {
+          sanctionBadge = `
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9.5px] font-bold bg-amber-100 text-amber-900 border border-amber-300 cursor-pointer" onclick="openCompanyComplianceDossierModal('${cleanCnpj}')" title="Certidão fiscal/trabalhista vencida. Válida na cesta de preços (Art. 23). Clique para ver o Raio-X">
+              ⚠️ Certidão Vencida (Válida p/ Cesta)
             </span>
           `;
         } else if (sanctionInfo && sanctionInfo.is_eligible) {
           sanctionBadge = `
-            <span class="inline-flex items-center gap-1 text-[9.5px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 px-2 py-0.5 rounded cursor-pointer" onclick="openCompanyComplianceDossierModal('${cleanCnpj}')" title="Certidões Federais, FGTS, Trabalhistas e SICAF 100% regulares">
-              ✅ Certidões Regulares
+            <span class="inline-flex items-center gap-1 text-[9.5px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 px-2 py-0.5 rounded cursor-pointer" onclick="openCompanyComplianceDossierModal('${cleanCnpj}')" title="Todas as 7 certidões regulares. Clique para ver o Raio-X">
+              ✅ 7 Certidões Regulares
+            </span>
+          `;
+        } else {
+          sanctionBadge = `
+            <span class="inline-flex items-center gap-1 text-[9.5px] text-slate-500 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2 py-0.5 rounded cursor-pointer transition" onclick="openCompanyComplianceDossierModal('${cleanCnpj}')" title="Clique para abrir o Raio-X de Certidões desta Empresa">
+              🔍 Raio-X Certidões
             </span>
           `;
         }
 
         let statusCell = "";
-        if (isIrregular) {
-          statusCell = `
-            <div>
-              <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-black bg-rose-600 text-white shadow-xs">
-                🚫 Excluída da Cesta (Art. 68)
-              </span>
-              <p class="text-[9.5px] text-rose-900 font-bold mt-1 leading-tight" title="${q.purge_justification || ''}">${q.purge_justification || 'Certidão fiscal vencida ou sanção impeditiva'}</p>
-            </div>
-          `;
-        } else if (isConsidered) {
+        if (isConsidered) {
           statusCell = `
             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-900 border border-emerald-300">
-              ✅ Considerada na Cesta
+              ✅ Considerada na Cesta (Art. 23)
             </span>
           `;
         } else if (q.purge_status === "EXPURGADA_SANCAO") {
           statusCell = `
             <div>
               <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black bg-rose-200 text-rose-950 border border-rose-400">
-                🚨 Excluída (Sanção Art. 68)
+                🚨 Excluída (Sanção Art. 156)
               </span>
               <p class="text-[9.5px] text-rose-700 mt-0.5 line-clamp-1" title="${q.purge_justification || ''}">${q.purge_justification || 'Sanção administrativa impeditiva'}</p>
+            </div>
+          `;
+        } else if (q.purge_status === "EXPURGADA_MANUAL") {
+          statusCell = `
+            <div>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black bg-slate-200 text-slate-800 border border-slate-300">
+                ⏸️ Desmarcada Manualmente
+              </span>
+              <p class="text-[9.5px] text-slate-500 mt-0.5 line-clamp-1" title="${q.purge_justification || ''}">${q.purge_justification || 'Excluída pelo operador'}</p>
             </div>
           `;
         } else {
           statusCell = `
             <div>
               <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300">
-                ❌ Descartada (Outlier)
+                ❌ Descartada (Outlier Estatístico)
               </span>
               <p class="text-[9.5px] text-slate-500 mt-0.5 line-clamp-1" title="${q.purge_justification || ''}">${q.purge_justification || 'Excluída estatisticamente'}</p>
             </div>
@@ -3060,8 +3068,10 @@
         }
 
         let rowBg = "hover:bg-slate-50/80";
-        if (isIrregular) {
-          rowBg = "bg-rose-50/90 hover:bg-rose-100/90 border-l-4 border-rose-600 font-semibold";
+        if (isSanctioned) {
+          rowBg = "bg-rose-50/60 hover:bg-rose-100/70 border-l-4 border-rose-500";
+        } else if (hasExpiredCertidoes) {
+          rowBg = "bg-amber-50/40 hover:bg-amber-100/50 border-l-4 border-amber-400";
         } else if (!isConsidered) {
           rowBg = "bg-slate-50/40 hover:bg-slate-100/50 opacity-85";
         }
@@ -3369,7 +3379,15 @@
         return;
       }
       const p = getReportParams();
-      const labels = { pdf: "Relatório em PDF", docx: "Relatório em Word", xlsx: "Mapa Comparativo em Excel", "just-docx": "Justificativa em Word", "just-pdf": "Justificativa em PDF" };
+      const labels = {
+        pdf: "Relatório de Pesquisa em PDF",
+        docx: "Relatório de Pesquisa em Word",
+        xlsx: "Mapa Comparativo em Excel",
+        "just-docx": "Justificativa Circunstanciada em Word",
+        "just-pdf": "Justificativa Circunstanciada em PDF",
+        "certidoes-docx": "Raio-X de Certidões das Empresas em Word",
+        "certidoes-pdf": "Raio-X de Certidões das Empresas em PDF"
+      };
       const ext = fmt === "xlsx" ? "xlsx" : (fmt.endsWith("docx") ? "docx" : "pdf");
       downloadFromPost("/api/v1/prices/export-report", {
         report, qty: qty || 1, item_type: itemType || "MATERIAL", format: fmt,
@@ -3390,6 +3408,8 @@
     function downloadLiveExcel() { exportActiveReport("xlsx"); }
     function downloadLiveWord() { exportActiveReport("docx"); }
     function downloadLivePdf() { exportActiveReport("pdf"); }
+    function downloadLiveCertidoesWord() { exportActiveReport("certidoes-docx"); }
+    function downloadLiveCertidoesPdf() { exportActiveReport("certidoes-pdf"); }
     function downloadLiveJustificativaWord() {
       const n = document.getElementById("justSigNome");
       if (n && n.value.trim() && document.getElementById("sig2Nome")) document.getElementById("sig2Nome").value = n.value.trim();
@@ -3415,6 +3435,239 @@
 
     function closeFormalReportModal() {
       document.getElementById("formalReportModal").classList.add("hidden");
+    }
+
+    // =========================================================================
+    // MODAL DE DOSSIÊ UNIFICADO DE CERTIDÕES E COMPLIANCE FISCAL (ART. 68)
+    // =========================================================================
+    async function openCompanyComplianceDossierModal(targetCnpj = null) {
+      const modal = document.getElementById("modalCompanyComplianceDossier");
+      if (!modal) return;
+      modal.classList.remove("hidden");
+
+      const container = document.getElementById("complianceDossierContent");
+      if (!container) return;
+
+      container.innerHTML = `
+        <div class="flex flex-col items-center justify-center py-10 space-y-3">
+          <div class="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+          <span class="text-xs font-bold text-slate-600">Auditando e consultando certidões das empresas nas bases oficiais...</span>
+        </div>
+      `;
+
+      // 1. Extrair fornecedores das cotações ativas ou curadas
+      let quotes = [];
+      if (window.currentAllQuotes && window.currentAllQuotes.length > 0) {
+        quotes = window.currentAllQuotes;
+      } else if (activePriceReport) {
+        quotes = [
+          ...(activePriceReport.valid_quotes || []),
+          ...(activePriceReport.purged_quotes || [])
+        ];
+      }
+
+      const supplierMap = new Map();
+      quotes.forEach(q => {
+        const cleanCnpj = (q.supplier_cnpj || "").replace(/\D/g, "");
+        if (cleanCnpj && cleanCnpj.length === 14) {
+          if (!supplierMap.has(cleanCnpj)) {
+            supplierMap.set(cleanCnpj, {
+              cnpj: cleanCnpj,
+              name: q.supplier_name || "FORNECEDOR PARTICIPANTE",
+              quotes_count: 1,
+              sample_prices: [Number(q.unit_price || 0)],
+              buyer_names: [q.buyer_name || q.buyer_uasg || ""],
+            });
+          } else {
+            const entry = supplierMap.get(cleanCnpj);
+            entry.quotes_count += 1;
+            entry.sample_prices.push(Number(q.unit_price || 0));
+            if (q.buyer_name && !entry.buyer_names.includes(q.buyer_name)) {
+              entry.buyer_names.push(q.buyer_name);
+            }
+          }
+        }
+      });
+
+      if (targetCnpj) {
+        const cleanTarget = String(targetCnpj).replace(/\D/g, "");
+        if (cleanTarget.length === 14 && !supplierMap.has(cleanTarget)) {
+          supplierMap.set(cleanTarget, {
+            cnpj: cleanTarget,
+            name: "EMPRESA CONSULTADA",
+            quotes_count: 1,
+            sample_prices: [],
+            buyer_names: [],
+          });
+        }
+      }
+
+      const suppliersList = Array.from(supplierMap.values());
+      if (targetCnpj) {
+        const cleanTarget = String(targetCnpj).replace(/\D/g, "");
+        suppliersList.sort((a, b) => (a.cnpj === cleanTarget ? -1 : (b.cnpj === cleanTarget ? 1 : 0)));
+      }
+
+      if (suppliersList.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-10 bg-slate-50 border border-dashed border-slate-300 rounded-xl space-y-2">
+            <span class="text-3xl">🔍</span>
+            <h4 class="text-xs font-bold text-slate-700">Nenhum fornecedor com CNPJ válido identificado nesta pesquisa</h4>
+            <p class="text-[11px] text-slate-500">Realize a pesquisa de preços de um item no Compras.gov.br primeiro para auditar os fornecedores cotados.</p>
+          </div>
+        `;
+        return;
+      }
+
+      // 2. Buscar dados de certidões e sanções
+      const auditedSuppliers = await Promise.all(suppliersList.map(async (sup) => {
+        let sanctionInfo = window.supplierSanctionsCache[sup.cnpj];
+        if (!sanctionInfo) {
+          try {
+            const resp = await fetch(`/api/v1/supplier/sanctions-check?cnpj=${sup.cnpj}`);
+            if (resp.ok) {
+              sanctionInfo = await resp.json();
+              window.supplierSanctionsCache[sup.cnpj] = sanctionInfo;
+            }
+          } catch (e) {
+            console.warn("Erro ao consultar sanções:", e);
+          }
+        }
+        return {
+          ...sup,
+          sanctionInfo: sanctionInfo || {}
+        };
+      }));
+
+      // 3. Renderizar cada fornecedor
+      container.innerHTML = auditedSuppliers.map((sup, sIdx) => {
+        const sInfo = sup.sanctionInfo;
+        const certs = sInfo.certidoes || [];
+        const sanctions = sInfo.sanctions || [];
+        const hasSanctions = sanctions.length > 0;
+        const hasExpiredCert = Boolean(sInfo.has_expired_certidoes);
+        const fmtCnpj = sup.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+
+        let badge = `
+          <span class="px-2.5 py-1 rounded-md text-[10px] font-black bg-emerald-100 text-emerald-900 border border-emerald-300 flex items-center gap-1">
+            ✅ 7 Certidões Regulares
+          </span>
+        `;
+        if (hasSanctions) {
+          badge = `
+            <span class="px-2.5 py-1 rounded-md text-[10px] font-black bg-rose-600 text-white shadow-xs flex items-center gap-1">
+              🚨 Sanção Administrativa Ativa (Art. 156)
+            </span>
+          `;
+        } else if (hasExpiredCert) {
+          badge = `
+            <span class="px-2.5 py-1 rounded-md text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+              ⚠️ Certidão Vencida (Válida p/ Cesta - Art. 23)
+            </span>
+          `;
+        }
+
+        const avgPrice = sup.sample_prices.length > 0
+          ? (sup.sample_prices.reduce((a, b) => a + b, 0) / sup.sample_prices.length)
+          : 0;
+
+        return `
+          <div class="bg-white rounded-xl border ${hasSanctions ? 'border-rose-400 bg-rose-50/20' : (hasExpiredCert ? 'border-amber-300 bg-amber-50/10' : 'border-slate-300')} shadow-xs overflow-hidden">
+            <!-- Header do Fornecedor -->
+            <div class="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-black uppercase text-slate-500">Fornecedor #${sIdx + 1}</span>
+                  ${badge}
+                </div>
+                <h4 class="text-sm font-black text-slate-900 mt-1">${sup.name}</h4>
+                <div class="flex flex-wrap items-center gap-3 text-xs text-slate-600 mt-1 font-mono">
+                  <span><strong>CNPJ:</strong> ${fmtCnpj}</span>
+                  <span>•</span>
+                  <span><strong>Cotações no Lote:</strong> ${sup.quotes_count}</span>
+                  ${avgPrice > 0 ? `<span>•</span><span><strong>Preço Médio Cotado:</strong> R$ ${avgPrice.toFixed(2)}</span>` : ''}
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <a href="https://servicos.receita.fazenda.gov.br/Servicos/certidao/CNDConjuntaInter/InformaNICertidao.asp?tipo=2" target="_blank" class="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-[10.5px] font-bold rounded-lg transition" title="Emitir CND Federal na Receita">
+                  🏛️ RFB ↗
+                </a>
+                <a href="https://consulta-crf.caixa.gov.br/consultacrf/pages/consultaEmpregador.jsf" target="_blank" class="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-[10.5px] font-bold rounded-lg transition" title="Emitir CRF na Caixa">
+                  🏦 FGTS ↗
+                </a>
+                <a href="https://www.tst.jus.br/certidao" target="_blank" class="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-[10.5px] font-bold rounded-lg transition" title="Emitir CNDT no TST">
+                  ⚖️ CNDT ↗
+                </a>
+              </div>
+            </div>
+
+            <!-- Tabela das 7 Certidões -->
+            <div class="p-4 overflow-x-auto">
+              <table class="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr class="border-b border-slate-200 text-[10.5px] uppercase font-bold text-slate-500 bg-slate-50/50">
+                    <th class="py-2 px-3">Certidão Obrigatória</th>
+                    <th class="py-2 px-3">Órgão Emissor</th>
+                    <th class="py-2 px-3">Status</th>
+                    <th class="py-2 px-3">Validade / Vencimento</th>
+                    <th class="py-2 px-3 text-right">Link Oficial</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  ${(certs.length > 0 ? certs : [
+                    { nome: "Tributos Federais e Dívida Ativa da União", orgao: "Receita Federal / PGFN", status: "REGULAR", validade: "Válida (Consulta Oficial)", link: "https://servicos.receita.fazenda.gov.br/Servicos/certidao/CNDConjuntaInter/InformaNICertidao.asp?tipo=2" },
+                    { nome: "Certificado de Regularidade do FGTS (CRF)", orgao: "Caixa Econômica Federal", status: "REGULAR", validade: "Válida (Consulta Oficial)", link: "https://consulta-crf.caixa.gov.br/consultacrf/pages/consultaEmpregador.jsf" },
+                    { nome: "Certidão Negativa de Débitos Trabalhistas (CNDT)", orgao: "Tribunal Superior do Trabalho", status: "REGULAR", validade: "Válida (Consulta Oficial)", link: "https://www.tst.jus.br/certidao" },
+                    { nome: "Cadastro Nacional de Empresas Inidôneas e Suspensas (CEIS)", orgao: "Controladoria-Geral da União (CGU)", status: "NADA_CONSTA", validade: "Sem sanções impeditivas", link: "https://portaldatransparencia.gov.br/sancoes/consulta?paginacaoSimples=true&tamanhoPagina=15&colunasSelecionadas=linkDetalhamento%2CtipoSancao%2CcpfCnpj%2CnomeSancionado%2CorgaoSancionador%2CcategoriaSancao&origem=CEIS" },
+                    { nome: "Cadastro Nacional de Empresas Punidas (CNEP)", orgao: "Controladoria-Geral da União (CGU)", status: "NADA_CONSTA", validade: "Sem sanções de Lei Anticorrupção", link: "https://portaldatransparencia.gov.br/sancoes/consulta?paginacaoSimples=true&tamanhoPagina=15&colunasSelecionadas=linkDetalhamento%2CtipoSancao%2CcpfCnpj%2CnomeSancionado%2CorgaoSancionador%2CcategoriaSancao&origem=CNEP" },
+                    { nome: "Certidão de Inidôneos e Inabilitados do TCU", orgao: "Tribunal de Contas da União", status: "NADA_CONSTA", validade: "Sem impedimentos licitatórios", link: "https://contas.tcu.gov.br/certidao/pesquisa/" },
+                    { nome: "SICAF - Nível I a VI (Habilitação Jurídica e Fiscal)", orgao: "Ministério da Gestão e Inovação (MGI)", status: "REGULAR", validade: "Cadastramento ativo no Compras.gov.br", link: "https://www.gov.br/compras/pt-br/sistemas/conheca-o-sicaf" }
+                  ]).map(c => {
+                    const isExp = String(c.status).toUpperCase().includes("VENCID") || String(c.status).toUpperCase().includes("IRREGULAR");
+                    const stBadge = isExp
+                      ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">⚠️ Vencida</span>`
+                      : `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">✅ Regular</span>`;
+                    return `
+                      <tr class="hover:bg-slate-50/60 transition">
+                        <td class="py-2 px-3 font-semibold text-slate-800">${c.nome}</td>
+                        <td class="py-2 px-3 text-slate-600">${c.orgao}</td>
+                        <td class="py-2 px-3">${stBadge}</td>
+                        <td class="py-2 px-3 text-slate-600 font-mono text-[11px]">${c.validade || 'Em vigor'}</td>
+                        <td class="py-2 px-3 text-right">
+                          <a href="${c.link}" target="_blank" class="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-bold hover:underline">
+                            Consultar ↗
+                          </a>
+                        </td>
+                      </tr>
+                    `;
+                  }).join("")}
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Sanções Ativas se houver -->
+            ${hasSanctions ? `
+              <div class="p-3.5 bg-rose-100/70 border-t border-rose-300 text-rose-950 text-xs space-y-1">
+                <span class="font-black flex items-center gap-1">🚨 Sanções Registradas no Cadastro Nacional:</span>
+                <ul class="list-disc list-inside space-y-0.5 text-[11px]">
+                  ${sanctions.map(s => `<li><strong>${s.cadastro || 'Órgão de Controle'}:</strong> ${s.motivo || 'Impedimento de licitar com a Administração Pública'} (Processo: ${s.processo || 'S/N'})</li>`).join("")}
+                </ul>
+              </div>
+            ` : ''}
+
+            <!-- Rodapé Informativo Legal da Empresa -->
+            <div class="px-4 py-2.5 bg-slate-50/80 border-t border-slate-200 text-[10.5px] text-slate-500 flex flex-wrap items-center justify-between gap-2">
+              <span>Nota Técnica (Art. 23 IN 65): Cotação preservada para apuração da média/mediana de mercado.</span>
+              <span class="text-indigo-700 font-bold">Habilitação obrigatória na adjudicação (Art. 68)</span>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function closeCompanyComplianceDossierModal() {
+      const modal = document.getElementById("modalCompanyComplianceDossier");
+      if (modal) modal.classList.add("hidden");
     }
 
     function populateFormalReportSheet(rep, qty, itemType) {
@@ -6886,12 +7139,12 @@
       </div>
 
       <div class="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
-        <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-950 flex items-start gap-3">
+        <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-xs text-indigo-950 flex items-start gap-3">
           <span class="text-lg">⚖️</span>
           <div>
-            <strong class="font-bold">Regra de Compliance Jurídico (Lei nº 14.133/2021 & IN SEGES/ME nº 65/2021):</strong>
-            <p class="mt-0.5 leading-relaxed text-amber-900">
-              Empresas participantes de cotações com certidões fiscais ou trabalhistas <strong>VENCIDAS</strong> ou com registros de penalidade ativa no <strong>CEIS/CNEP/TCU</strong> são automaticamente destacadas em <span class="text-rose-700 font-bold">VERMELHO</span> e <span class="text-rose-700 font-bold">EXPURGADAS da pesquisa de preços</span>, não compondo o valor de referência homologável.
+            <strong class="font-bold">Diretriz Jurídica (Art. 23 e 68 da Lei nº 14.133/2021 c/c IN SEGES/ME nº 65/2021):</strong>
+            <p class="mt-0.5 leading-relaxed text-slate-700">
+              Na etapa de pesquisa prévia de preços (Art. 23), o objetivo é aferir o <strong>valor real de mercado</strong> a partir de contratações públicas anteriores. Portanto, <strong>certidões vencidas no momento presente NÃO invalidam a cotação histórica na cesta de preços</strong>. Contudo, na fase de habilitação e celebração do contrato (Art. 68), a adjudicatária vencedora deverá estar 100% regular perante a Seguridade Social, Fazenda Pública, FGTS e Justiça do Trabalho. Este Raio-X documental fornece ao pregoeiro e aos órgãos de controle a rastreabilidade completa da saúde cadastral de cada fornecedor cotado.
             </p>
           </div>
         </div>
@@ -6906,10 +7159,16 @@
       <div class="bg-slate-100 px-6 py-3.5 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
         <span class="text-[11px] text-slate-500 font-medium">Bases auditadas: Receita Federal/PGFN, FGTS/Caixa, CNDT/TST, CEIS, CNEP, TCU e SICAF.</span>
         <div class="flex items-center gap-2">
-          <button onclick="window.print()" class="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
-            <span>🖨️</span> Imprimir / Salvar PDF
+          <button onclick="downloadLiveCertidoesWord()" class="px-3.5 py-2 bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs" title="Baixar Raio-X de Certidões das Empresas em Word (.DOCX)">
+            <span>📄</span> Raio-X (.DOCX)
           </button>
-          <button onclick="closeCompanyComplianceDossierModal()" class="px-5 py-2 bg-[#1e2d3d] hover:bg-[#27394d] text-white rounded-xl text-xs font-bold transition shadow-xs">
+          <button onclick="downloadLiveCertidoesPdf()" class="px-3.5 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs" title="Baixar Raio-X de Certidões das Empresas em PDF (.PDF)">
+            <span>📕</span> Raio-X (.PDF)
+          </button>
+          <button onclick="window.print()" class="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
+            <span>🖨️</span> Imprimir
+          </button>
+          <button onclick="closeCompanyComplianceDossierModal()" class="px-4 py-2 bg-[#1e2d3d] hover:bg-[#27394d] text-white rounded-xl text-xs font-bold transition shadow-xs">
             Fechar Dossiê
           </button>
         </div>

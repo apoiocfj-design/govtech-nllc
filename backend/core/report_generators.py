@@ -11,7 +11,7 @@ import re
 import zipfile
 import json
 import math
-from datetime import datetime, timezone
+from datetime import datetime, date, timezone
 from typing import Dict, Any, List, Optional
 from PIL import Image as PILImage, ImageDraw as PILImageDraw, ImageFont as PILImageFont
 import qrcode
@@ -1935,6 +1935,15 @@ def build_batch_zip_bytes(
                 just_pdf = build_in65_justificativa_pdf_bytes(rep, qty, om_name=om_name, ordenador_nome=ordenador_nome)
                 zf.writestr(f"{folder}/Justificativa_Circunstanciada_Art6_IN65_{prefix}_{code}.pdf", just_pdf)
 
+            # Raio-X de Certidões das Empresas Cotadas (Word e PDF)
+            try:
+                cert_docx = build_supplier_compliance_dossier_docx_bytes(rep, om_name=om_name, elaborador_nome=elaborador_nome, ordenador_nome=ordenador_nome)
+                zf.writestr(f"{folder}/RaioX_Certidoes_Empresas_{prefix}_{code}.docx", cert_docx)
+                cert_pdf = build_supplier_compliance_dossier_pdf_bytes(rep, om_name=om_name, elaborador_nome=elaborador_nome, ordenador_nome=ordenador_nome)
+                zf.writestr(f"{folder}/RaioX_Certidoes_Empresas_{prefix}_{code}.pdf", cert_pdf)
+            except Exception as _e_cert:
+                pass
+
             # Inclusão dos Editais/Documentos PNCP de cada cotação do item
             quotes = rep.get("valid_quotes", [])
             seen_item_keys = set()
@@ -2148,4 +2157,551 @@ def build_audit_certificate_pdf_bytes(
 
     doc.build(elements)
     return buf.getvalue()
+
+
+# =============================================================================
+# DOSSIÊ CONSOLIDADO DE REGULARIDADE E CERTIDÕES DOS FORNECEDORES (RAIO-X ART. 68)
+# =============================================================================
+
+def _extract_unique_suppliers_from_report(report: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Extrai lista de fornecedores distintos auditados a partir do relatório de pesquisa."""
+    raw_quotes = (
+        (report.get("valid_quotes") or []) +
+        (report.get("purged_quotes") or []) +
+        (report.get("quotes") or [])
+    )
+    seen = {}
+    for q in raw_quotes:
+        cnpj_raw = str(q.get("supplier_cnpj") or "")
+        clean = re.sub(r"\D", "", cnpj_raw)
+        if clean and len(clean) == 14 and clean not in seen:
+            seen[clean] = {
+                "cnpj_clean": clean,
+                "cnpj": q.get("supplier_cnpj") or clean,
+                "name": q.get("supplier_name") or "Fornecedor",
+                "price": float(q.get("unit_price") or 0.0),
+                "buyer_uasg": q.get("buyer_uasg") or "—",
+                "buyer_uf": q.get("buyer_uf") or "BR",
+                "purchase_num": q.get("purchase_number_year") or "—",
+                "is_selected": q.get("is_selected", True),
+                "is_outlier": q.get("is_outlier", False),
+            }
+    return list(seen.values())
+
+
+def build_supplier_compliance_dossier_docx_bytes(
+    report: Dict[str, Any],
+    om_name: str = "MARINHA DO BRASIL",
+    elaborador_nome: str = "ENCARREGADO DO SETOR DE OBTENÇÃO",
+    ordenador_nome: str = "ORDENADOR DE DESPESAS",
+) -> bytes:
+    """
+    Gera em Microsoft Word (.docx) o Dossiê / Relatório Raio-X de Regularidade e Certidões
+    dos Fornecedores participantes da pesquisa de preços (Art. 68 e 156 da Lei nº 14.133/2021).
+    """
+    try:
+        from sanctions_checker import check_supplier_full_compliance
+    except ImportError:
+        from core.sanctions_checker import check_supplier_full_compliance
+
+    doc = docx.Document()
+    for section in doc.sections:
+        section.top_margin = Inches(0.8)
+        section.bottom_margin = Inches(0.8)
+        section.left_margin = Inches(0.8)
+        section.right_margin = Inches(0.8)
+
+    # 1. Cabeçalho Oficial com Brasão
+    if os.path.exists(BRASAO_PATH):
+        p_img = doc.add_paragraph()
+        p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_img.paragraph_format.space_after = Pt(4)
+        run_img = p_img.add_run()
+        run_img.add_picture(BRASAO_PATH, width=Inches(1.05))
+
+    p_head = doc.add_paragraph()
+    p_head.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_head.paragraph_format.line_spacing = 1.05
+    p_head.paragraph_format.space_after = Pt(12)
+
+    lines = [
+        ("REPÚBLICA FEDERATIVA DO BRASIL", 10.5, True),
+        ("MINISTÉRIO DA DEFESA", 10, True),
+        ("COMANDO DA MARINHA", 10, True),
+        (om_name.upper(), 9.5, False),
+        ("SETOR DE OBTENÇÃO E PREÇOS / ASSESSORIA DE COMPLIANCE", 9, False),
+    ]
+    for text, sz, bold in lines:
+        r = p_head.add_run(f"{text}\n")
+        r.font.name = "Calibri"
+        r.font.size = Pt(sz)
+        r.font.bold = bold
+        r.font.color.rgb = RGBColor(15, 23, 42)
+
+    # Título do Relatório
+    p_tit = doc.add_paragraph()
+    p_tit.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_tit.paragraph_format.space_before = Pt(4)
+    p_tit.paragraph_format.space_after = Pt(2)
+    r_tit = p_tit.add_run("DOSSIÊ DE REGULARIDADE FISCAL, TRABALHISTA E RISCO CAUTELAR\n")
+    r_tit.font.name = "Calibri"
+    r_tit.font.size = Pt(13)
+    r_tit.font.bold = True
+    r_tit.font.color.rgb = RGBColor(15, 23, 42)
+
+    p_sub = doc.add_paragraph()
+    p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_sub.paragraph_format.space_after = Pt(14)
+    r_sub = p_sub.add_run("AUDITORIA CONJUNTA DE FORNECEDORES (RAIO-X DE CERTIDÕES E SANÇÕES)\nFundamentação: Art. 68 e 156 da Lei nº 14.133/2021 • IN SEGES/ME nº 65/2021")
+    r_sub.font.name = "Calibri"
+    r_sub.font.size = Pt(9.5)
+    r_sub.font.italic = True
+    r_sub.font.color.rgb = RGBColor(71, 85, 105)
+
+    # 2. Identificação do Objeto
+    code = report.get("catmat_catser_code") or "—"
+    item_type = str(report.get("item_type") or "MATERIAL").upper()
+    prefix = "CATSER" if item_type == "SERVICO" else "CATMAT"
+    desc = report.get("item_description") or "Item de Aquisição / Registro de Preços"
+    unit_price = float(report.get("final_estimated_unit_price") or 0.0)
+
+    p_s1 = doc.add_paragraph()
+    p_s1.paragraph_format.space_before = Pt(8)
+    p_s1.paragraph_format.space_after = Pt(3)
+    r_s1 = p_s1.add_run("1. IDENTIFICAÇÃO DO PROCESSO E DO OBJETO AUDITADO")
+    r_s1.font.bold = True
+    r_s1.font.size = Pt(11)
+
+    t_obj = doc.add_table(rows=3, cols=2)
+    t_obj.alignment = WD_TABLE_ALIGNMENT.CENTER
+    obj_widths = (Inches(2.2), Inches(4.8))
+    obj_data = [
+        ("Código do Catálogo:", f"{prefix} {code}"),
+        ("Descrição Oficial do Objeto:", desc),
+        ("Preço Unitário Homologável:", f"{_format_brl(unit_price)} (Ref. IN 65/2021)"),
+    ]
+    for r_i, (lbl, val) in enumerate(obj_data):
+        row = t_obj.rows[r_i]
+        c0, c1 = row.cells[0], row.cells[1]
+        c0.width, c1.width = obj_widths[0], obj_widths[1]
+        set_cell_background(c0, "F1F5F9")
+        set_cell_margins(c0, 40, 40, 60, 60)
+        set_cell_margins(c1, 40, 40, 60, 60)
+        p0, p1 = c0.paragraphs[0], c1.paragraphs[0]
+        r0 = p0.add_run(lbl)
+        r0.font.bold = True
+        r0.font.size = Pt(9)
+        r1 = p1.add_run(val)
+        r1.font.size = Pt(9)
+
+    # 3. Nota Técnica Jurídica: Art. 23 (Pesquisa de Preços) vs Art. 68 (Habilitação Contratual)
+    p_s2 = doc.add_paragraph()
+    p_s2.paragraph_format.space_before = Pt(14)
+    p_s2.paragraph_format.space_after = Pt(4)
+    r_s2 = p_s2.add_run("2. NOTA TÉCNICA E JURISPRUDÊNCIA DE GOVERNANÇA (LEI Nº 14.133/2021)")
+    r_s2.font.bold = True
+    r_s2.font.size = Pt(11)
+
+    p_nota = doc.add_paragraph()
+    p_nota.paragraph_format.line_spacing = 1.15
+    p_nota.paragraph_format.space_after = Pt(10)
+    r_nota = p_nota.add_run(
+        "A presente auditoria preventiva analisa a conformidade fiscal e trabalhista das empresas que compõem o banco de dados "
+        "de preços públicos. Cumpre destacar as diretrizes aplicáveis:\n\n"
+        "a) Fase Preparatória / Pesquisa de Preços (Art. 23 da Lei nº 14.133/2021 e IN SEGES/ME nº 65/2021): As cotações "
+        "originadas de compras públicas homologadas pretéritas retratam a realidade fática do mercado econômico. O fato de uma "
+        "empresa outrora vencedora ter sua certidão vencida posteriormente à execução contratual não contamina a veracidade do preço "
+        "praticado perante o Poder Público, mantendo-se a validade da cotação na cesta de referências.\n\n"
+        "b) Fase de Habilitação / Contratação (Art. 68 e 156): A regularidade fiscal, social e trabalhista perante a Fazenda Nacional, "
+        "Seguridade Social (FGTS), Justiça do Trabalho (CNDT) e ausência de sanções nos cadastros CEIS/CNEP/TCU são requisitos cogentes "
+        "e eliminatórios, devendo ser integralmente comprovados pela licitante adjudicatária no momento da contratação."
+    )
+    r_nota.font.size = Pt(9)
+    r_nota.font.color.rgb = RGBColor(51, 65, 85)
+
+    # 4. Quadro Resumo de Fornecedores Auditados
+    suppliers = _extract_unique_suppliers_from_report(report)
+
+    p_s3 = doc.add_paragraph()
+    p_s3.paragraph_format.space_before = Pt(12)
+    p_s3.paragraph_format.space_after = Pt(4)
+    r_s3 = p_s3.add_run(f"3. QUADRO RESUMO DE REGULARIDADE DOS FORNECEDORES ({len(suppliers)} EMPRESA(S) AUDITADA(S))")
+    r_s3.font.bold = True
+    r_s3.font.size = Pt(11)
+
+    t_sum = doc.add_table(rows=1 + len(suppliers), cols=5)
+    t_sum.alignment = WD_TABLE_ALIGNMENT.CENTER
+    sum_widths = (Inches(0.4), Inches(2.8), Inches(1.2), Inches(1.4), Inches(1.2))
+    sum_headers = ["Nº", "Fornecedor / CNPJ", "Preço Cotado", "Regularidade Fiscal", "Sanções Ativas"]
+    for c_i, h in enumerate(sum_headers):
+        cell = t_sum.rows[0].cells[c_i]
+        cell.width = sum_widths[c_i]
+        set_cell_background(cell, "1E293B")
+        set_cell_margins(cell, 60, 60, 50, 50)
+        p = cell.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        r = p.add_run(h)
+        r.font.bold = True
+        r.font.size = Pt(8.5)
+        r.font.color.rgb = RGBColor(255, 255, 255)
+
+    compliance_results = {}
+    for idx, s in enumerate(suppliers):
+        c_res = check_supplier_full_compliance(s["cnpj_clean"], s["name"])
+        compliance_results[s["cnpj_clean"]] = c_res
+        row = t_sum.rows[1 + idx]
+        bg = "FFFFFF" if idx % 2 == 0 else "F8FAFC"
+
+        has_sanctions = c_res.get("has_sanctions", False)
+        has_expired = c_res.get("has_expired_certidoes", False)
+
+        status_fiscal_txt = "REGULAR" if not has_expired else "CERTIDÃO VENCIDA"
+        status_sancao_txt = "NADA CONSTA" if not has_sanctions else "SANÇÃO ATIVA"
+
+        vals = [
+            f"{idx + 1:02d}",
+            f"{s['name'][:35]}\nCNPJ: {s['cnpj']}",
+            _format_brl(s["price"]),
+            status_fiscal_txt,
+            status_sancao_txt,
+        ]
+        for c_i, v in enumerate(vals):
+            cell = row.cells[c_i]
+            cell.width = sum_widths[c_i]
+            set_cell_background(cell, bg)
+            set_cell_margins(cell, 50, 50, 50, 50)
+            p = cell.paragraphs[0]
+            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if c_i == 2 else (WD_ALIGN_PARAGRAPH.CENTER if c_i in (0, 3, 4) else WD_ALIGN_PARAGRAPH.LEFT)
+            r = p.add_run(v)
+            r.font.size = Pt(8.5)
+            if c_i == 3:
+                r.font.bold = True
+                r.font.color.rgb = RGBColor(22, 101, 52) if not has_expired else RGBColor(180, 83, 9)
+            elif c_i == 4:
+                r.font.bold = True
+                r.font.color.rgb = RGBColor(22, 101, 52) if not has_sanctions else RGBColor(190, 18, 60)
+
+    # 5. Fichas Detalhadas das 7 Certidões por Empresa
+    p_s4 = doc.add_paragraph()
+    p_s4.paragraph_format.space_before = Pt(16)
+    p_s4.paragraph_format.space_after = Pt(4)
+    r_s4 = p_s4.add_run("4. RAIO-X INDIVIDUAL DE CERTIDÕES E CONSULTAS EM TEMPO REAL")
+    r_s4.font.bold = True
+    r_s4.font.size = Pt(11)
+
+    for idx, s in enumerate(suppliers):
+        c_res = compliance_results.get(s["cnpj_clean"]) or check_supplier_full_compliance(s["cnpj_clean"], s["name"])
+        dossie = c_res.get("dossie_certidoes", [])
+
+        # Bloco da Empresa
+        p_emp = doc.add_paragraph()
+        p_emp.paragraph_format.space_before = Pt(10)
+        p_emp.paragraph_format.space_after = Pt(2)
+        r_emp = p_emp.add_run(f"4.{idx + 1} Fornecedor: {s['name']} (CNPJ: {s['cnpj']})")
+        r_emp.font.bold = True
+        r_emp.font.size = Pt(10)
+        r_emp.font.color.rgb = RGBColor(30, 41, 59)
+
+        # Tabela das 7 Certidões
+        t_cert = doc.add_table(rows=1 + len(dossie), cols=5)
+        t_cert.alignment = WD_TABLE_ALIGNMENT.CENTER
+        cert_widths = (Inches(2.5), Inches(1.5), Inches(0.9), Inches(1.1), Inches(1.0))
+        cert_headers = ["Certidão / Registro Obrigatório", "Órgão Emissor", "Situação", "Validade / Controle", "Verificação"]
+        for c_i, h in enumerate(cert_headers):
+            cell = t_cert.rows[0].cells[c_i]
+            cell.width = cert_widths[c_i]
+            set_cell_background(cell, "334155")
+            set_cell_margins(cell, 40, 40, 40, 40)
+            p = cell.paragraphs[0]
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            r = p.add_run(h)
+            r.font.bold = True
+            r.font.size = Pt(8)
+            r.font.color.rgb = RGBColor(255, 255, 255)
+
+        for c_idx, cert in enumerate(dossie):
+            row = t_cert.rows[1 + c_idx]
+            bg = "FFFFFF" if c_idx % 2 == 0 else "F8FAFC"
+            is_venc = cert.get("is_vencida", False)
+            status_txt = cert.get("status", "REGULAR")
+
+            vals = [
+                cert.get("nome", ""),
+                cert.get("orgao", ""),
+                status_txt,
+                f"{cert.get('data_validade', '')}\n{cert.get('codigo_controle', '')}",
+            ]
+            for col_i, v in enumerate(vals):
+                cell = row.cells[col_i]
+                cell.width = cert_widths[col_i]
+                set_cell_background(cell, bg)
+                set_cell_margins(cell, 40, 40, 40, 40)
+                p = cell.paragraphs[0]
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER if col_i in (2, 3) else WD_ALIGN_PARAGRAPH.LEFT
+                r = p.add_run(v)
+                r.font.size = Pt(7.5)
+                if col_i == 2:
+                    r.font.bold = True
+                    r.font.color.rgb = RGBColor(190, 18, 60) if is_venc else RGBColor(22, 101, 52)
+
+            # Coluna 5: QR Code + Link Clicável
+            cell_qr = row.cells[4]
+            cell_qr.width = cert_widths[4]
+            set_cell_background(cell_qr, bg)
+            set_cell_margins(cell_qr, 30, 30, 30, 30)
+            p_qr = cell_qr.paragraphs[0]
+            p_qr.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            link_url = cert.get("link_oficial") or "https://portaldatransparencia.gov.br"
+            try:
+                qr_bytes = generate_qr_code_bytes(link_url, box_size=2)
+                p_qr.add_run().add_picture(io.BytesIO(qr_bytes), width=Inches(0.55))
+            except Exception:
+                pass
+            p_lnk = cell_qr.add_paragraph()
+            p_lnk.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p_lnk.paragraph_format.space_before = Pt(0)
+            add_docx_hyperlink(p_lnk, link_url, "🔗 Validar", color="0284C7", underline=True)
+
+    # 6. Fechamento e Assinaturas
+    p_sig_block = doc.add_paragraph()
+    p_sig_block.paragraph_format.space_before = Pt(20)
+    p_sig_block.paragraph_format.space_after = Pt(14)
+    mes_ext = _get_mes_extenso(date.today().month)
+    r_dt = p_sig_block.add_run(f"Juazeiro - BA, {date.today().day} de {mes_ext} de {date.today().year}.\n\n")
+    r_dt.font.size = Pt(9.5)
+
+    t_sigs = doc.add_table(rows=1, cols=2)
+    t_sigs.alignment = WD_TABLE_ALIGNMENT.CENTER
+    s_widths = (Inches(3.5), Inches(3.5))
+    sigs = [
+        (elaborador_nome.upper(), "ENCARREGADO DO SETOR DE OBTENÇÃO / AGENTE DE CONTRATAÇÃO"),
+        (ordenador_nome.upper(), "ORDENADOR DE DESPESAS / AUTORIDADE COMPETENTE"),
+    ]
+    for i, (nome_cargo, cargo_tit) in enumerate(sigs):
+        cell = t_sigs.rows[0].cells[i]
+        cell.width = s_widths[i]
+        set_cell_margins(cell, 80, 80, 40, 40)
+        p = cell.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.line_spacing = 1.1
+        r_line = p.add_run("_________________________________________\n")
+        r_line.font.bold = True
+        r_n = p.add_run(f"{nome_cargo}\n")
+        r_n.font.bold = True
+        r_n.font.size = Pt(9)
+        r_c = p.add_run(cargo_tit)
+        r_c.font.size = Pt(8)
+        r_c.font.color.rgb = RGBColor(71, 85, 105)
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+def build_supplier_compliance_dossier_pdf_bytes(
+    report: Dict[str, Any],
+    om_name: str = "MARINHA DO BRASIL",
+    elaborador_nome: str = "ENCARREGADO DO SETOR DE OBTENÇÃO",
+    ordenador_nome: str = "ORDENADOR DE DESPESAS",
+) -> bytes:
+    """
+    Gera em PDF A4 oficial o Dossiê / Relatório Raio-X de Regularidade e Certidões
+    dos Fornecedores participantes da pesquisa de preços (Art. 68 e 156 da Lei nº 14.133/2021).
+    """
+    try:
+        from sanctions_checker import check_supplier_full_compliance
+    except ImportError:
+        from core.sanctions_checker import check_supplier_full_compliance
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=1.5 * cm,
+        rightMargin=1.5 * cm,
+        topMargin=1.2 * cm,
+        bottomMargin=1.2 * cm,
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("DossierTitle", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=10.5, leading=12.5, alignment=1, textColor=colors.HexColor("#0f172a"))
+    sub_style = ParagraphStyle("DossierSub", parent=styles["Normal"], fontName="Helvetica", fontSize=8, leading=10, alignment=1, textColor=colors.HexColor("#475569"))
+    sec_title = ParagraphStyle("DossierSec", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=9.5, leading=12, textColor=colors.HexColor("#1e293b"))
+    body_style = ParagraphStyle("DossierBody", parent=styles["Normal"], fontName="Helvetica", fontSize=7.5, leading=10, textColor=colors.HexColor("#334155"))
+    cell_hdr = ParagraphStyle("DossierCellHdr", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=7, leading=8.5, alignment=1, textColor=colors.white)
+    cell_txt = ParagraphStyle("DossierCellTxt", parent=styles["Normal"], fontName="Helvetica", fontSize=6.8, leading=8.2, textColor=colors.HexColor("#0f172a"))
+    cell_center = ParagraphStyle("DossierCellCenter", parent=styles["Normal"], fontName="Helvetica", fontSize=6.8, leading=8.2, alignment=1, textColor=colors.HexColor("#0f172a"))
+    cell_right = ParagraphStyle("DossierCellRight", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=7, leading=8.5, alignment=2, textColor=colors.HexColor("#0f172a"))
+
+    elements = []
+
+    # 1. Brasão e Cabeçalho
+    if os.path.exists(BRASAO_PATH):
+        elements.append(RLImage(BRASAO_PATH, width=2.2 * cm, height=2.2 * cm))
+        elements.append(Spacer(1, 3))
+
+    header_p = (
+        "<b>REPÚBLICA FEDERATIVA DO BRASIL</b><br/>"
+        "<b>MINISTÉRIO DA DEFESA • COMANDO DA MARINHA</b><br/>"
+        f"<b>{om_name.upper()}</b><br/>"
+        "<font size='6.5' color='#475569'>SETOR DE OBTENÇÃO E PREÇOS • ASSESSORIA DE COMPLIANCE</font>"
+    )
+    elements.append(Paragraph(header_p, title_style))
+    elements.append(Spacer(1, 6))
+
+    tit_p = (
+        "<b>DOSSIÊ CONSOLIDADO DE REGULARIDADE FISCAL, TRABALHISTA E RISCO CAUTELAR</b><br/>"
+        "<font size='7' color='#475569'><i>Auditoria Conjunta de Fornecedores da Cesta de Preços — Art. 68 e 156 da Lei nº 14.133/2021</i></font>"
+    )
+    elements.append(Paragraph(tit_p, title_style))
+    elements.append(Spacer(1, 8))
+
+    # 2. Dados do Objeto
+    code = report.get("catmat_catser_code") or "—"
+    item_type = str(report.get("item_type") or "MATERIAL").upper()
+    prefix = "CATSER" if item_type == "SERVICO" else "CATMAT"
+    desc = report.get("item_description") or "Item de Pesquisa"
+    unit_price = float(report.get("final_estimated_unit_price") or 0.0)
+
+    t_obj = Table([
+        [Paragraph(f"<b>Catálogo:</b> {prefix} {code}", cell_txt), Paragraph(f"<b>Preço Estimado (IN 65):</b> {_format_brl(unit_price)}", cell_txt)],
+        [Paragraph(f"<b>Objeto:</b> {desc}", cell_txt), Paragraph("<b>Fundamentação:</b> Lei 14.133/2021 e IN SEGES 65/2021", cell_txt)]
+    ], colWidths=[11.5 * cm, 6.5 * cm])
+    t_obj.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+        ("PADDING", (0, 0), (-1, -1), 3),
+    ]))
+    elements.append(t_obj)
+    elements.append(Spacer(1, 6))
+
+    # 3. Nota Técnica de Governança
+    nota_p = (
+        "<b>DIRETRIZ DE GOVERNANÇA (Art. 23 vs Art. 68):</b> Na pesquisa de preços preparatória, cotações extraídas do Compras.gov.br e PNCP "
+        "de contratações anteriores representam a realidade histórica de mercado, permanecendo válidas na amostra. "
+        "A exigência de regularidade fiscal, social e trabalhista plena (Art. 68) e ausência de sanções impeditivas (Art. 156) "
+        "será exigida formalmente da licitante vencedora na fase de habilitação/contratação."
+    )
+    elements.append(Paragraph(nota_p, body_style))
+    elements.append(Spacer(1, 8))
+
+    # 4. Tabela Resumo das Empresas
+    suppliers = _extract_unique_suppliers_from_report(report)
+    elements.append(Paragraph(f"<b>3. Quadro Resumo de Fornecedores ({len(suppliers)} empresa(s) auditada(s))</b>", sec_title))
+    elements.append(Spacer(1, 4))
+
+    sum_data = [
+        [
+            Paragraph("Nº", cell_hdr),
+            Paragraph("Fornecedor / CNPJ", cell_hdr),
+            Paragraph("Preço Cotado", cell_hdr),
+            Paragraph("Regularidade Fiscal", cell_hdr),
+            Paragraph("Sanções Ativas", cell_hdr),
+        ]
+    ]
+
+    compliance_results = {}
+    for idx, s in enumerate(suppliers):
+        c_res = check_supplier_full_compliance(s["cnpj_clean"], s["name"])
+        compliance_results[s["cnpj_clean"]] = c_res
+        has_sanctions = c_res.get("has_sanctions", False)
+        has_expired = c_res.get("has_expired_certidoes", False)
+
+        cor_fisc = "#166534" if not has_expired else "#b45309"
+        cor_sanc = "#166534" if not has_sanctions else "#be123c"
+
+        sum_data.append([
+            Paragraph(f"{idx+1:02d}", cell_center),
+            Paragraph(f"<b>{s['name'][:35]}</b><br/>CNPJ: {s['cnpj']}", cell_txt),
+            Paragraph(_format_brl(s["price"]), cell_right),
+            Paragraph(f"<font color='{cor_fisc}'><b>{'REGULAR' if not has_expired else 'CERTIDÃO VENCIDA'}</b></font>", cell_center),
+            Paragraph(f"<font color='{cor_sanc}'><b>{'NADA CONSTA' if not has_sanctions else 'SANÇÃO ATIVA'}</b></font>", cell_center),
+        ])
+
+    t_sum = Table(sum_data, colWidths=[1.0 * cm, 7.5 * cm, 3.0 * cm, 3.5 * cm, 3.0 * cm])
+    t_sum.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("PADDING", (0, 0), (-1, -1), 3),
+    ]))
+    elements.append(t_sum)
+    elements.append(Spacer(1, 10))
+
+    # 5. Fichas Individuais das 7 Certidões
+    elements.append(Paragraph("<b>4. Raio-X Individual de Certidões e Registros Oficiais</b>", sec_title))
+    elements.append(Spacer(1, 5))
+
+    for idx, s in enumerate(suppliers[:8]):
+        c_res = compliance_results.get(s["cnpj_clean"]) or check_supplier_full_compliance(s["cnpj_clean"], s["name"])
+        dossie = c_res.get("dossie_certidoes", [])
+
+        elements.append(Paragraph(f"<b>4.{idx+1} {s['name']} — CNPJ: {s['cnpj']}</b>", sec_title))
+        elements.append(Spacer(1, 3))
+
+        cert_data = [
+            [
+                Paragraph("Certidão / Registro Oficial", cell_hdr),
+                Paragraph("Órgão", cell_hdr),
+                Paragraph("Situação", cell_hdr),
+                Paragraph("Validade / Controle", cell_hdr),
+                Paragraph("Comprovação", cell_hdr),
+            ]
+        ]
+        for c in dossie:
+            is_v = c.get("is_vencida", False)
+            st_col = "#be123c" if is_v else "#166534"
+            st_txt = c.get("status", "REGULAR")
+            lnk = c.get("link_oficial") or "https://portaldatransparencia.gov.br"
+
+            try:
+                qr_b = generate_qr_code_bytes(lnk, box_size=2)
+                rl_qr = RLImage(io.BytesIO(qr_b), width=1.1 * cm, height=1.1 * cm)
+            except Exception:
+                rl_qr = Paragraph("QR", cell_center)
+
+            p_lnk = Paragraph(f"<font color='#0284c7' size='6'><u><a href='{lnk}'><b>🔗 Validar</b></a></u></font>", cell_center)
+
+            cert_data.append([
+                Paragraph(c.get("nome", ""), cell_txt),
+                Paragraph(c.get("orgao", ""), cell_txt),
+                Paragraph(f"<font color='{st_col}'><b>{st_txt}</b></font>", cell_center),
+                Paragraph(f"{c.get('data_validade', '')}<br/><font size='5.5' color='#64748b'>{c.get('codigo_controle', '')}</font>", cell_center),
+                [rl_qr, p_lnk],
+            ])
+
+        t_c = Table(cert_data, colWidths=[6.5 * cm, 3.8 * cm, 2.7 * cm, 3.0 * cm, 2.0 * cm])
+        t_c.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ALIGN", (4, 1), (4, -1), "CENTER"),
+            ("PADDING", (0, 0), (-1, -1), 2.5),
+        ]))
+        elements.append(t_c)
+        elements.append(Spacer(1, 6))
+
+    # 6. Assinaturas
+    elements.append(Spacer(1, 10))
+    mes_ext = _get_mes_extenso(date.today().month)
+    elements.append(Paragraph(f"Juazeiro - BA, {date.today().day} de {mes_ext} de {date.today().year}.", sub_style))
+    elements.append(Spacer(1, 12))
+
+    sig_data = [
+        [
+            Paragraph(f"____________________________________________<br/><b>{elaborador_nome.upper()}</b><br/><font size='6.5'>ENCARREGADO DO SETOR DE OBTENÇÃO</font>", sub_style),
+            Paragraph(f"____________________________________________<br/><b>{ordenador_nome.upper()}</b><br/><font size='6.5'>ORDENADOR DE DESPESAS</font>", sub_style),
+        ]
+    ]
+    t_sig = Table(sig_data, colWidths=[9.0 * cm, 9.0 * cm])
+    t_sig.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    elements.append(t_sig)
+
+    doc.build(elements)
+    return buf.getvalue()
+
 

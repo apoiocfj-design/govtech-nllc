@@ -47,6 +47,8 @@ from report_generators import (
     build_batch_zip_bytes,
     build_audit_certificate_pdf_bytes,
     generate_statistical_infographic,
+    build_supplier_compliance_dossier_docx_bytes,
+    build_supplier_compliance_dossier_pdf_bytes,
 )
 from pncp_extractor import (
     resolve_pncp_compra,
@@ -747,6 +749,84 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 self._send_json(500, {"error": str(exc)})
             return
 
+        # 9.1 Exportar Raio-X de Certidões das Empresas em Word (.DOCX)
+        if path.startswith("/api/v1/prices/export-certidoes-docx/"):
+            code_str = path.rstrip("/").split("/")[-1]
+            catalog_code = int(code_str) if code_str.isdigit() else 475109
+            supply_unit = qs.get("supply_unit", [""])[0]
+            item_type = qs.get("item_type", ["MATERIAL"])[0]
+            months_back = int(qs.get("months_back", ["12"])[0])
+            uf = qs.get("uf", [None])[0] or None
+            elaborador = qs.get("elaborador", ["ENCARREGADO DO SETOR DE OBTENÇÃO"])[0]
+            ordenador = qs.get("ordenador", ["ORDENADOR DE DESPESAS"])[0]
+            om_name = qs.get("om_name", ["MARINHA DO BRASIL"])[0]
+
+            try:
+                res = price_controller.execute_in65_research(
+                    catalog_code=catalog_code,
+                    target_supply_unit=supply_unit,
+                    item_type=item_type,
+                    months_back=months_back,
+                    uf=uf,
+                )
+                if res.get("status") != "SUCCESS":
+                    self._send_json(404, res)
+                    return
+                docx_bytes = build_supplier_compliance_dossier_docx_bytes(
+                    res["report"],
+                    om_name=om_name,
+                    elaborador_nome=elaborador,
+                    ordenador_nome=ordenador,
+                )
+                prefix = "CATSER" if item_type.upper() == "SERVICO" else "CATMAT"
+                self._send_binary(
+                    docx_bytes,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    f"RaioX_Certidoes_Empresas_{prefix}_{catalog_code}.docx",
+                )
+            except Exception as exc:
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        # 9.2 Exportar Raio-X de Certidões das Empresas em PDF A4 Oficial (.PDF)
+        if path.startswith("/api/v1/prices/export-certidoes-pdf/"):
+            code_str = path.rstrip("/").split("/")[-1]
+            catalog_code = int(code_str) if code_str.isdigit() else 475109
+            supply_unit = qs.get("supply_unit", [""])[0]
+            item_type = qs.get("item_type", ["MATERIAL"])[0]
+            months_back = int(qs.get("months_back", ["12"])[0])
+            uf = qs.get("uf", [None])[0] or None
+            elaborador = qs.get("elaborador", ["ENCARREGADO DO SETOR DE OBTENÇÃO"])[0]
+            ordenador = qs.get("ordenador", ["ORDENADOR DE DESPESAS"])[0]
+            om_name = qs.get("om_name", ["MARINHA DO BRASIL"])[0]
+
+            try:
+                res = price_controller.execute_in65_research(
+                    catalog_code=catalog_code,
+                    target_supply_unit=supply_unit,
+                    item_type=item_type,
+                    months_back=months_back,
+                    uf=uf,
+                )
+                if res.get("status") != "SUCCESS":
+                    self._send_json(404, res)
+                    return
+                pdf_bytes = build_supplier_compliance_dossier_pdf_bytes(
+                    res["report"],
+                    om_name=om_name,
+                    elaborador_nome=elaborador,
+                    ordenador_nome=ordenador,
+                )
+                prefix = "CATSER" if item_type.upper() == "SERVICO" else "CATMAT"
+                self._send_binary(
+                    pdf_bytes,
+                    "application/pdf",
+                    f"RaioX_Certidoes_Empresas_{prefix}_{catalog_code}.pdf",
+                )
+            except Exception as exc:
+                self._send_json(500, {"error": str(exc)})
+            return
+
         # 10. Resolução de Contratação no PNCP + Lista Oficial de Arquivos (Edital, TR, Termos)
         if path == "/api/v1/pncp/compra-info":
             chave = qs.get("chave", qs.get("idCompra", qs.get("codigo", [""])))[0]
@@ -1176,6 +1256,12 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 elif fmt == "just-pdf":
                     content = build_in65_justificativa_pdf_bytes(rep, quantity=quantity, om_name=om_name, ordenador_nome=ordenador)
                     ctype, fname = "application/pdf", f"Justificativa_Art6_IN65_{prefix}_{code}.pdf"
+                elif fmt in ("certidoes-docx", "certidoes_docx"):
+                    content = build_supplier_compliance_dossier_docx_bytes(rep, om_name=om_name, elaborador_nome=elaborador, ordenador_nome=ordenador)
+                    ctype, fname = "application/vnd.openxmlformats-officedocument.wordprocessingml.document", f"RaioX_Certidoes_Empresas_{prefix}_{code}.docx"
+                elif fmt in ("certidoes-pdf", "certidoes_pdf", "certidoes"):
+                    content = build_supplier_compliance_dossier_pdf_bytes(rep, om_name=om_name, elaborador_nome=elaborador, ordenador_nome=ordenador)
+                    ctype, fname = "application/pdf", f"RaioX_Certidoes_Empresas_{prefix}_{code}.pdf"
                 else:
                     content = build_in65_pdf_bytes(rep, quantity=quantity, om_name=om_name, elaborador_nome=elaborador, ordenador_nome=ordenador)
                     ctype, fname = "application/pdf", f"Relatorio_Pesquisa_Precos_{prefix}_{code}.pdf"
