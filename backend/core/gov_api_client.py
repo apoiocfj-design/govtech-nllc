@@ -145,18 +145,31 @@ class GovProcurementAPIClient:
     @staticmethod
     def parse_comprasnet_key_and_number(id_compra_item: str, fallback_id_compra: str = "") -> Tuple[str, str]:
         """
-        Decodifica a chave oficial de 22 dígitos do Compras.gov.br (`idCompraItem`):
+        Decodifica a chave oficial de 22 dígitos do Compras.gov.br (`idCompraItem`) ou 17 dígitos (`idCompra`).
         Estrutura SERPRO: UASG (6) + Modalidade (2) + Número da Compra (5) + Ano (4) + Item (5) = 22 dígitos.
+        Se idCompra vier com 16 dígitos (UASG iniciada em zero sem o dígito 0), efetua o padding com '0' à esquerda.
         Retorna: (chave_compra_17_digitos, numero_compra_ano_formatado ex: '00039/2026').
         """
-        raw = str(id_compra_item or fallback_id_compra or "").strip()
-        digits = re.sub(r"\D", "", raw)
-        if len(digits) >= 17:
-            chave_17 = digits[:17]
+        item_digits = re.sub(r"\D", "", str(id_compra_item or ""))
+        compra_digits = re.sub(r"\D", "", str(fallback_id_compra or ""))
+
+        # Se id_compra_item tiver >= 17 dígitos (chave completa do item com 22 ou 17 dígitos)
+        if len(item_digits) >= 17:
+            chave_17 = item_digits[:17]
             num_compra = chave_17[8:13]
             ano_compra = chave_17[13:17]
             return chave_17, f"{num_compra}/{ano_compra}"
-        return digits, raw
+
+        # Caso contrário, verifica fallback_id_compra (muito frequente em compras de serviço CATSER)
+        if len(compra_digits) == 16:
+            compra_digits = "0" + compra_digits
+        if len(compra_digits) >= 17:
+            chave_17 = compra_digits[:17]
+            num_compra = chave_17[8:13]
+            ano_compra = chave_17[13:17]
+            return chave_17, f"{num_compra}/{ano_compra}"
+
+        return item_digits or compra_digits, str(id_compra_item or fallback_id_compra or "")
 
     @classmethod
     def build_audit_uri(
@@ -181,7 +194,11 @@ class GovProcurementAPIClient:
         if clean_uasg:
             clean_num = re.sub(r"[^\d]", " ", str(num_ano or "")).strip()
             if clean_num:
-                first_num = clean_num.split()[0]
+                parts = clean_num.split()
+                first_num = parts[0]
+                ano_str = parts[1] if len(parts) > 1 else ""
+                if ano_str:
+                    return f"https://pncp.gov.br/app/editais?q={clean_uasg}&ano={ano_str}&numero={first_num}"
                 return f"https://pncp.gov.br/app/editais?q={clean_uasg}+{first_num}"
             return f"https://pncp.gov.br/app/editais?q={clean_uasg}"
 
@@ -264,7 +281,7 @@ class GovProcurementAPIClient:
                     f"[Compras.gov.br OAS 3.1] CATMAT/CATSER {catalog_code} - Página {current_page}/{total_pages} "
                     f"({len(page_items)} itens recebidos)"
                 )
-                if current_page >= total_pages or not page_items:
+                if len(raw_records) >= 120 or current_page >= total_pages or not page_items:
                     break
                 current_page += 1
         except Exception as exc:
@@ -281,8 +298,9 @@ class GovProcurementAPIClient:
             id_compra_item = str(rec.get("idItemCompra") or rec.get("idCompraItem") or "")
             id_compra = str(rec.get("idCompra") or "")
             chave_17, num_ano = self.parse_comprasnet_key_and_number(id_compra_item, id_compra)
-            if (len(chave_17) < 17 or not chave_17) and len(id_compra) >= 17:
-                chave_17, num_ano = self.parse_comprasnet_key_and_number(id_compra)
+            if len(chave_17) < 17 and len(re.sub(r"\D", "", id_compra)) in (16, 17):
+                padded_compra = "0" + id_compra if len(re.sub(r"\D", "", id_compra)) == 16 else id_compra
+                chave_17, num_ano = self.parse_comprasnet_key_and_number(padded_compra)
 
             pncp_ctrl = None
             if enrich_pncp_links and chave_17:
@@ -650,7 +668,9 @@ class PriceResearchController:
                 if q.pncp_control_number and "/editais/" in (q.pncp_or_compras_uri or "") and "?q=" not in (q.pncp_or_compras_uri or ""):
                     return
                 key = q.purchase_key or (q.id_compra_item[:17] if len(q.id_compra_item) >= 17 else "")
-                if key:
+                if key and len(key) == 16:
+                    key = "0" + key
+                if key and len(key) >= 17:
                     literal_url = resolve_pncp_webpage_url(key)
                     if literal_url:
                         q.pncp_or_compras_uri = literal_url
@@ -713,7 +733,9 @@ class PriceResearchController:
                 if "/editais/" in uri and "?q=" not in uri:
                     return
                 key = q_dict.get("purchase_key") or (str(q_dict.get("id_compra_item", ""))[:17] if len(str(q_dict.get("id_compra_item", ""))) >= 17 else "")
-                if key:
+                if key and len(key) == 16:
+                    key = "0" + key
+                if key and len(key) >= 17:
                     literal_url = resolve_pncp_webpage_url(key)
                     if literal_url:
                         q_dict["pncp_or_compras_uri"] = literal_url

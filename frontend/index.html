@@ -442,19 +442,24 @@
         </div>
 
         <!-- BARRA DE AÇÕES DIRETAS: PESQUISA DE PREÇOS OFICIAL (IN 65/2021) -->
-        <div class="pt-2 border-t border-slate-200/80 grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <button onclick="downloadLiveExcel()" class="h-9 bg-[#3b6e5c] hover:bg-[#2d5849] text-white font-bold px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Baixar Mapa Comparativo de Preços em Excel (.xlsx)">
-            <span>📊</span> <span class="truncate">Planilha Mapa (.XLSX)</span>
-          </button>
-          <button onclick="downloadLiveWord()" class="h-9 bg-[#3b5b7c] hover:bg-[#2e4761] text-white font-bold px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Baixar Relatório Oficial de Pesquisa de Preços em Word (.docx)">
-            <span>📄</span> <span class="truncate">Pesquisa Preços Word (.DOCX)</span>
-          </button>
-          <button onclick="downloadLivePdf()" class="h-9 bg-[#9e4747] hover:bg-[#833838] text-white font-bold px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Baixar Relatório Oficial de Pesquisa de Preços em PDF com QR Codes">
-            <span>📕</span> <span class="truncate">Pesquisa Preços PDF (.PDF)</span>
-          </button>
-          <button onclick="openFormalReportModal()" class="h-9 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Visualizar Relatório de Pesquisa na Tela">
-            <span>👁️</span> <span class="truncate">Ver Pesquisa na Tela</span>
-          </button>
+        <div class="pt-2 border-t border-slate-200/80 space-y-1.5">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-black uppercase text-slate-500 tracking-wider">Documentos Oficiais da Pesquisa de Preços (IN 65/2021):</span>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <button onclick="downloadLiveExcel()" class="h-9 bg-[#3b6e5c] hover:bg-[#2d5849] text-white font-bold px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Baixar Mapa Comparativo de Preços em Excel (.xlsx)">
+              <span>📊</span> <span class="truncate">Planilha Mapa (.XLSX)</span>
+            </button>
+            <button onclick="downloadLiveWord()" class="h-9 bg-[#3b5b7c] hover:bg-[#2e4761] text-white font-bold px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Baixar Relatório Oficial de Pesquisa de Preços em Word (.docx)">
+              <span>📄</span> <span class="truncate">Relatório Pesquisa (.DOCX)</span>
+            </button>
+            <button onclick="downloadLivePdf()" class="h-9 bg-[#9e4747] hover:bg-[#833838] text-white font-bold px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Baixar Relatório Oficial de Pesquisa de Preços em PDF com QR Codes">
+              <span>📕</span> <span class="truncate">Relatório Pesquisa (.PDF)</span>
+            </button>
+            <button onclick="openFormalReportModal()" class="h-9 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Visualizar Relatório de Pesquisa na Tela">
+              <span>👁️</span> <span class="truncate">Ver Relatório na Tela</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -476,14 +481,14 @@
             </div>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
-            <button onclick="downloadLiveJustificativaWord()" class="h-7.5 bg-[#3b5b7c] hover:bg-[#2e4761] text-white font-bold px-2.5 py-1 rounded-lg text-[10px] shadow-2xs transition flex items-center gap-1" title="Baixar Minuta de Despacho de Justificativa Circunstanciada em Word (.docx)">
-              <span>📄</span> Despacho Word (.DOCX)
+            <button onclick="downloadLiveJustificativaWord()" class="h-8 bg-[#3b5b7c] hover:bg-[#2e4761] text-white font-bold px-3 py-1 rounded-lg text-[10.5px] shadow-2xs transition flex items-center gap-1.5" title="Baixar Minuta de Despacho de Justificativa Circunstanciada em Word (.docx)">
+              <span>📝</span> <span>Despacho Justificativa (.DOCX)</span>
             </button>
-            <button onclick="downloadLiveJustificativaPdf()" class="h-7.5 bg-[#9e4747] hover:bg-[#833838] text-white font-bold px-2.5 py-1 rounded-lg text-[10px] shadow-2xs transition flex items-center gap-1" title="Baixar Minuta de Despacho de Justificativa Circunstanciada em PDF">
-              <span>📕</span> Despacho PDF (.PDF)
+            <button onclick="downloadLiveJustificativaPdf()" class="h-8 bg-[#9e4747] hover:bg-[#833838] text-white font-bold px-3 py-1 rounded-lg text-[10.5px] shadow-2xs transition flex items-center gap-1.5" title="Baixar Minuta de Despacho de Justificativa Circunstanciada em PDF">
+              <span>📝</span> <span>Despacho Justificativa (.PDF)</span>
             </button>
-            <button onclick="openJustificativaModal()" class="h-7.5 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-2.5 py-1 rounded-lg text-[10px] shadow-2xs transition flex items-center gap-1" title="Abrir e revisar texto do Despacho Circunstanciado na tela">
-              <span>👁️</span> Ver Despacho
+            <button onclick="openJustificativaModal()" class="h-8 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-3 py-1 rounded-lg text-[10.5px] shadow-2xs transition flex items-center gap-1.5" title="Abrir e revisar texto do Despacho Circunstanciado da Autoridade na tela">
+              <span>👁️</span> <span>Revisar Despacho</span>
             </button>
           </div>
         </div>
@@ -2161,6 +2166,7 @@
     let activePriceReport = null;
     let activeItemType = "MATERIAL";
     let activeQuantity = 1;
+    window.batchPriceResults = window.batchPriceResults || {};
 
     // =========================================================================
     // NAVEGAÇÃO ENTRE ABAS DO APLICATIVO
@@ -6418,6 +6424,29 @@
     // =========================================================================
     window.lastPncpPayload = null;
 
+    function getBatchItemReportByKey(key, code, type) {
+      if (Array.isArray(batchResearchResults)) {
+        const found = batchResearchResults.find(r => 
+          (key && r.key === key) || 
+          (code && String(r.code) === String(code)) || 
+          (r.report && r.report.catmat_catser_code && String(r.report.catmat_catser_code) === String(code))
+        );
+        if (found && found.report) return found.report;
+        if (found) return found;
+      }
+      if (window.batchPriceResults && typeof window.batchPriceResults === "object") {
+        if (key && window.batchPriceResults[key]) return window.batchPriceResults[key].report || window.batchPriceResults[key];
+        if (code && window.batchPriceResults[code]) return window.batchPriceResults[code].report || window.batchPriceResults[code];
+      }
+      if (typeof activePriceReport !== "undefined" && activePriceReport) {
+        if (!code || String(activePriceReport.catmat_catser_code) === String(code) || String(activePriceReport.code) === String(code)) {
+          return activePriceReport;
+        }
+      }
+      return null;
+    }
+    window.getBatchItemReportByKey = getBatchItemReportByKey;
+
     async function openPncpPayloadModal() {
       const m = document.getElementById("modalPncpPayload");
       if (m) {
@@ -6438,24 +6467,44 @@
       previewEl.textContent = "Compilando itens e cotações para o schema da API do PNCP...";
 
       try {
-        const items = batchTrayItems.map(it => {
-          const rep = getBatchItemReportByKey(it.key, it.code, it.type);
-          return {
-            tipo: it.type || "MATERIAL",
-            codigo: it.code,
-            descricao: it.desc,
-            unidade: it.unit || "UN",
-            quantidade: it.qty || 1,
-            valor_unitario: rep ? (rep.final_estimated_unit_price || 0) : 0,
-            report: rep || null
-          };
-        });
+        let items = [];
+        if (Array.isArray(batchTrayItems) && batchTrayItems.length > 0) {
+          items = batchTrayItems.map(it => {
+            const rep = getBatchItemReportByKey(it.key, it.code, it.type);
+            return {
+              tipo: it.type || "MATERIAL",
+              codigo: it.code,
+              descricao: it.desc,
+              unidade: it.unit || "UN",
+              quantidade: it.qty || 1,
+              valor_unitario: rep ? (rep.final_estimated_unit_price || 0) : 0,
+              report: rep || null
+            };
+          });
+        } else if (typeof activePriceReport !== "undefined" && activePriceReport) {
+          items = [{
+            tipo: activePriceReport.item_type || activeItemType || "MATERIAL",
+            codigo: activePriceReport.catmat_catser_code || activePriceReport.code || "",
+            descricao: activePriceReport.item_description || "",
+            unidade: activePriceReport.target_supply_unit || "UN",
+            quantidade: typeof activeQuantity === "number" ? activeQuantity : 1,
+            valor_unitario: activePriceReport.final_estimated_unit_price || 0,
+            report: activePriceReport
+          }];
+        }
 
+        if (items.length === 0) {
+          previewEl.textContent = "Nenhum item na cesta de preços ou em tela para exportar ao PNCP. Realize uma pesquisa ou adicione itens ao lote.";
+          return;
+        }
+
+        const orgName = (typeof getGlobalOrgName === "function" ? getGlobalOrgName() : null) || "MARINHA DO BRASIL";
         const resp = await fetch("/api/v1/pncp/export-procurement-payload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            procurement_title: "Processo de Aquisição / Registro de Preços GovTech",
+            om_name: orgName,
+            procurement_title: `Processo de Aquisição / Registro de Preços - ${orgName}`,
             modality_code: 8,
             items: items
           })

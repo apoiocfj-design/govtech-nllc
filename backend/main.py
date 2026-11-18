@@ -1401,6 +1401,25 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                             for pg in pdf.pages:
                                 t = pg.extract_text() or ""
                                 extracted_lines.extend([l.strip() for l in t.split("\n") if l.strip()])
+                        
+                        # Fallback de Visão Computacional (Google Cloud Vision API - OCR para PDFs digitalizados)
+                        if sum(len(l) for l in extracted_lines) < 100:
+                            try:
+                                from google.cloud import vision
+                                client = vision.ImageAnnotatorClient()
+                                input_config = vision.InputConfig(content=file_bytes, mime_type="application/pdf")
+                                features = [vision.Feature(type_=vision.Feature.Type.DOCUMENT_TEXT_DETECTION)]
+                                requests = [vision.AnnotateFileRequest(features=features, input_config=input_config)]
+                                response = client.batch_annotate_files(requests=requests)
+                                ocr_lines = []
+                                for file_resp in response.responses:
+                                    for page_resp in file_resp.responses:
+                                        if page_resp.full_text_annotation and page_resp.full_text_annotation.text:
+                                            ocr_lines.extend([l.strip() for l in page_resp.full_text_annotation.text.split("\n") if l.strip()])
+                                if sum(len(l) for l in ocr_lines) >= 100:
+                                    extracted_lines = ocr_lines
+                            except Exception as ocr_err:
+                                print(f"[Cloud Vision OCR Notice] {ocr_err}")
                     elif filename.lower().endswith(".docx"):
                         tmp_path = os.path.join(BASE_DIR, "_tmp_upload.docx")
                         with open(tmp_path, "wb") as f:

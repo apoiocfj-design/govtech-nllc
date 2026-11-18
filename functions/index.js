@@ -161,6 +161,46 @@ exports.auditMinutaStorageWorker = onObjectFinalized(
         } catch (pdfErr) {
           throw new Error("O arquivo .PDF está corrompido ou protegido por senha. Verifique a integridade do PDF.");
         }
+
+        // FALLBACK DE VISÃO COMPUTACIONAL (GOOGLE CLOUD VISION API - OCR)
+        // Se o texto extraído tiver menos de 100 caracteres legíveis (documento escaneado como imagem pura)
+        const extractedCharCount = paragraphs.join(" ").trim().length;
+        if (extractedCharCount < 100) {
+          console.log(`[OCR Trigger] Documento digitalizado detectado (${extractedCharCount} caracteres). Acionando Google Cloud Vision API...`);
+          await jobRef.update({
+            progresso: 25,
+            mensagem: "Documento digitalizado detectado. Executando OCR via Google Cloud Vision API...",
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+
+          try {
+            const vision = require("@google-cloud/vision");
+            const visionClient = new vision.ImageAnnotatorClient();
+            const dataBuffer = fs.readFileSync(tempLocalFile);
+            const [visionResult] = await visionClient.batchAnnotateFiles({
+              requests: [{
+                inputConfig: { content: dataBuffer, mimeType: "application/pdf" },
+                features: [{ type: "DOCUMENT_TEXT_DETECTION" }]
+              }]
+            });
+
+            let ocrText = "";
+            for (const r of (visionResult.responses || [])) {
+              for (const pageResp of (r.responses || [])) {
+                if (pageResp.fullTextAnnotation && pageResp.fullTextAnnotation.text) {
+                  ocrText += "\n" + pageResp.fullTextAnnotation.text;
+                }
+              }
+            }
+
+            if (ocrText.trim().length >= 100) {
+              paragraphs = ocrText.split("\n").map((p) => p.trim()).filter((p) => p.length > 0);
+              console.log(`[OCR Sucesso] Google Cloud Vision OCR concluiu com ${paragraphs.length} parágrafos.`);
+            }
+          } catch (ocrErr) {
+            console.warn("[OCR Aviso] Falha ao invocar Google Cloud Vision API:", ocrErr.message);
+          }
+        }
       } else {
         throw new Error(`Formato de arquivo não suportado: ${ext}. Envie um arquivo .docx ou .pdf.`);
       }

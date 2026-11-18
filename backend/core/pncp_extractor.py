@@ -39,12 +39,20 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 
 def resolve_pncp_webpage_url(chave_or_id: str) -> str:
     """Retorna a URL literal da página do edital no Portal PNCP (ex: https://pncp.gov.br/app/editais/{cnpj}/{ano}/{seq})."""
+    if not chave_or_id:
+        return None
     compra = resolve_pncp_compra(chave_or_id)
     if compra:
-        cnpj = compra.get("orgaoEntidadeCnpj")
-        ano = compra.get("anoCompraPncp")
-        seq = str(compra.get("sequencialCompraPncp") or "").zfill(6)
-        if cnpj and ano and seq:
+        ctrl = compra.get("numeroControlePNCP") or compra.get("numero_controle_pncp")
+        if ctrl:
+            m = re.match(r"^(\d{14})-\d+-(\d+)/(\d{4})$", str(ctrl).strip())
+            if m:
+                cnpj, seq, ano = m.group(1), str(m.group(2)).zfill(6), m.group(3)
+                return f"https://pncp.gov.br/app/editais/{cnpj}/{ano}/{seq}"
+        cnpj = compra.get("orgaoEntidadeCnpj") or compra.get("cnpjOrgao")
+        ano = compra.get("anoCompraPncp") or compra.get("anoCompra")
+        seq = str(compra.get("sequencialCompraPncp") or compra.get("sequencialCompra") or "").zfill(6)
+        if cnpj and ano and seq and seq != "000000":
             return f"https://pncp.gov.br/app/editais/{cnpj}/{ano}/{seq}"
     m = re.match(r"^(\d{14})-\d+-(\d+)/(\d{4})$", str(chave_or_id or "").strip())
     if m:
@@ -511,6 +519,8 @@ def capture_pncp_page_pdf(pncp_url: str, chave_or_id: str = None, timeout_sec: i
 def resolve_pncp_compra(chave_or_id: str):
     """Resolve os dados da contratação no PNCP a partir de idCompra ou número de controle."""
     chave_clean = re.sub(r"\D", "", str(chave_or_id or ""))
+    if len(chave_clean) == 16:
+        chave_clean = "0" + chave_clean
     if len(chave_clean) >= 17:
         chave_17 = chave_clean[:17]
     else:

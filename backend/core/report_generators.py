@@ -517,9 +517,19 @@ def build_in65_docx_bytes(
     for idx, q in enumerate(quotes_to_show):
         row = t_quotes.rows[1 + idx]
         q_url = q.get("pncp_or_compras_uri") or ""
-        if not q_url or "?q=" in q_url:
+        if not q_url or "?q=" in q_url or "/editais" not in q_url:
             key = q.get("purchase_key") or (str(q.get("id_compra_item", ""))[:17] if len(str(q.get("id_compra_item", ""))) >= 17 else "")
+            if not key or len(key) < 16:
+                id_item = str(q.get("id_compra_item", ""))
+                id_compra = str(q.get("id_compra", ""))
+                try:
+                    from gov_api_client import GovProcurementAPIClient
+                    key, _ = GovProcurementAPIClient.parse_comprasnet_key_and_number(id_item, id_compra)
+                except Exception:
+                    pass
             if key:
+                if len(key) == 16:
+                    key = "0" + key
                 try:
                     from pncp_extractor import resolve_pncp_webpage_url
                     lit = resolve_pncp_webpage_url(key)
@@ -1001,9 +1011,19 @@ def build_in65_pdf_bytes(
 
     for idx, q in enumerate(valid_quotes[:7]):
         q_url = q.get("pncp_or_compras_uri") or ""
-        if not q_url or "?q=" in q_url:
+        if not q_url or "?q=" in q_url or "/editais" not in q_url:
             key = q.get("purchase_key") or (str(q.get("id_compra_item", ""))[:17] if len(str(q.get("id_compra_item", ""))) >= 17 else "")
+            if not key or len(key) < 16:
+                id_item = str(q.get("id_compra_item", ""))
+                id_compra = str(q.get("id_compra", ""))
+                try:
+                    from gov_api_client import GovProcurementAPIClient
+                    key, _ = GovProcurementAPIClient.parse_comprasnet_key_and_number(id_item, id_compra)
+                except Exception:
+                    pass
             if key:
+                if len(key) == 16:
+                    key = "0" + key
                 try:
                     from pncp_extractor import resolve_pncp_webpage_url
                     lit = resolve_pncp_webpage_url(key)
