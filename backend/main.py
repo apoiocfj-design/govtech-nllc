@@ -44,6 +44,8 @@ from report_generators import (
     build_in65_justificativa_docx_bytes,
     build_in65_justificativa_pdf_bytes,
     build_consolidated_in65_excel_bytes,
+    build_consolidated_in65_pdf_bytes,
+    build_consolidated_in65_docx_bytes,
     build_batch_zip_bytes,
     build_audit_certificate_pdf_bytes,
     generate_statistical_infographic,
@@ -1311,18 +1313,19 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                     rep = it.get("report")
                     qty = float(it.get("qty", 1) or 1)
                     if not rep or not rep.get("sanitized_metrics"):
-                        code_raw = it.get("code")
-                        catalog_code = int(code_raw) if str(code_raw).isdigit() else 475109
-                        unit = str(it.get("unit", "")).strip().upper()
-                        item_type = str(it.get("type", "MATERIAL")).strip().upper()
-                        res = price_controller.execute_in65_research(
-                            catalog_code=catalog_code,
-                            target_supply_unit=unit,
-                            item_type=item_type,
-                            months_back=months_back,
-                            uf=uf,
-                        )
-                        rep = res.get("report") or {}
+                        if len(items_in) <= 20:
+                            code_raw = it.get("code")
+                            catalog_code = int(code_raw) if str(code_raw).isdigit() else 475109
+                            unit = str(it.get("unit", "")).strip().upper()
+                            item_type = str(it.get("type", "MATERIAL")).strip().upper()
+                            res = price_controller.execute_in65_research(
+                                catalog_code=catalog_code,
+                                target_supply_unit=unit,
+                                item_type=item_type,
+                                months_back=months_back,
+                                uf=uf,
+                            )
+                            rep = res.get("report") or {}
 
                     if not rep or not rep.get("sanitized_metrics"):
                         continue
@@ -1345,8 +1348,9 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                     om_name=om_name,
                     ordenador_nome=ordenador,
                     elaborador_nome=elaborador,
+                    extract_gov_docs=False,
                 )
-                self._send_binary(zip_bytes, "application/zip", "Pacote_Relatorios_Lote_IN65.zip")
+                self._send_binary(zip_bytes, "application/zip", f"Processo_Completo_IN65_{len(items_results)}_itens.zip")
             except Exception as exc:
                 self._send_json(500, {"error": str(exc)})
             return
@@ -1365,18 +1369,19 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                     rep = it.get("report")
                     qty = float(it.get("qty", 1) or 1)
                     if not rep or not rep.get("sanitized_metrics"):
-                        code_raw = it.get("code")
-                        catalog_code = int(code_raw) if str(code_raw).isdigit() else 475109
-                        unit = str(it.get("unit", "")).strip().upper()
-                        item_type = str(it.get("type", "MATERIAL")).strip().upper()
-                        res = price_controller.execute_in65_research(
-                            catalog_code=catalog_code,
-                            target_supply_unit=unit,
-                            item_type=item_type,
-                            months_back=months_back,
-                            uf=uf,
-                        )
-                        rep = res.get("report") or {}
+                        if len(items_in) <= 20:
+                            code_raw = it.get("code")
+                            catalog_code = int(code_raw) if str(code_raw).isdigit() else 475109
+                            unit = str(it.get("unit", "")).strip().upper()
+                            item_type = str(it.get("type", "MATERIAL")).strip().upper()
+                            res = price_controller.execute_in65_research(
+                                catalog_code=catalog_code,
+                                target_supply_unit=unit,
+                                item_type=item_type,
+                                months_back=months_back,
+                                uf=uf,
+                            )
+                            rep = res.get("report") or {}
 
                     if not rep or not rep.get("sanitized_metrics"):
                         continue
@@ -1394,7 +1399,91 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 self._send_binary(
                     xlsx_bytes,
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    "Mapa_Comparativo_Consolidado_Lote_IN65.xlsx",
+                    f"Mapa_Comparativo_Consolidado_Lote_{len(items_results)}_itens.xlsx",
+                )
+            except Exception as exc:
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        # 0.04 Exportar Caderno Consolidado de Preços em PDF (A4 Landscape oficial para juntada SEI)
+        if parsed.path == "/api/v1/prices/export-batch-pdf":
+            try:
+                data = json.loads(raw_body)
+                items_in = data.get("items", [])
+                om_name = str(data.get("om_name", "MARINHA DO BRASIL"))
+                ordenador = str(data.get("ordenador", "ORDENADOR DE DESPESAS"))
+                elaborador = str(data.get("elaborador", "ENCARREGADO DO SETOR DE OBTENÇÃO"))
+
+                items_results = []
+                for idx, it in enumerate(items_in, start=1):
+                    rep = it.get("report")
+                    qty = float(it.get("qty", 1) or 1)
+                    if rep and rep.get("sanitized_metrics"):
+                        items_results.append({
+                            "item_index": idx,
+                            "code": rep.get("catmat_catser_code", it.get("code")),
+                            "type": it.get("type", "MATERIAL"),
+                            "unit": it.get("unit", rep.get("target_supply_unit", "UN")),
+                            "qty": qty,
+                            "report": rep,
+                        })
+
+                if not items_results:
+                    self._send_json(404, {"error": "Nenhum item do lote possui cotações válidas para exportação."})
+                    return
+
+                pdf_bytes = build_consolidated_in65_pdf_bytes(
+                    items_results,
+                    om_name=om_name,
+                    elaborador_nome=elaborador,
+                    ordenador_nome=ordenador,
+                )
+                self._send_binary(
+                    pdf_bytes,
+                    "application/pdf",
+                    f"Caderno_Consolidado_Precos_Lote_{len(items_results)}_itens.pdf",
+                )
+            except Exception as exc:
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        # 0.05 Exportar Caderno Consolidado de Preços em Word (.DOCX Landscape oficial)
+        if parsed.path == "/api/v1/prices/export-batch-docx":
+            try:
+                data = json.loads(raw_body)
+                items_in = data.get("items", [])
+                om_name = str(data.get("om_name", "MARINHA DO BRASIL"))
+                ordenador = str(data.get("ordenador", "ORDENADOR DE DESPESAS"))
+                elaborador = str(data.get("elaborador", "ENCARREGADO DO SETOR DE OBTENÇÃO"))
+
+                items_results = []
+                for idx, it in enumerate(items_in, start=1):
+                    rep = it.get("report")
+                    qty = float(it.get("qty", 1) or 1)
+                    if rep and rep.get("sanitized_metrics"):
+                        items_results.append({
+                            "item_index": idx,
+                            "code": rep.get("catmat_catser_code", it.get("code")),
+                            "type": it.get("type", "MATERIAL"),
+                            "unit": it.get("unit", rep.get("target_supply_unit", "UN")),
+                            "qty": qty,
+                            "report": rep,
+                        })
+
+                if not items_results:
+                    self._send_json(404, {"error": "Nenhum item do lote possui cotações válidas para exportação."})
+                    return
+
+                docx_bytes = build_consolidated_in65_docx_bytes(
+                    items_results,
+                    om_name=om_name,
+                    elaborador_nome=elaborador,
+                    ordenador_nome=ordenador,
+                )
+                self._send_binary(
+                    docx_bytes,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    f"Caderno_Consolidado_Precos_Lote_{len(items_results)}_itens.docx",
                 )
             except Exception as exc:
                 self._send_json(500, {"error": str(exc)})

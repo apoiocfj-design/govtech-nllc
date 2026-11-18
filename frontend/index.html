@@ -369,17 +369,23 @@
               <span class="text-[10px] uppercase text-slate-400 block font-bold">Valor Total do Lote</span>
               <span id="batchGrandTotal" class="text-xl md:text-2xl font-black text-amber-300">R$ 0,00</span>
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-              <button onclick="downloadBatchProcessZip()" class="h-10 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-3.5 py-2 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-[#d6b77c]" title="Baixar todos os relatórios Word, PDF, Excel individuais e Mapa Consolidado Geral em .ZIP com Editais PNCP">
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              <button onclick="downloadBatchProcessZip()" class="h-10 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-2.5 py-1.5 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-[#d6b77c]" title="Baixar todos os relatórios Word, PDF, Excel individuais e Caderno Consolidado Geral em .ZIP">
                 <span>📦</span> <span>Processo (.ZIP)</span>
               </button>
-              <button onclick="downloadBatchExcel()" class="h-10 bg-[#3b6e5c] hover:bg-[#2d5849] text-white font-black px-3.5 py-2 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-[#4d8571]/50" title="Baixar Planilha Consolidada com todas as abas">
+              <button onclick="downloadBatchExcel()" class="h-10 bg-[#3b6e5c] hover:bg-[#2d5849] text-white font-black px-2.5 py-1.5 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-[#4d8571]/50" title="Baixar Planilha Consolidada com todas as abas e cotações">
                 <span>📊</span> <span>Planilha (.XLSX)</span>
               </button>
-              <button onclick="openPncpPayloadModal()" class="h-10 bg-[#27394d] hover:bg-[#334960] text-white font-black px-3.5 py-2 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-[#3b5b7c]" title="Gerar payload JSON no formato oficial exigido pela API do PNCP (Lei 14.133/2021)">
+              <button onclick="downloadBatchCadernoPdf()" class="h-10 bg-[#831843] hover:bg-[#701a35] text-white font-black px-2.5 py-1.5 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-pink-700/50" title="Baixar Caderno Consolidado de Preços em PDF A4 Paisagem para juntada no SEI">
+                <span>📑</span> <span>Caderno (.PDF)</span>
+              </button>
+              <button onclick="downloadBatchCadernoDocx()" class="h-10 bg-[#1e3a8a] hover:bg-[#172554] text-white font-black px-2.5 py-1.5 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-blue-700/50" title="Baixar Caderno Consolidado de Preços editável em Word (.DOCX)">
+                <span>📝</span> <span>Caderno (.DOCX)</span>
+              </button>
+              <button onclick="openPncpPayloadModal()" class="h-10 bg-[#27394d] hover:bg-[#334960] text-white font-black px-2.5 py-1.5 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-[#3b5b7c]" title="Gerar payload JSON no formato oficial exigido pela API do PNCP (Lei 14.133/2021)">
                 <span>📡</span> <span>Integração PNCP</span>
               </button>
-              <button onclick="openAuditTrailModal()" class="h-10 bg-[#1e2d3d] hover:bg-[#27394d] text-amber-300 font-black px-3.5 py-2 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-[#c5a365]/50" title="Visualizar Trilha de Auditoria Imutável (SHA-256) e emitir Certificado Oficial para o TCU">
+              <button onclick="openAuditTrailModal()" class="h-10 bg-[#1e2d3d] hover:bg-[#27394d] text-amber-300 font-black px-2.5 py-1.5 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-[#c5a365]/50" title="Visualizar Trilha de Auditoria Imutável (SHA-256) e emitir Certificado Oficial para o TCU">
                 <span>📜</span> <span>Trilha (SHA-256)</span>
               </button>
             </div>
@@ -3353,16 +3359,23 @@
           "Finalizando download do arquivo..."
         ]
       });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 90000);
       try {
         const resp = await fetch(path, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
         if (!resp.ok) {
           let msg = `Erro HTTP ${resp.status}`;
           try { const j = await resp.json(); msg = j.error || msg; } catch (e) {}
           hideCountdownProgress();
+          if (resp.status === 504 || resp.status === 502) {
+            msg = "Tempo limite excedido no servidor para este volume. Recomendamos exportar a Planilha (.XLSX) ou o Caderno (.PDF), que geram instantaneamente!";
+          }
           showAppNotification(msg, "error");
           return;
         }
@@ -3377,8 +3390,13 @@
         setTimeout(() => URL.revokeObjectURL(url), 4000);
         hideCountdownProgress();
       } catch (e) {
+        clearTimeout(timeoutId);
         hideCountdownProgress();
-        showAppNotification("Falha ao gerar o arquivo: " + e.message, "error");
+        if (e.name === "AbortError") {
+          showAppNotification("Tempo limite excedido (90s). Para lotes amplos de 150 itens, utilize o download da Planilha (.XLSX) ou Caderno (.PDF), gerados instantaneamente.", "warn");
+        } else {
+          showAppNotification("Falha ao gerar o arquivo: " + e.message, "error");
+        }
       }
     }
 
@@ -5256,7 +5274,7 @@
         logAuditEvent(
           "GERACAO_PROCESSO_COMPLETO_ZIP",
           "Lote (" + validItems.length + " itens)",
-          "Emissão do Pacote Completo (.ZIP com PNCP, Excel consolidado, Word e PDFs)",
+          "Emissão do Pacote Completo (.ZIP com Caderno Consolidado, Planilha Mestre e Dossiês)",
           "Lei nº 14.133/2021 e IN SEGES/ME nº 65/2021"
         );
       }
@@ -5265,7 +5283,19 @@
         return;
       }
       const p = getReportParams();
-      const estSec = Math.max(2, Math.ceil(validItems.length * 0.7));
+      const isLarge = validItems.length > 15;
+      const estSec = isLarge ? Math.min(18, Math.max(3, Math.ceil(validItems.length * 0.1))) : Math.max(2, Math.ceil(validItems.length * 0.7));
+      const customSteps = isLarge ? [
+        `Consolidando todos os ${validItems.length} itens no Caderno Oficial (PDF/Word)...`,
+        "Gerando Planilha Mestre (Excel) com memória completa de cálculo e links...",
+        "Formatando relatórios analíticos dos itens representativos...",
+        "Compactando pacote com Cadernos Consolidados e Dossiês do Lote..."
+      ] : [
+        "Consolidando dados de todos os itens homologados...",
+        "Gerando memórias e mapas comparativos em Excel...",
+        "Formatando relatórios individuais em Word e PDF...",
+        "Compactando pacote completo do processo (.ZIP)..."
+      ];
       await downloadFromPost(
         "/api/v1/prices/export-batch-zip",
         {
@@ -5277,17 +5307,66 @@
         `Processo_Completo_IN65_${validItems.length}_itens.zip`,
         `Gerando Processo Completo (${validItems.length} itens)`,
         estSec,
-        [
-          "Consolidando dados de todos os itens homologados...",
-          "Gerando memórias e mapas comparativos em Excel...",
-          "Formatando relatórios individuais em Word e PDF...",
-          "Compactando pacote completo do processo (.ZIP)..."
-        ]
+        customSteps
       );
     }
 
     function downloadBatchZip() {
       return downloadBatchProcessZip();
+    }
+
+    async function downloadBatchCadernoPdf() {
+      const validItems = (batchResearchResults || []).filter(r => r.has_data && r.report && r.report.sanitized_metrics);
+      if (validItems.length === 0) {
+        showAppNotification("Processe o lote com pelo menos 1 item válido antes de exportar o Caderno Consolidado.", "warn");
+        return;
+      }
+      const p = getReportParams();
+      await downloadFromPost(
+        "/api/v1/prices/export-batch-pdf",
+        {
+          items: validItems,
+          om_name: getGlobalOrgName(),
+          elaborador: p.elab,
+          ordenador: p.orden
+        },
+        `Caderno_Consolidado_Precos_Lote_${validItems.length}_itens.pdf`,
+        `Gerando Caderno Consolidado em PDF (${validItems.length} itens)`,
+        2,
+        [
+          `Consolidando mapa de todos os ${validItems.length} itens do lote...`,
+          "Calculando totais gerais e métricas saneadas...",
+          "Diagramando Caderno Oficial em formato Paisagem A4 para SEI...",
+          "Finalizando download do Caderno Consolidado em PDF..."
+        ]
+      );
+    }
+
+    async function downloadBatchCadernoDocx() {
+      const validItems = (batchResearchResults || []).filter(r => r.has_data && r.report && r.report.sanitized_metrics);
+      if (validItems.length === 0) {
+        showAppNotification("Processe o lote com pelo menos 1 item válido antes de exportar o Caderno Consolidado.", "warn");
+        return;
+      }
+      const p = getReportParams();
+      await downloadFromPost(
+        "/api/v1/prices/export-batch-docx",
+        {
+          items: validItems,
+          om_name: getGlobalOrgName(),
+          elaborador: p.elab,
+          ordenador: p.orden
+        },
+        `Caderno_Consolidado_Precos_Lote_${validItems.length}_itens.docx`,
+        `Gerando Caderno Consolidado em Word (${validItems.length} itens)`,
+        3,
+        [
+          `Consolidando mapa de todos os ${validItems.length} itens do lote...`,
+          "Calculando totais gerais e métricas saneadas...",
+          "Diagramando documento editável em Word (.DOCX Landscape)...",
+          "Finalizando download do Caderno Consolidado em Word..."
+        ]
+      );
     }
 
     async function downloadBatchExcel() {
