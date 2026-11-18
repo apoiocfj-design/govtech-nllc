@@ -454,7 +454,7 @@ class PriceResearchController:
             params["codigoItemCatalogo"] = int(catalog_code)
 
         try:
-            resp = self.api_client.session.get(url, params=params, timeout=7)
+            resp = self.api_client.session.get(url, params=params, timeout=12)
             if resp.status_code == 200:
                 payload = resp.json()
                 rows = payload.get("resultado") or []
@@ -480,7 +480,7 @@ class PriceResearchController:
                 else:
                     alt_params["codigoItemCatalogo"] = int(catalog_code)
                 try:
-                    alt_resp = self.api_client.session.get(alt_url, params=alt_params, timeout=7)
+                    alt_resp = self.api_client.session.get(alt_url, params=alt_params, timeout=12)
                     if alt_resp.status_code == 200:
                         alt_payload = alt_resp.json()
                         alt_rows = alt_payload.get("resultado") or []

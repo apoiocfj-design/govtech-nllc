@@ -119,12 +119,12 @@ exports.auditMinutaStorageWorker = onObjectFinalized(
       console.log(`[Worker] Iniciando processamento do job ${jobId} (${baseName})`);
 
       // 1. Atualizar status para 'processando' (Progresso: 15%)
-      await jobRef.update({
+      await jobRef.set({
         status: "processando",
         progresso: 15,
         mensagem: "Arquivo recebido pelo Worker. Extraindo estrutura do documento...",
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
+      }, { merge: true });
 
       // 2. Download do arquivo do Storage para a memória temporária do contêiner
       const bucket = storage.bucket(bucketName);
@@ -318,13 +318,13 @@ exports.auditMinutaStorageWorker = onObjectFinalized(
 
       // Tratamento de falhas e DLQ lógico
       const friendlyMessage = err.message || "Erro inesperado ao processar a minuta.";
-      await jobRef.update({
+      await jobRef.set({
         status: "erro",
         progresso: 0,
         mensagem: friendlyMessage,
         failedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
+      }, { merge: true });
 
       // Grava na coleção dead_letter_jobs para análise técnica
       try {
