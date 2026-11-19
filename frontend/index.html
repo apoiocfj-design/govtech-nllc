@@ -48,6 +48,31 @@
       }
     }
 
+    /* Paleta Minimalista Suavizada e Responsividade Fluida para Botões e Campos */
+    body {
+      background-color: #f6f8fa !important;
+      color: #1e293b;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, .btn-soft {
+      transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 120ms ease;
+    }
+    button:active:not(:disabled) {
+      transform: translateY(0.5px);
+    }
+    input[type="text"], input[type="number"], input[type="search"], select, textarea {
+      background-color: #ffffff;
+      border-color: #cbd5e1;
+      transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+    }
+    input[type="text"]:focus, input[type="number"]:focus, input[type="search"]:focus, select:focus, textarea:focus {
+      border-color: #64748b !important;
+      box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.22) !important;
+      outline: none !important;
+    }
+    @media (max-width: 640px) {
+      button { min-height: 36px; }
+    }
     /* Estilos de Acessibilidade Governamental Obrigatória (eMAG / WCAG 2.1) */
     :focus-visible {
       outline: 2px solid #c5a365 !important;
@@ -356,46 +381,52 @@
         <button onclick="switchBatchWorkflowView('tray')" class="bg-white hover:bg-slate-50 text-[#1e2d3d] font-bold px-3.5 py-2 rounded-xl text-xs border border-slate-300 shadow-sm transition flex items-center gap-1.5">↩ Voltar aos Itens do Lote</button>
         <div id="batchStaleWarning" class="hidden text-[11px] font-bold text-amber-900 bg-amber-100 border border-amber-300 rounded-lg px-3 py-1.5">⚠️ O lote foi alterado depois desta pesquisa. Volte e clique em “Pesquisar Preços” para atualizar.</div>
       </div>
-      <!-- BARRA SUPERIOR DO LOTE: TOTAIS E BOTÕES MESTRES -->
-      <div class="bg-[#1e2d3d] text-white p-5 rounded-2xl shadow-md border border-[#27394d]">
-        <div class="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <span class="text-xs font-bold uppercase text-[#c5a365] tracking-wider">Painel Oficial de Pesquisas em Lote (IN SEGES/ME nº 65/2021)</span>
-            <h3 class="text-base font-extrabold mt-0.5 text-white">Relatórios Individuais e Consolidação Geral</h3>
-            <p class="text-xs text-slate-300 mt-0.5">Total de <span id="batchResCount" class="font-bold text-amber-300">0</span> itens pesquisados. Selecione um item na coluna à esquerda para inspecionar seu painel à direita.</p>
+      <!-- BARRA SUPERIOR MINIMALISTA DO LOTE: 1 BOTÃO POR CATEGORIA (WORD + PDF SIMULTÂNEOS) -->
+      <div class="bg-[#233242] text-slate-100 p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-700/60 space-y-3">
+        <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+          <div class="min-w-0">
+            <span class="text-[11px] font-semibold uppercase text-[#d8be86] tracking-wider">Pesquisa de Preços em Lote • IN SEGES/ME nº 65/2021</span>
+            <h3 class="text-base font-bold mt-0.5 text-white">Consolidação Geral e Relatórios Oficiais</h3>
+            <p class="text-xs text-slate-300 mt-0.5">
+              <span id="batchResCount" class="font-bold text-[#e5cfa0]">0</span> itens pesquisados • Clique em um botão por categoria para gerar Word + PDF juntos.
+            </p>
           </div>
-          <div class="flex items-center gap-5">
-            <div class="text-right">
-              <span class="text-[10px] uppercase text-slate-400 block font-bold">Valor Total do Lote</span>
-              <span id="batchGrandTotal" class="text-xl md:text-2xl font-black text-amber-300">R$ 0,00</span>
+          <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+            <div class="sm:text-right bg-white/5 px-3.5 py-2 rounded-xl border border-white/10">
+              <span class="text-[10px] uppercase text-slate-300 block font-semibold">Valor Total do Lote</span>
+              <span id="batchGrandTotal" class="text-lg md:text-xl font-bold text-[#e5cfa0] font-mono">R$ 0,00</span>
             </div>
-            <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
-              <button onclick="downloadBatchProcessZip()" class="h-10 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-2.5 py-1.5 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-[#d6b77c]" title="Baixar Processo Consolidado em .ZIP (Nota Técnica AGU, Mapa Geral c/ Todas Empresas, Certidões, Pastas 12M e 13-24M por Categoria)">
-                <span>📦</span> <span>Processo (.ZIP)</span>
+            <div class="flex flex-wrap items-center gap-2">
+              <button onclick="downloadBatchProcessZip()" class="h-10 bg-[#d8be86] hover:bg-[#cbb075] text-[#1e293b] font-bold px-3.5 py-1.5 rounded-xl text-xs shadow-xs flex items-center justify-center gap-1.5" title="Gera o pacote .ZIP completo (Mapa Geral com todas empresas, Nota Técnica AGU, Comprovantes PNCP com QR Code, Certidões e pastas separadas 12M / 13-24M por categoria)">
+                <span>📦</span> <span>Processo Completo (.ZIP)</span>
               </button>
-              <button onclick="downloadAguNotaTecnica('docx')" class="h-10 bg-[#0f766e] hover:bg-[#115e59] text-white font-black px-2.5 py-1.5 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-teal-600/50" title="Baixar Nota Técnica Oficial AGU editável em Word (.DOCX) — Modelo SEGES/AGU">
-                <span>⚖️</span> <span>NT AGU (.DOCX)</span>
+              <button onclick="downloadAguNotaTecnicaBoth()" class="h-10 bg-slate-700/80 hover:bg-slate-600 text-white font-semibold px-3 py-1.5 rounded-xl text-xs border border-slate-500/50 flex items-center justify-center gap-1.5" title="1 clique gera e baixa a Nota Técnica Oficial AGU em Word (.DOCX) e PDF (.PDF) simultaneamente">
+                <span>⚖️</span> <span>Nota Técnica AGU (Word + PDF)</span>
               </button>
-              <button onclick="downloadAguNotaTecnica('pdf')" class="h-10 bg-[#115e59] hover:bg-[#134e4a] text-white font-black px-2.5 py-1.5 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-teal-500/50" title="Baixar Nota Técnica Oficial AGU em PDF pronto para juntada no SEI">
-                <span>🏛️</span> <span>NT AGU (.PDF)</span>
+              <button onclick="downloadBatchCadernoBoth()" class="h-10 bg-slate-700/80 hover:bg-slate-600 text-white font-semibold px-3 py-1.5 rounded-xl text-xs border border-slate-500/50 flex items-center justify-center gap-1.5" title="1 clique gera e baixa o Caderno Consolidado de Preços em Word (.DOCX) e PDF (.PDF) simultaneamente">
+                <span>📑</span> <span>Caderno (Word + PDF)</span>
               </button>
-              <button onclick="downloadBatchExcel()" class="h-10 bg-[#3b6e5c] hover:bg-[#2d5849] text-white font-black px-2.5 py-1.5 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-[#4d8571]/50" title="Baixar Mapa Comparativo Geral Excel com Aba de Todas as Empresas e Cotações">
-                <span>📊</span> <span>Mapa (.XLSX)</span>
+              <button onclick="downloadBatchExcel()" class="h-10 bg-[#3d6b5d] hover:bg-[#335a4e] text-white font-semibold px-3 py-1.5 rounded-xl text-xs border border-emerald-200/20 flex items-center justify-center gap-1.5" title="Baixar Mapa Comparativo Geral Excel com todas as empresas e cotações">
+                <span>📊</span> <span>Mapa Geral (.XLSX)</span>
               </button>
-              <button onclick="downloadBatchCadernoPdf()" class="h-10 bg-[#831843] hover:bg-[#701a35] text-white font-black px-2.5 py-1.5 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-pink-700/50" title="Baixar Caderno Consolidado de Preços em PDF A4 Paisagem para juntada no SEI">
-                <span>📑</span> <span>Caderno (.PDF)</span>
+              <button onclick="openPncpPayloadModal()" class="h-10 bg-white/10 hover:bg-white/15 text-slate-200 font-semibold px-2.5 py-1.5 rounded-xl text-xs border border-white/15 flex items-center justify-center gap-1" title="Gerar payload JSON de integração oficial PNCP">
+                <span>📡</span> <span>PNCP</span>
               </button>
-              <button onclick="downloadBatchCadernoDocx()" class="h-10 bg-[#1e3a8a] hover:bg-[#172554] text-white font-black px-2.5 py-1.5 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-blue-700/50" title="Baixar Caderno Consolidado de Preços editável em Word (.DOCX)">
-                <span>📝</span> <span>Caderno (.DOCX)</span>
-              </button>
-              <button onclick="openPncpPayloadModal()" class="h-10 bg-[#27394d] hover:bg-[#334960] text-white font-black px-2.5 py-1.5 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-[#3b5b7c]" title="Gerar payload JSON no formato oficial exigido pela API do PNCP (Lei 14.133/2021)">
-                <span>📡</span> <span>Integração PNCP</span>
-              </button>
-              <button onclick="openAuditTrailModal()" class="h-10 bg-[#1e2d3d] hover:bg-[#27394d] text-amber-300 font-black px-2.5 py-1.5 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-[#c5a365]/50" title="Visualizar Trilha de Auditoria Imutável (SHA-256) e emitir Certificado Oficial para o TCU">
-                <span>📜</span> <span>Trilha (SHA-256)</span>
+              <button onclick="openAuditTrailModal()" class="h-10 bg-white/10 hover:bg-white/15 text-[#e5cfa0] font-semibold px-2.5 py-1.5 rounded-xl text-xs border border-[#d8be86]/35 flex items-center justify-center gap-1" title="Visualizar Trilha de Auditoria SHA-256">
+                <span>📜</span> <span>Trilha</span>
               </button>
             </div>
           </div>
+        </div>
+        <!-- BARRA PERSISTENTE DE DOWNLOAD PRONTO (GARANTIA CONTRA BLOQUEIO DE NAVEGADOR) -->
+        <div id="zipReadyBanner" class="hidden bg-emerald-950/50 border border-emerald-400/35 rounded-xl px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div class="flex items-center gap-2 text-emerald-100">
+            <span>✅</span>
+            <span id="zipReadyBannerText">Pacote ZIP pronto para download.</span>
+          </div>
+          <a id="zipReadyBannerLink" href="#" download="Processo_Completo_IN65.zip" class="bg-emerald-100 hover:bg-white text-emerald-950 font-bold px-3 py-1 rounded-lg text-xs transition inline-flex items-center gap-1.5">
+            <span>⬇️</span> <span>Salvar arquivo ZIP</span>
+          </a>
         </div>
       </div>
 
@@ -453,43 +484,25 @@
           </div>
         </div>
 
-        <!-- BARRA DE AÇÕES DIRETAS: DOCUMENTOS DA PESQUISA DE PREÇOS (IN 65/2021) -->
-        <div class="pt-2 border-t border-slate-200/80 space-y-2">
-          <div>
-            <span class="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Documentos Oficiais da Pesquisa de Preços (IN 65/2021 & Art. 23 da Lei 14.133/2021):</span>
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1.5">
-              <button onclick="downloadLiveExcel()" class="h-9 bg-[#3b6e5c] hover:bg-[#2d5849] text-white font-bold px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Baixar Mapa Comparativo de Preços em Excel (.xlsx)">
-                <span>📊</span> <span class="truncate">Mapa Excel (.XLSX)</span>
+        <!-- BARRA MINIMALISTA DE AÇÕES DO ITEM (1 BOTÃO POR CATEGORIA -> WORD + PDF SIMULTÂNEOS) -->
+        <div class="pt-2.5 border-t border-slate-200/80 space-y-2">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Documentos Oficiais do Item (IN 65/2021 & Art. 68 NLLC):</span>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <button onclick="downloadLiveReportBoth()" class="h-8.5 bg-[#34495e] hover:bg-[#283a4b] text-white font-semibold px-3 py-1.5 rounded-lg text-[11px] shadow-2xs flex items-center gap-1.5" title="1 clique baixa o Relatório Oficial de Pesquisa de Preços em Word (.DOCX) e PDF (.PDF)">
+                <span>📄</span> <span>Relatório IN 65 (Word + PDF)</span>
               </button>
-              <button onclick="downloadLiveWord()" class="h-9 bg-[#3b5b7c] hover:bg-[#2e4761] text-white font-bold px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Baixar Relatório Oficial de Pesquisa de Preços em Word (.docx)">
-                <span>📄</span> <span class="truncate">Relatório Word (.DOCX)</span>
+              <button onclick="downloadLiveExcel()" class="h-8.5 bg-[#3d6b5d] hover:bg-[#32594d] text-white font-semibold px-3 py-1.5 rounded-lg text-[11px] shadow-2xs flex items-center gap-1.5" title="Baixar Mapa Comparativo do item em Excel (.xlsx)">
+                <span>📊</span> <span>Mapa Excel</span>
               </button>
-              <button onclick="downloadLivePdf()" class="h-9 bg-[#9e4747] hover:bg-[#833838] text-white font-bold px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Baixar Relatório Oficial de Pesquisa de Preços em PDF com QR Codes">
-                <span>📕</span> <span class="truncate">Relatório PDF (.PDF)</span>
+              <button onclick="downloadLiveCertidoesBoth()" class="h-8.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-semibold px-3 py-1.5 rounded-lg text-[11px] flex items-center gap-1.5" title="1 clique baixa o Raio-X de Certidões das Empresas em Word (.DOCX) e PDF (.PDF)">
+                <span>🛡️</span> <span>Certidões (Word + PDF)</span>
               </button>
-              <button onclick="openFormalReportModal()" class="h-9 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-2 py-1 rounded-lg text-[11px] shadow-2xs transition flex items-center justify-center gap-1.5 text-center w-full" title="Visualizar Relatório de Pesquisa na Tela">
-                <span>👁️</span> <span class="truncate">Ver Relatório na Tela</span>
+              <button onclick="openCompanyComplianceDossierModal()" class="h-8.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-semibold px-2.5 py-1.5 rounded-lg text-[11px] flex items-center gap-1" title="Abrir Raio-X de Certidões na tela">
+                <span>🔍</span> <span>Raio-X</span>
               </button>
-            </div>
-          </div>
-
-          <!-- BARRA DEDICADA AO RAIO-X DE CERTIDÕES DAS EMPRESAS (ART. 68 DA LEI 14.133/2021) -->
-          <div class="pt-2 border-t border-slate-200/70 flex flex-wrap items-center justify-between gap-2">
-            <div class="flex items-center gap-1.5">
-              <span class="text-xs">📑</span>
-              <span class="text-[10px] font-black uppercase text-indigo-950 tracking-wider">
-                Raio-X de Certidões das Empresas Cotadas (Art. 68 da Lei 14.133/2021):
-              </span>
-            </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <button onclick="downloadLiveCertidoesWord()" class="h-8 bg-indigo-700 hover:bg-indigo-800 text-white font-bold px-2.5 py-1 rounded-lg text-[10.5px] shadow-2xs transition flex items-center gap-1.5" title="Baixar Dossiê Completo de Certidões das Empresas em Word (.docx)">
-                <span>📄</span> <span>Raio-X Certidões (.DOCX)</span>
-              </button>
-              <button onclick="downloadLiveCertidoesPdf()" class="h-8 bg-purple-700 hover:bg-purple-800 text-white font-bold px-2.5 py-1 rounded-lg text-[10.5px] shadow-2xs transition flex items-center gap-1.5" title="Baixar Dossiê Completo de Certidões das Empresas em PDF Oficial">
-                <span>📕</span> <span>Raio-X Certidões (.PDF)</span>
-              </button>
-              <button onclick="openCompanyComplianceDossierModal()" class="h-8 bg-slate-800 hover:bg-slate-900 text-amber-300 font-bold px-2.5 py-1 rounded-lg text-[10.5px] shadow-2xs transition flex items-center gap-1.5" title="Abrir painel interativo com o Raio-X das 7 certidões de cada fornecedor">
-                <span>🔍</span> <span>Ver Raio-X na Tela</span>
+              <button onclick="openFormalReportModal()" class="h-8.5 bg-[#efe4c8] hover:bg-[#e5d5ad] text-[#1e293b] border border-[#d8be86] font-bold px-2.5 py-1.5 rounded-lg text-[11px] flex items-center gap-1" title="Visualizar Relatório na Tela">
+                <span>👁️</span> <span>Visualizar</span>
               </button>
             </div>
           </div>
@@ -497,14 +510,14 @@
       </div>
 
       <!-- ALERTA DE AUDITORIA: MENOS DE 3 COTAÇÕES (DESPACHO DA AUTORIDADE) -->
-      <div id="justificativaCircunstanciadaCard" class="hidden bg-amber-50 border border-amber-300 rounded-xl p-3 space-y-2">
+      <div id="justificativaCircunstanciadaCard" class="hidden bg-amber-50/70 border border-amber-200 rounded-xl p-3 space-y-2">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div class="flex items-center gap-2.5">
-            <span class="text-xl">⚠️</span>
+            <span class="text-lg">⚠️</span>
             <div>
-              <div class="flex items-center gap-1.5">
-                <span class="bg-amber-400 text-slate-950 font-black text-[9px] px-1.5 py-0.2 rounded uppercase">Art. 6º, § 5º IN 65/2021</span>
-                <h4 class="text-xs font-black text-amber-950 uppercase">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="bg-amber-200/80 text-amber-950 font-bold text-[9px] px-1.5 py-0.5 rounded uppercase">Art. 6º, § 5º IN 65/2021</span>
+                <h4 class="text-xs font-bold text-amber-950 uppercase">
                   Auditoria: Cesta com <span id="justQuoteCount">0</span> cotação(ões) válida(s)
                 </h4>
               </div>
@@ -513,15 +526,12 @@
               </p>
             </div>
           </div>
-          <div class="flex items-center gap-1.5 shrink-0">
-            <button onclick="downloadLiveJustificativaWord()" class="h-8 bg-[#3b5b7c] hover:bg-[#2e4761] text-white font-bold px-3 py-1 rounded-lg text-[10.5px] shadow-2xs transition flex items-center gap-1.5" title="Baixar Minuta de Despacho de Justificativa Circunstanciada em Word (.docx)">
-              <span>📝</span> <span>Despacho Justificativa (.DOCX)</span>
+          <div class="flex flex-wrap items-center gap-1.5 shrink-0">
+            <button onclick="downloadLiveJustificativaBoth()" class="h-8 bg-[#34495e] hover:bg-[#283a4b] text-white font-semibold px-3 py-1 rounded-lg text-[10.5px] flex items-center gap-1.5" title="1 clique baixa o Despacho de Justificativa em Word (.DOCX) e PDF (.PDF)">
+              <span>📝</span> <span>Despacho Justificativa (Word + PDF)</span>
             </button>
-            <button onclick="downloadLiveJustificativaPdf()" class="h-8 bg-[#9e4747] hover:bg-[#833838] text-white font-bold px-3 py-1 rounded-lg text-[10.5px] shadow-2xs transition flex items-center gap-1.5" title="Baixar Minuta de Despacho de Justificativa Circunstanciada em PDF">
-              <span>📝</span> <span>Despacho Justificativa (.PDF)</span>
-            </button>
-            <button onclick="openJustificativaModal()" class="h-8 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-3 py-1 rounded-lg text-[10.5px] shadow-2xs transition flex items-center gap-1.5" title="Abrir e revisar texto do Despacho Circunstanciado da Autoridade na tela">
-              <span>👁️</span> <span>Revisar Despacho</span>
+            <button onclick="openJustificativaModal()" class="h-8 bg-[#efe4c8] hover:bg-[#e5d5ad] text-[#1e293b] border border-[#d8be86] font-bold px-3 py-1 rounded-lg text-[10.5px] flex items-center gap-1.5" title="Abrir e revisar texto do Despacho na tela">
+              <span>👁️</span> <span>Revisar</span>
             </button>
           </div>
         </div>
@@ -3139,13 +3149,17 @@
             </td>
             <td class="py-2.5 px-3">
               <span class="text-slate-800 font-mono text-[11px] block">${q.purchase_number_year || '—'}</span>
+              ${q.pncp_control_number ? `<span class="text-[9.5px] font-mono text-teal-700 block truncate max-w-[170px]" title="Id contratação PNCP: ${q.pncp_control_number}">${q.pncp_control_number}</span>` : ''}
               <span class="text-[10px] text-slate-500">${q.purchase_date || '—'}</span>
             </td>
             <td class="py-2.5 px-3 text-center whitespace-nowrap space-x-1">
-              <button onclick="openPncpPortalByQuote(${idx})" class="h-6.5 bg-white hover:bg-slate-50 text-[#1e2d3d] border border-slate-300 font-bold px-2 py-0.5 rounded text-[10px] shadow-2xs transition inline-flex items-center gap-1" title="Abrir página oficial específica da contratação no PNCP">
-                <span>🌐</span> Ver no PNCP
+              <button onclick="openPncpPortalByQuote(${idx})" class="h-7 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-semibold px-2 py-0.5 rounded-md text-[10px] inline-flex items-center gap-1" title="Abrir página real da contratação no PNCP ou Compras.gov.br">
+                <span>🌐</span> PNCP
               </button>
-              <button onclick="openQuoteDossierByIndex(${idx})" class="h-6.5 bg-[#3b5b7c] hover:bg-[#2e4761] text-white font-bold px-2 py-0.5 rounded text-[10px] shadow-2xs transition inline-flex items-center gap-1" title="Ver Dossiê e Arquivos PNCP da Compra">
+              <button onclick="openPncpPagePdfWithCountdown(${idx})" class="h-7 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-semibold px-2 py-0.5 rounded-md text-[10px] inline-flex items-center gap-1" title="Emitir Comprovante Oficial da página da compra no PNCP em PDF com QR Code">
+                <span>📕</span> PDF PNCP
+              </button>
+              <button onclick="openQuoteDossierByIndex(${idx})" class="h-7 bg-[#34495e] hover:bg-[#283a4b] text-white font-semibold px-2 py-0.5 rounded-md text-[10px] inline-flex items-center gap-1" title="Ver Dossiê e Arquivos PNCP da Compra">
                 <span>📄</span> Dossiê
               </button>
             </td>
@@ -3172,33 +3186,39 @@
       if (q.pncp_control_number) {
         const m = String(q.pncp_control_number).trim().match(/^(\d{14})-\d+-(\d+)\/(\d{4})$/);
         if (m) {
-          const url = `https://pncp.gov.br/app/editais/${m[1]}/${m[3]}/${m[2].padStart(6, '0')}`;
+          const url = `https://pncp.gov.br/app/editais/${m[1]}/${m[3]}/${parseInt(m[2], 10)}`;
           window.open(url, "_blank");
           return;
         }
       }
 
-      // 3. Resolve dinamicamente via backend a contratação exata no PNCP
-      const chave = q.purchase_key || (q.id_compra_item ? String(q.id_compra_item).slice(0, 17) : "");
-      if (chave && chave.length >= 10) {
-        showAppNotification("Abrindo edital correspondente no Portal PNCP...", "info");
-        fetch(`/api/v1/pncp/compra-info?chave=${encodeURIComponent(chave)}`)
+      const rawKey = String(q.purchase_key || (q.id_compra_item ? String(q.id_compra_item).slice(0, 17) : "")).replace(/\D/g, "");
+      const chave17 = rawKey.length === 16 ? ("0" + rawKey) : rawKey.slice(0, 17);
+      const comprasFallback = q.comprasnet_uri || (chave17.length === 17
+        ? `https://cnetmobile.estaleiro.serpro.gov.br/comprasnet-web/public/compras/acompanhamento-compra?compra=${chave17}`
+        : "https://pncp.gov.br/app/editais");
+
+      // 3. Resolve dinamicamente via backend a contratação exata no PNCP (nunca usa link genérico ?q=)
+      if (chave17 && chave17.length >= 16) {
+        showAppNotification("Localizando página direta da contratação no PNCP...", "info");
+        fetch(`/api/v1/pncp/compra-info?chave=${encodeURIComponent(chave17)}`)
           .then(r => r.json())
           .then(d => {
-            if (d && d.status === "SUCCESS" && d.pncp_webpage_url) {
+            if (d && d.status === "SUCCESS" && d.pncp_webpage_url && !d.pncp_webpage_url.includes("?q=")) {
               q.pncp_or_compras_uri = d.pncp_webpage_url;
+              if (d.compra && d.compra.numeroControlePNCP) q.pncp_control_number = d.compra.numeroControlePNCP;
               window.open(d.pncp_webpage_url, "_blank");
             } else {
-              window.open(q.pncp_or_compras_uri || "https://pncp.gov.br", "_blank");
+              window.open(comprasFallback, "_blank");
             }
           })
           .catch(() => {
-            window.open(q.pncp_or_compras_uri || "https://pncp.gov.br", "_blank");
+            window.open(comprasFallback, "_blank");
           });
         return;
       }
 
-      window.open(q.pncp_or_compras_uri || "https://pncp.gov.br", "_blank");
+      window.open(comprasFallback, "_blank");
     }
 
     function openQuoteDossierByIndex(idx) {
@@ -4843,12 +4863,16 @@
         }
       }, 100);
     }
-    function hideCountdownProgress() {
+    function hideCountdownProgress(isError = false) {
       const modal = document.getElementById("progressCountdownModal");
       const bar = document.getElementById("countdownProgressBar");
       const pct = document.getElementById("countdownProgressPercent");
       const step = document.getElementById("countdownProgressStep");
       clearInterval(countdownInterval);
+      if (isError) {
+        if (modal) modal.classList.add("hidden");
+        return;
+      }
       if (bar) bar.style.width = "100%";
       if (pct) pct.textContent = "100%";
       if (step) step.textContent = "Concluído!";
@@ -4866,6 +4890,17 @@
       if (pct) pct.textContent = `${safePct}%`;
       if (step && stageText) step.textContent = stageText;
       if (secText && elapsedSec !== undefined) secText.textContent = `${Number(elapsedSec).toFixed(1)}s decorridos`;
+    }
+
+    function triggerSameOriginBlobDownload(blob, filename) {
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      return blobUrl;
     }
 
     // Enxuga o payload JSON preservando TODOS os metadados oficiais (Compras.gov.br / PNCP / Classe CNBS / 12M vs 24M)
@@ -4890,6 +4925,8 @@
           unit_price: q.unit_price !== undefined ? q.unit_price : (q.price || 0),
           purchase_date: q.purchase_date || "",
           purchase_key: q.purchase_key || "",
+          pncp_control_number: q.pncp_control_number || "",
+          comprasnet_uri: q.comprasnet_uri || "",
           forma_compra: q.forma_compra || "",
           source_inciso: q.source_inciso || q.source_label || "Inciso I - Compras.gov.br",
           pncp_or_compras_uri: q.pncp_or_compras_uri || "",
@@ -4939,6 +4976,43 @@
       });
     }
 
+    async function fetchAndSavePostPair(requestsList, titleLabel) {
+      showCountdownProgress({
+        title: titleLabel,
+        subtitle: "Gerando arquivos em Word (.DOCX) e PDF (.PDF) simultaneamente...",
+        estimatedSeconds: 4,
+        icon: "📑",
+        steps: ["Gerando documento editável (.DOCX)...", "Gerando documento oficial (.PDF)...", "Iniciando download dos dois arquivos..."]
+      });
+      try {
+        const blobs = await Promise.all(
+          requestsList.map(async (item) => {
+            const resp = await fetch(item.url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(item.payload)
+            });
+            if (!resp.ok) {
+              let msg = `Erro HTTP ${resp.status}`;
+              try { const j = await resp.json(); msg = j.error || msg; } catch (e) {}
+              throw new Error(`${item.filename}: ${msg}`);
+            }
+            const blob = await resp.blob();
+            return { blob, filename: item.filename };
+          })
+        );
+        for (let i = 0; i < blobs.length; i++) {
+          triggerSameOriginBlobDownload(blobs[i].blob, blobs[i].filename);
+          if (i < blobs.length - 1) await new Promise(r => setTimeout(r, 380));
+        }
+        hideCountdownProgress(false);
+        showAppNotification(`${titleLabel}: arquivos Word (.DOCX) e PDF (.PDF) baixados!`, "success");
+      } catch (err) {
+        hideCountdownProgress(true);
+        showAppNotification("Falha ao gerar arquivos: " + err.message, "error");
+      }
+    }
+
     async function downloadAguNotaTecnica(format = "docx") {
       const validItems = (batchResearchResults || []).filter(r => r && r.report && r.report.sanitized_metrics);
       if (validItems.length === 0) {
@@ -4963,7 +5037,70 @@
       );
     }
 
-    // Pipeline Enterprise Assíncrono para Geração de ZIP (Zero HTTP 504 para 50, 150, 300+ itens)
+    async function downloadAguNotaTecnicaBoth() {
+      const validItems = (batchResearchResults || []).filter(r => r && r.report && r.report.sanitized_metrics);
+      if (validItems.length === 0) {
+        showAppNotification("Nenhum item válido pesquisado para gerar a Nota Técnica AGU.", "warn");
+        return;
+      }
+      const p = getReportParams();
+      const payload = {
+        items: slimBatchItemsForExport(validItems),
+        om_name: getGlobalOrgName(),
+        elaborador: p.elab,
+        ordenador: p.orden
+      };
+      await fetchAndSavePostPair(
+        [
+          { url: "/api/v1/prices/export-agu-nota-tecnica-docx", payload, filename: `Nota_Tecnica_AGU_IN65_${validItems.length}_itens.docx` },
+          { url: "/api/v1/prices/export-agu-nota-tecnica-pdf", payload, filename: `Nota_Tecnica_AGU_IN65_${validItems.length}_itens.pdf` }
+        ],
+        `Nota Técnica AGU (${validItems.length} itens)`
+      );
+    }
+
+    async function downloadBatchCadernoBoth() {
+      const validItems = (batchResearchResults || []).filter(r => r && r.report && r.report.sanitized_metrics);
+      if (validItems.length === 0) {
+        showAppNotification("Processe o lote com pelo menos 1 item válido antes de exportar o Caderno.", "warn");
+        return;
+      }
+      const p = getReportParams();
+      const payload = {
+        items: slimBatchItemsForExport(validItems),
+        om_name: getGlobalOrgName(),
+        elaborador: p.elab,
+        ordenador: p.orden
+      };
+      await fetchAndSavePostPair(
+        [
+          { url: "/api/v1/prices/export-batch-docx", payload, filename: `Caderno_Consolidado_Precos_${validItems.length}_itens.docx` },
+          { url: "/api/v1/prices/export-batch-pdf", payload, filename: `Caderno_Consolidado_Precos_${validItems.length}_itens.pdf` }
+        ],
+        `Caderno Consolidado (${validItems.length} itens)`
+      );
+    }
+
+    async function downloadLiveReportBoth() {
+      if (typeof downloadLiveWord === "function") await downloadLiveWord();
+      await new Promise(r => setTimeout(r, 400));
+      if (typeof downloadLivePdf === "function") await downloadLivePdf();
+    }
+
+    async function downloadLiveCertidoesBoth() {
+      if (typeof downloadLiveCertidoesWord === "function") await downloadLiveCertidoesWord();
+      await new Promise(r => setTimeout(r, 400));
+      if (typeof downloadLiveCertidoesPdf === "function") await downloadLiveCertidoesPdf();
+    }
+
+    async function downloadLiveJustificativaBoth() {
+      if (typeof downloadLiveJustificativaWord === "function") await downloadLiveJustificativaWord();
+      await new Promise(r => setTimeout(r, 400));
+      if (typeof downloadLiveJustificativaPdf === "function") await downloadLiveJustificativaPdf();
+    }
+
+    // Pipeline Enterprise Assíncrono para Geração de ZIP (Zero HTTP 504 + Download via Blob Same-Origin)
+    window._lastZipBlobUrl = null;
     async function downloadBatchZipAsync(itemsList, mode = "auto") {
       const validItems = (itemsList || []).filter(r => r && r.report && r.report.sanitized_metrics);
       if (validItems.length === 0) {
@@ -4974,16 +5111,19 @@
       const slimItems = slimBatchItemsForExport(validItems);
       const fallbackName = `Processo_Completo_IN65_${validItems.length}_itens.zip`;
 
+      const readyBanner = document.getElementById("zipReadyBanner");
+      if (readyBanner) readyBanner.classList.add("hidden");
+
       showCountdownProgress({
         title: `Gerando Processo Completo (${validItems.length} itens)`,
-        subtitle: "Processamento assíncrono em alta performance com streaming direto em disco (zero risco de timeout).",
-        estimatedSeconds: Math.max(4, Math.ceil(validItems.length * 0.25)),
+        subtitle: "Mapa Geral c/ Todas Empresas, Nota Técnica AGU, Comprovantes PNCP (QR Code), Certidões e pastas 12M / 13-24M por categoria.",
+        estimatedSeconds: Math.max(4, Math.ceil(validItems.length * 0.15)),
         icon: "📦",
         steps: [
-          "Enviando lote enxugado para fila assíncrona...",
-          "Gerando Planilha Mestre, Caderno PDF, Caderno Word e Raio-X...",
-          "Compilando relatórios individuais dos itens...",
-          "Preparando download em streaming..."
+          "Enviando lote para processamento assíncrono...",
+          "Gerando Mapa Geral Excel e Nota Técnica AGU (Word + PDF)...",
+          "Emitindo Comprovantes PNCP com QR Code e relatórios por categoria...",
+          "Compactando e baixando pacote .ZIP..."
         ]
       });
 
@@ -5001,9 +5141,8 @@
           })
         });
 
-        // Fallback automático caso o servidor em nuvem ainda esteja concluindo o rebuild
         if (startResp.status === 404) {
-          hideCountdownProgress();
+          hideCountdownProgress(true);
           await downloadFromPost(
             "/api/v1/prices/export-batch-zip",
             { items: slimItems, om_name: getGlobalOrgName(), elaborador: p.elab, ordenador: p.orden },
@@ -5017,7 +5156,7 @@
         if (!startResp.ok) {
           let errMsg = `Erro HTTP ${startResp.status}`;
           try { const j = await startResp.json(); errMsg = j.error || errMsg; } catch (e) {}
-          hideCountdownProgress();
+          hideCountdownProgress(true);
           showAppNotification("Falha ao iniciar fila do ZIP: " + errMsg, "error");
           return;
         }
@@ -5026,18 +5165,29 @@
         const jobId = jobInit.job_id;
         updateCountdownRealProgress(5, jobInit.stage || "Job iniciado em background...", 0.2);
 
-        // 2. Polling leve de progresso real (sem timeout de 100s!)
-        const maxWaitMs = 10 * 60 * 1000; // até 10 minutos para lotes massivos
+        // 2. Polling leve de progresso real (com tolerância a oscilações temporárias)
+        const maxWaitMs = 10 * 60 * 1000;
         const tStart = Date.now();
         let finishedJob = null;
+        let transientErrors = 0;
 
         while (Date.now() - tStart < maxWaitMs) {
-          await new Promise(res => setTimeout(res, 1100));
-          const stResp = await fetch(`/api/v1/jobs/${encodeURIComponent(jobId)}/status`, { method: "GET" });
-          if (!stResp.ok) {
-            if (stResp.status === 404) throw new Error("Job expirou no servidor. Tente gerar novamente.");
+          await new Promise(res => setTimeout(res, 1000));
+          let stResp;
+          try {
+            stResp = await fetch(`/api/v1/jobs/${encodeURIComponent(jobId)}/status`, { method: "GET" });
+          } catch (netErr) {
+            transientErrors += 1;
+            if (transientErrors >= 6) throw new Error("Conexão interrompida durante a geração do ZIP.");
             continue;
           }
+          if (!stResp.ok) {
+            if (stResp.status === 404) throw new Error("Job expirou no servidor. Tente gerar novamente.");
+            transientErrors += 1;
+            if (transientErrors >= 6) throw new Error(`Servidor retornou HTTP ${stResp.status} ao consultar progresso.`);
+            continue;
+          }
+          transientErrors = 0;
           const st = await stResp.json();
           updateCountdownRealProgress(st.percent || 5, st.stage || "Processando lote...", st.elapsed_sec || ((Date.now() - tStart) / 1000));
           if (st.status === "done") {
@@ -5053,21 +5203,42 @@
           throw new Error("Tempo limite excedido aguardando conclusão do job.");
         }
 
-        // 3. Download direto em streaming (chunks de 64 KB do disco do servidor)
-        updateCountdownRealProgress(100, `Concluído (${(finishedJob.file_size / (1024 * 1024)).toFixed(1)} MB)! Iniciando download...`, finishedJob.elapsed_sec);
-        const dlUrl = apiUrl(`/api/v1/jobs/${encodeURIComponent(jobId)}/download`);
-        const a = document.createElement("a");
-        a.href = dlUrl;
-        a.download = finishedJob.filename || fallbackName;
-        a.rel = "noopener";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
+        // 3. Download seguro via fetch -> Blob -> URL same-origin (nunca bloqueado por CORS/gesto expirado)
+        const sizeMb = (finishedJob.file_size / (1024 * 1024)).toFixed(2);
+        updateCountdownRealProgress(98, `Transferindo pacote ZIP (${sizeMb} MB)...`, finishedJob.elapsed_sec);
 
-        hideCountdownProgress();
-        showAppNotification(`Pacote ZIP de ${validItems.length} itens gerado em ${finishedJob.elapsed_sec}s (${(finishedJob.file_size / (1024 * 1024)).toFixed(1)} MB)!`, "success");
+        const dlResp = await fetch(`/api/v1/jobs/${encodeURIComponent(jobId)}/download`, { method: "GET" });
+        if (!dlResp.ok) {
+          throw new Error(`Falha ao transferir o ZIP pronto (HTTP ${dlResp.status}).`);
+        }
+        const zipBlob = await dlResp.blob();
+        if (!zipBlob || zipBlob.size < 100) {
+          throw new Error("O arquivo ZIP retornado pelo servidor veio vazio.");
+        }
+
+        const finalFilename = finishedJob.filename || fallbackName;
+        if (window._lastZipBlobUrl) {
+          try { window.URL.revokeObjectURL(window._lastZipBlobUrl); } catch (e) {}
+        }
+        const blobUrl = triggerSameOriginBlobDownload(zipBlob, finalFilename);
+        window._lastZipBlobUrl = blobUrl;
+
+        // Exibe barra persistente com botão de download manual de garantia
+        if (readyBanner) {
+          const bTxt = document.getElementById("zipReadyBannerText");
+          const bLink = document.getElementById("zipReadyBannerLink");
+          if (bTxt) bTxt.textContent = `Pacote ZIP de ${validItems.length} itens gerado em ${finishedJob.elapsed_sec}s (${sizeMb} MB).`;
+          if (bLink) {
+            bLink.href = blobUrl;
+            bLink.download = finalFilename;
+          }
+          readyBanner.classList.remove("hidden");
+        }
+
+        hideCountdownProgress(false);
+        showAppNotification(`Pacote ZIP de ${validItems.length} itens salvo com sucesso (${sizeMb} MB em ${finishedJob.elapsed_sec}s)!`, "success");
       } catch (err) {
-        hideCountdownProgress();
+        hideCountdownProgress(true);
         showAppNotification("Erro na geração do ZIP: " + err.message, "error");
       }
     }

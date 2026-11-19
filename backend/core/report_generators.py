@@ -5,6 +5,8 @@ Padrão Marinha do Brasil e Instrução Normativa SEGES/ME nº 65/2021 (Lei nº 
 Gera em memória (BytesIO) relatórios completos e prontos para instrução processual.
 """
 
+from __future__ import annotations
+
 import gc
 import io
 import os
@@ -15,7 +17,7 @@ import json
 import math
 from datetime import datetime, date, timezone
 from functools import lru_cache
-from typing import Callable, Dict, Any, List, Optional
+from typing import Callable, Dict, Any, List, Optional, Tuple
 from PIL import Image as PILImage, ImageDraw as PILImageDraw, ImageFont as PILImageFont
 import qrcode
 
@@ -1910,10 +1912,9 @@ def build_consolidated_in65_excel_bytes(
         "JANELA", "STATUS", "CARACTERIZAÇÃO / MOTIVO", "FONTE / INCISO",
         "FORNECEDOR (RAZÃO SOCIAL)", "CNPJ", "MARCA", "UASG",
         "ÓRGÃO COMPRADOR", "ESFERA", "UF", "MODALIDADE / FORMA",
-        "ID COMPRA / Nº ANO", "DATA COMPRA", "UNID. / CAP.", "PREÇO UNITÁRIO (R$)",
+        "ID CONTRATAÇÃO PNCP / COMPRA", "DATA COMPRA", "UNID. / CAP.", "PREÇO UNITÁRIO (R$)",
+        "LINK DIRETO PNCP / COMPRAS.GOV.BR", "LINK COMPRAS.GOV.BR (ACOMPANHAMENTO)",
     ]
-    # Coluna extra U = Link Oficial PNCP / Compras.gov.br
-    headers_all.append("LINK OFICIAL PNCP / COMPRAS")
     for col_idx, h in enumerate(headers_all, 1):
         c = ws_all.cell(3, col_idx, h)
         c.font, c.fill, c.alignment, c.border = hdr_font, hdr_fill, ctr, B
@@ -2038,29 +2039,43 @@ def build_consolidated_in65_excel_bytes(
             esfera_q = str(q.get("esfera") or "—")
             uf_q = str(q.get("buyer_uf") or "—")
             mod_q = str(q.get("forma_compra") or "—")
-            id_cmp = str(q.get("purchase_number_year") or q.get("purchase_key") or q.get("id_compra_item") or "—")
+            pncp_ctrl_q = str(q.get("pncp_control_number") or "").strip()
+            pkey_q = re.sub(r"\D", "", str(q.get("purchase_key") or ""))
+            if len(pkey_q) == 16:
+                pkey_q = "0" + pkey_q
+            id_cmp = pncp_ctrl_q or str(q.get("purchase_number_year") or pkey_q or q.get("id_compra_item") or "—")
             dt_q = str(q.get("purchase_date") or "—")[:10]
             u_cap = str(q.get("supply_unit") or unit)
             if q.get("capacidade_unidade"):
                 u_cap = f"{u_cap} ({q.get('capacidade_unidade')})"
             q_price = float(q.get("unit_price") or 0.0)
+            compras_direct_q = str(q.get("comprasnet_uri") or "").strip()
+            if not compras_direct_q and len(pkey_q) >= 17:
+                compras_direct_q = f"https://cnetmobile.estaleiro.serpro.gov.br/comprasnet-web/public/compras/acompanhamento-compra?compra={pkey_q[:17]}"
             uri = str(q.get("pncp_or_compras_uri") or "").strip()
+            if "?q=" in uri and compras_direct_q:
+                uri = compras_direct_q
+            if not uri and compras_direct_q:
+                uri = compras_direct_q
 
             row_all = [
                 idx, code, cat_name[:40], desc[:85], janela_lbl, st_text,
                 carac if not is_val else "Compõe cesta", src, forn[:65], cnpj,
                 marca[:30], uasg_q, org_q[:60], esfera_q, uf_q, mod_q[:32],
-                id_cmp, dt_q, u_cap, q_price, uri or "—",
+                id_cmp, dt_q, u_cap, q_price, uri or "—", compras_direct_q or "—",
             ]
             for ci, val in enumerate(row_all, 1):
                 c = ws_all.cell(all_row_idx, ci, val)
                 c.border = B
-                c.alignment = esq if ci in (3, 4, 7, 9, 13, 21) else (dir_al if ci == 20 else ctr)
+                c.alignment = esq if ci in (3, 4, 7, 9, 13, 21, 22) else (dir_al if ci == 20 else ctr)
                 if ci == 20:
                     c.number_format = brl
                     c.font = Font(bold=is_val, size=9)
                 if ci == 21 and uri.startswith("http"):
                     c.hyperlink = uri
+                    c.font = link_font
+                if ci == 22 and compras_direct_q.startswith("http"):
+                    c.hyperlink = compras_direct_q
                     c.font = link_font
                 if not is_val:
                     c.fill = vermelho_claro
@@ -2160,10 +2175,10 @@ def build_consolidated_in65_excel_bytes(
     ws_resumo.freeze_panes = "A5"
     ws_resumo.auto_filter.ref = f"A4:N{max(4, tot_row - 1)}"
 
-    for ci, w in enumerate([7, 14, 24, 34, 14, 12, 22, 24, 36, 19, 16, 10, 34, 11, 6, 22, 18, 12, 16, 17, 42], 1):
+    for ci, w in enumerate([7, 14, 24, 34, 14, 12, 22, 24, 36, 19, 16, 10, 34, 11, 6, 22, 26, 12, 16, 17, 46, 46], 1):
         ws_all.column_dimensions[openpyxl.utils.get_column_letter(ci)].width = w
     ws_all.freeze_panes = "A4"
-    ws_all.auto_filter.ref = f"A3:U{max(3, all_row_idx - 1)}"
+    ws_all.auto_filter.ref = f"A3:V{max(3, all_row_idx - 1)}"
 
     for ci, w in enumerate([8, 14, 38, 36, 15, 24, 48], 1):
         ws_exp.column_dimensions[openpyxl.utils.get_column_letter(ci)].width = w
@@ -2845,7 +2860,7 @@ def build_batch_zip_to_file(
 
     include_detailed = mode_norm != "consolidated"
     total_steps = (
-        5  # Excel + Nota Técnica DOCX + Nota Técnica PDF + Certidões + Justificativa/README
+        6  # Excel + Nota Técnica DOCX/PDF + Certidões + Justificativa + Comprovantes PNCP PDF
         + (2 + len(cats_12m) if (include_detailed and items_12m_idx) else 0)
         + (2 + len(cats_24m) if (include_detailed and items_24m_idx) else 0)
     )
@@ -2945,6 +2960,20 @@ def build_batch_zip_to_file(
             "================================================================================",
         ]
         zf.writestr("00_LEIA_ME_INDICE_DO_PROCESSO.txt", "\n".join(readme_lines))
+        done_steps += 1
+
+        # 6. Caderno de Comprovantes Oficiais PNCP (1 página estilo portal PNCP com QR Code por contratação única)
+        _report(done_steps, total_steps, "Emitindo Comprovantes Oficiais PNCP com QR Code (prova das contratações)...")
+        try:
+            try:
+                from pncp_extractor import build_pncp_comprovantes_caderno_pdf_bytes
+            except ImportError:
+                from core.pncp_extractor import build_pncp_comprovantes_caderno_pdf_bytes
+            pncp_pdf = build_pncp_comprovantes_caderno_pdf_bytes(items_results, om_name=om_name, max_purchases=60)
+            zf.writestr("04_Comprovantes_PNCP_Contratacoes_QRCode.pdf", pncp_pdf)
+            del pncp_pdf
+        except Exception:
+            pass
         done_steps += 1
 
         # Helper para gravar uma janela temporal (12M ou 13-24M) sem redundância e agrupada por Categoria

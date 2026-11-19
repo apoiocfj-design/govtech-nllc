@@ -226,7 +226,11 @@ class TestBatchReports(unittest.TestCase):
             self.assertIn("02_Dossie_Consolidado_Certidoes_Empresas.pdf", names)
             self.assertIn("03_Justificativa_Consolidada_Art6_Par5.docx", names)
             self.assertIn("03_Justificativa_Consolidada_Art6_Par5.pdf", names)
+            self.assertIn("04_Comprovantes_PNCP_Contratacoes_QRCode.pdf", names)
             self.assertIn("00_LEIA_ME_INDICE_DO_PROCESSO.txt", names)
+
+            pncp_pdf = zf.read("04_Comprovantes_PNCP_Contratacoes_QRCode.pdf")
+            self.assertTrue(pncp_pdf.startswith(b"%PDF"))
 
             # Separate folders for <=12M vs 13-24M
             folder_12m = [n for n in names if n.startswith("01_Pesquisas_Ate_12_Meses_IN65/")]
@@ -235,6 +239,19 @@ class TestBatchReports(unittest.TestCase):
             self.assertTrue(any("/Por_Categoria/" in n for n in folder_12m))
             self.assertTrue(any("Relatorio_Detalhado_Completo_13_a_24M.pdf" in n for n in folder_24m))
             self.assertTrue(any("/Por_Categoria/" in n for n in folder_24m))
+
+    def test_pncp_direct_urls_never_use_generic_search_query(self):
+        from core.gov_api_client import GovProcurementAPIClient
+        u_pncp = GovProcurementAPIClient.build_audit_uri(
+            "75121206000702026", pncp_control_number="00394502000144-1-010123/2026"
+        )
+        self.assertEqual(u_pncp, "https://pncp.gov.br/app/editais/00394502000144/2026/10123")
+        u_fallback = GovProcurementAPIClient.build_audit_uri("75121206000702026")
+        self.assertEqual(
+            u_fallback,
+            "https://cnetmobile.estaleiro.serpro.gov.br/comprasnet-web/public/compras/acompanhamento-compra?compra=75121206000702026",
+        )
+        self.assertNotIn("?q=", u_fallback)
 
     def test_150_items_large_volume_zip_fast_and_complete(self):
         cats = [

@@ -1344,7 +1344,15 @@ def build_category_detailed_report_pdf_bytes(
             esf = f" ({q.get('esfera')})" if q.get("esfera") else ""
             org = f"{_safe_xml(q.get('buyer_org_name') or q.get('nome_uasg') or '—', 38)}<br/>UASG {_safe_xml(q.get('buyer_uasg') or '—')} / {_safe_xml(q.get('buyer_uf') or '—')}{_safe_xml(esf)}"
             uri = str(q.get("pncp_or_compras_uri") or "").strip()
-            id_txt = _safe_xml(q.get("purchase_number_year") or q.get("purchase_key") or q.get("id_compra_item") or "—", 26)
+            pkey_d = re.sub(r"\D", "", str(q.get("purchase_key") or ""))
+            if len(pkey_d) == 16:
+                pkey_d = "0" + pkey_d
+            compras_uri = str(q.get("comprasnet_uri") or "").strip()
+            if not compras_uri and len(pkey_d) >= 17:
+                compras_uri = f"https://cnetmobile.estaleiro.serpro.gov.br/comprasnet-web/public/compras/acompanhamento-compra?compra={pkey_d[:17]}"
+            if ("?q=" in uri or not uri) and compras_uri:
+                uri = compras_uri
+            id_txt = _safe_xml(q.get("pncp_control_number") or q.get("purchase_number_year") or q.get("purchase_key") or q.get("id_compra_item") or "—", 32)
             if uri.startswith("http"):
                 id_cell = Paragraph(f'<link href="{xml_escape(uri)}" color="#1d4ed8"><u>{id_txt}</u></link>', st_td_c)
             else:

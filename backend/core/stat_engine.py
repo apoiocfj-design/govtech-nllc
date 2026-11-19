@@ -76,6 +76,7 @@ class RawQuoteInput:
     numero_item_compra: Optional[str] = None
     criterio_julgamento: Optional[str] = None
     is_extended_24m: bool = False
+    comprasnet_uri: Optional[str] = None
 
 
 @dataclass
@@ -111,6 +112,7 @@ class AuditedQuoteOutput:
     numero_item_compra: Optional[str] = None
     criterio_julgamento: Optional[str] = None
     is_extended_24m: bool = False
+    comprasnet_uri: Optional[str] = None
     is_outlier: bool = False
     purge_status: str = "VALIDA"  # VALIDA | EXPURGADA_UNIDADE_DIVERGENTE | EXPURGADA_INEXEQUIVEL | EXPURGADA_ACIMA_LIMITE
     purge_justification: Optional[str] = None

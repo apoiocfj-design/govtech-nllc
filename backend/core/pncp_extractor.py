@@ -22,7 +22,11 @@ SESSION.headers.update({
 import os
 import subprocess
 import tempfile
+import threading
 import time
+from xml.sax.saxutils import escape as xml_escape
+import qrcode
+from reportlab.platypus import Image as RLImage, KeepTogether, PageBreak
 
 CHROME_PATHS = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -36,28 +40,104 @@ CHROME_PATHS = [
 CACHE_DIR = os.path.join(tempfile.gettempdir(), "pncp_pdf_cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
+_PNCP_CACHE_LOCK = threading.Lock()
+_PNCP_COMPRA_CACHE: dict = {}
+_PNCP_CONSULTA_CACHE: dict = {}
+
+
+def build_comprasnet_direct_url(chave_or_id: str) -> str:
+    """Retorna a URL real e direta de acompanhamento no Compras.gov.br (nunca link genérico de busca)."""
+    digits = re.sub(r"\D", "", str(chave_or_id or ""))
+    if len(digits) == 16:
+        digits = "0" + digits
+    if len(digits) >= 17:
+        return f"https://cnetmobile.estaleiro.serpro.gov.br/comprasnet-web/public/compras/acompanhamento-compra?compra={digits[:17]}"
+    return ""
+
+
+def parse_pncp_control_id(ctrl_id: str):
+    """Extrai (cnpj, ano, seq_int, seq_6) de um Id contratação PNCP (ex: 00394502000144-1-010123/2026)."""
+    m = re.match(r"^(\d{14})-\d+-(\d+)/(\d{4})$", str(ctrl_id or "").strip())
+    if not m:
+        return None
+    cnpj = m.group(1)
+    seq_int = int(m.group(2))
+    ano = m.group(3)
+    return cnpj, ano, seq_int, str(seq_int).zfill(6)
+
+
+def fetch_pncp_compra_consulta(cnpj: str, ano, sequencial) -> dict:
+    """
+    Consulta a API oficial pública de consulta do PNCP:
+    GET https://pncp.gov.br/api/consulta/v1/orgaos/{cnpj}/compras/{ano}/{int(sequencial)}
+    Retorna os dados completos da página do PNCP (valores estimado/homologado, linkSistemaOrigem,
+    datas de proposta, amparo legal, situação, SRP, objeto, unidade compradora).
+    """
+    if not (cnpj and ano and sequencial):
+        return {}
+    try:
+        seq_int = int(str(sequencial).lstrip("0") or "0")
+    except ValueError:
+        return {}
+    if seq_int <= 0:
+        return {}
+    cache_key = f"{cnpj}/{ano}/{seq_int}"
+    with _PNCP_CACHE_LOCK:
+        if cache_key in _PNCP_CONSULTA_CACHE:
+            return _PNCP_CONSULTA_CACHE[cache_key]
+
+    url = f"https://pncp.gov.br/api/consulta/v1/orgaos/{cnpj}/compras/{ano}/{seq_int}"
+    result = {}
+    for attempt in range(2):
+        try:
+            resp = SESSION.get(url, timeout=8)
+            if resp.status_code == 200:
+                data = resp.json()
+                if isinstance(data, dict):
+                    result = data
+                    break
+            elif resp.status_code in (429, 500, 502, 503, 504):
+                time.sleep(0.4 * (attempt + 1))
+                continue
+            else:
+                break
+        except Exception:
+            time.sleep(0.3)
+
+    with _PNCP_CACHE_LOCK:
+        if len(_PNCP_CONSULTA_CACHE) > 2000:
+            _PNCP_CONSULTA_CACHE.clear()
+        _PNCP_CONSULTA_CACHE[cache_key] = result
+    return result
+
 
 def resolve_pncp_webpage_url(chave_or_id: str) -> str:
-    """Retorna a URL literal da página do edital no Portal PNCP (ex: https://pncp.gov.br/app/editais/{cnpj}/{ano}/{seq})."""
+    """Retorna a URL literal direta da página da contratação no Portal PNCP (ex: https://pncp.gov.br/app/editais/00394502000144/2026/10123)."""
     if not chave_or_id:
         return None
+    parsed = parse_pncp_control_id(chave_or_id)
+    if parsed:
+        cnpj, ano, seq_int, _ = parsed
+        return f"https://pncp.gov.br/app/editais/{cnpj}/{ano}/{seq_int}"
+
     compra = resolve_pncp_compra(chave_or_id)
     if compra:
         ctrl = compra.get("numeroControlePNCP") or compra.get("numero_controle_pncp")
         if ctrl:
-            m = re.match(r"^(\d{14})-\d+-(\d+)/(\d{4})$", str(ctrl).strip())
-            if m:
-                cnpj, seq, ano = m.group(1), str(m.group(2)).zfill(6), m.group(3)
-                return f"https://pncp.gov.br/app/editais/{cnpj}/{ano}/{seq}"
-        cnpj = compra.get("orgaoEntidadeCnpj") or compra.get("cnpjOrgao")
+            p2 = parse_pncp_control_id(ctrl)
+            if p2:
+                cnpj, ano, seq_int, _ = p2
+                return f"https://pncp.gov.br/app/editais/{cnpj}/{ano}/{seq_int}"
+        cnpj = compra.get("orgaoEntidadeCnpj") or compra.get("cnpjOrgao") or (compra.get("orgaoEntidade") or {}).get("cnpj")
         ano = compra.get("anoCompraPncp") or compra.get("anoCompra")
-        seq = str(compra.get("sequencialCompraPncp") or compra.get("sequencialCompra") or "").zfill(6)
-        if cnpj and ano and seq and seq != "000000":
-            return f"https://pncp.gov.br/app/editais/{cnpj}/{ano}/{seq}"
-    m = re.match(r"^(\d{14})-\d+-(\d+)/(\d{4})$", str(chave_or_id or "").strip())
-    if m:
-        cnpj, seq, ano = m.group(1), str(m.group(2)).zfill(6), m.group(3)
-        return f"https://pncp.gov.br/app/editais/{cnpj}/{ano}/{seq}"
+        seq_raw = compra.get("sequencialCompraPncp") or compra.get("sequencialCompra")
+        if cnpj and ano and seq_raw:
+            try:
+                seq_int = int(str(seq_raw))
+                if seq_int > 0:
+                    return f"https://pncp.gov.br/app/editais/{cnpj}/{ano}/{seq_int}"
+            except ValueError:
+                pass
     return None
 
 
@@ -517,25 +597,97 @@ def capture_pncp_page_pdf(pncp_url: str, chave_or_id: str = None, timeout_sec: i
 
 
 def resolve_pncp_compra(chave_or_id: str):
-    """Resolve os dados da contratação no PNCP a partir de idCompra ou número de controle."""
-    chave_clean = re.sub(r"\D", "", str(chave_or_id or ""))
+    """
+    Resolve os dados oficiais da contratação no PNCP com cache em memória (thread-safe) e retry:
+    - Aceita Id contratação PNCP (ex: 00394502000144-1-010123/2026) -> consulta direta /api/consulta/v1
+    - Aceita idCompra (16 ou 17 dígitos, ex: 75121206000702026) -> Dados Abertos 1.1_consultarContratacoes_PNCP_14133_Id
+    """
+    raw = str(chave_or_id or "").strip()
+    if not raw:
+        return None
+
+    # Caso 1: Já é um Id contratação PNCP (ex: 00394502000144-1-010123/2026)
+    parsed_ctrl = parse_pncp_control_id(raw)
+    if parsed_ctrl:
+        cnpj, ano, seq_int, seq_6 = parsed_ctrl
+        consulta = fetch_pncp_compra_consulta(cnpj, ano, seq_int)
+        if consulta:
+            org = consulta.get("orgaoEntidade") or {}
+            unid = consulta.get("unidadeOrgao") or {}
+            amparo = consulta.get("amparoLegal") or {}
+            return {
+                "numeroControlePNCP": consulta.get("numeroControlePNCP") or f"{cnpj}-1-{seq_6}/{ano}",
+                "orgaoEntidadeCnpj": org.get("cnpj") or cnpj,
+                "orgaoEntidadeRazaoSocial": org.get("razaoSocial") or "",
+                "unidadeOrgaoCodigoUnidade": unid.get("codigoUnidade") or "",
+                "unidadeOrgaoNomeUnidade": unid.get("nomeUnidade") or "",
+                "unidadeOrgaoMunicipioNome": unid.get("municipioNome") or "",
+                "unidadeOrgaoUfSigla": unid.get("ufSigla") or "",
+                "anoCompraPncp": int(consulta.get("anoCompra") or ano),
+                "sequencialCompraPncp": int(consulta.get("sequencialCompra") or seq_int),
+                "numeroCompra": consulta.get("numeroCompra") or "",
+                "processo": consulta.get("processo") or "",
+                "objetoCompra": consulta.get("objetoCompra") or "",
+                "modalidadeNome": consulta.get("modalidadeNome") or "",
+                "tipoInstrumentoConvocatorioNome": consulta.get("tipoInstrumentoConvocatorioNome") or "",
+                "modoDisputaNomePncp": consulta.get("modoDisputaNome") or "",
+                "amparoLegalNome": amparo.get("nome") or "",
+                "amparoLegalDescricao": amparo.get("descricao") or "",
+                "situacaoCompraNome": consulta.get("situacaoCompraNome") or "Divulgada no PNCP",
+                "srp": bool(consulta.get("srp")),
+                "valorTotalEstimado": consulta.get("valorTotalEstimado"),
+                "valorTotalHomologado": consulta.get("valorTotalHomologado"),
+                "dataPublicacaoPncp": consulta.get("dataPublicacaoPncp") or "",
+                "dataAtualizacao": consulta.get("dataAtualizacao") or "",
+                "dataAberturaProposta": consulta.get("dataAberturaProposta") or "",
+                "dataEncerramentoProposta": consulta.get("dataEncerramentoProposta") or "",
+                "linkSistemaOrigem": consulta.get("linkSistemaOrigem") or "",
+            }
+        return None
+
+    # Caso 2: idCompra / idCompraItem (16 a 22 dígitos)
+    chave_clean = re.sub(r"\D", "", raw)
     if len(chave_clean) == 16:
         chave_clean = "0" + chave_clean
-    if len(chave_clean) >= 17:
-        chave_17 = chave_clean[:17]
-    else:
-        chave_17 = chave_clean
+    chave_17 = chave_clean[:17] if len(chave_clean) >= 17 else chave_clean
+    if len(chave_17) < 12:
+        return None
+
+    with _PNCP_CACHE_LOCK:
+        if chave_17 in _PNCP_COMPRA_CACHE:
+            return _PNCP_COMPRA_CACHE[chave_17]
 
     url_gov = "https://dadosabertos.compras.gov.br/modulo-contratacoes/1.1_consultarContratacoes_PNCP_14133_Id"
-    try:
-        resp = SESSION.get(url_gov, params={"tipo": "idCompra", "codigo": chave_17}, timeout=9)
-        if resp.status_code == 200:
-            res = resp.json().get("resultado", [])
-            if res:
-                return res[0]
-    except Exception:
-        pass
-    return None
+    found = None
+    candidates = [chave_17]
+    if chave_17.startswith("0"):
+        candidates.append(chave_17.lstrip("0"))
+
+    for cand in candidates:
+        for attempt in range(3):
+            try:
+                resp = SESSION.get(url_gov, params={"tipo": "idCompra", "codigo": cand}, timeout=8)
+                if resp.status_code == 200:
+                    res = resp.json().get("resultado") or []
+                    if res:
+                        found = res[0]
+                        break
+                    break
+                elif resp.status_code in (429, 500, 502, 503, 504):
+                    time.sleep(0.35 * (attempt + 1))
+                    continue
+                else:
+                    break
+            except Exception:
+                time.sleep(0.3)
+        if found:
+            break
+
+    with _PNCP_CACHE_LOCK:
+        if len(_PNCP_COMPRA_CACHE) > 4000:
+            _PNCP_COMPRA_CACHE.clear()
+        _PNCP_COMPRA_CACHE[chave_17] = found
+    return found
 
 
 def fetch_pncp_arquivos(cnpj: str, ano: int, sequencial: int):
@@ -561,14 +713,300 @@ def download_pncp_file_bytes(cnpj: str, ano: int, sequencial: int, seq_doc: int)
     return None, None
 
 
+def _make_qr_rl_image(url: str, size_cm: float = 2.6):
+    """Gera QR Code compacto apontando diretamente para a página da contratação no PNCP."""
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=4,
+        border=1,
+    )
+    qr.add_data(url or "https://pncp.gov.br")
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return RLImage(buf, width=size_cm * cm, height=size_cm * cm)
+
+
+def _fmt_brl_pncp(val) -> str:
+    try:
+        v = float(val or 0.0)
+    except Exception:
+        v = 0.0
+    return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _fmt_date_br(raw_dt: str) -> str:
+    s = str(raw_dt or "").strip()
+    if not s:
+        return "—"
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}:\d{2}))?", s)
+    if m:
+        base = f"{m.group(3)}/{m.group(2)}/{m.group(1)}"
+        return f"{base} {m.group(4)}" if m.group(4) else base
+    return s[:16]
+
+
+def _build_pncp_comprovante_story_block(
+    compra_data: dict,
+    arquivos: list,
+    quote_info: dict,
+    linked_quotes: list = None,
+) -> list:
+    """
+    Constrói os flowables de 1 página fiel à tela oficial do Portal Nacional de Contratações
+    Públicas (PNCP — ex: https://pncp.gov.br/app/editais/00394502000144/2026/10123),
+    com QR Code oficial no topo direito, Id contratação PNCP, cards de Valor Total Estimado
+    e Homologado, e links clicáveis tanto para o PNCP quanto para o Compras.gov.br.
+    """
+    styles = getSampleStyleSheet()
+    st_portal = ParagraphStyle("PNCPPortal", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=9.5, leading=12, textColor=colors.HexColor("#1e3a5f"))
+    st_h1 = ParagraphStyle("PNCPH1", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=14, leading=17, textColor=colors.HexColor("#0f172a"))
+    st_upd = ParagraphStyle("PNCPUpd", parent=styles["Normal"], fontName="Helvetica-Oblique", fontSize=8, leading=10, textColor=colors.HexColor("#64748b"))
+    st_body = ParagraphStyle("PNCPBody", parent=styles["Normal"], fontName="Helvetica", fontSize=8.4, leading=11.5, textColor=colors.HexColor("#1e293b"))
+    st_lbl = ParagraphStyle("PNCPLbl", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=8.4, leading=11.5, textColor=colors.HexColor("#0f172a"))
+    st_card_lbl = ParagraphStyle("PNCPCardLbl", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=7.2, leading=9.5, textColor=colors.HexColor("#0f172a"))
+    st_card_val = ParagraphStyle("PNCPCardVal", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=11.5, leading=14, textColor=colors.HexColor("#0f172a"))
+    st_hdr = ParagraphStyle("PNCPHdr", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=7.4, leading=9.5, textColor=colors.white, alignment=1)
+    st_td = ParagraphStyle("PNCPTd", parent=styles["Normal"], fontName="Helvetica", fontSize=7.2, leading=9.2, textColor=colors.HexColor("#1e293b"))
+    st_td_r = ParagraphStyle("PNCPTdR", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=7.2, leading=9.2, textColor=colors.HexColor("#0f172a"), alignment=2)
+
+    compra = compra_data if isinstance(compra_data, dict) else {}
+    qinfo = quote_info if isinstance(quote_info, dict) else {}
+
+    # Extração combinada (Dados Abertos + PNCP Consulta v1 + Quote)
+    org_obj = compra.get("orgaoEntidade") if isinstance(compra.get("orgaoEntidade"), dict) else {}
+    unid_obj = compra.get("unidadeOrgao") if isinstance(compra.get("unidadeOrgao"), dict) else {}
+    amp_obj = compra.get("amparoLegal") if isinstance(compra.get("amparoLegal"), dict) else {}
+
+    cnpj = str(compra.get("orgaoEntidadeCnpj") or org_obj.get("cnpj") or "").strip()
+    orgao_nome = str(compra.get("orgaoEntidadeRazaoSocial") or org_obj.get("razaoSocial") or qinfo.get("buyer_org_name") or "ÓRGÃO PÚBLICO FEDERAL").strip()
+    uasg = str(compra.get("unidadeOrgaoCodigoUnidade") or unid_obj.get("codigoUnidade") or qinfo.get("buyer_uasg") or "—").strip()
+    unid_nome = str(compra.get("unidadeOrgaoNomeUnidade") or unid_obj.get("nomeUnidade") or qinfo.get("nome_uasg") or "").strip()
+    mun = str(compra.get("unidadeOrgaoMunicipioNome") or unid_obj.get("municipioNome") or qinfo.get("municipio") or "").strip()
+    uf = str(compra.get("unidadeOrgaoUfSigla") or unid_obj.get("ufSigla") or qinfo.get("buyer_uf") or "BR").strip()
+    localidade = f"{mun}/{uf}" if mun else uf
+
+    num_compra = str(compra.get("numeroCompra") or qinfo.get("purchase_number_year") or "—").strip()
+    ano = str(compra.get("anoCompraPncp") or compra.get("anoCompra") or "").strip()
+    seq_raw = compra.get("sequencialCompraPncp") or compra.get("sequencialCompra")
+    num_controle = str(compra.get("numeroControlePNCP") or qinfo.get("pncp_control_number") or "").strip()
+
+    if not num_controle and cnpj and ano and seq_raw:
+        try:
+            num_controle = f"{cnpj}-1-{str(int(seq_raw)).zfill(6)}/{ano}"
+        except Exception:
+            pass
+
+    parsed_ctrl = parse_pncp_control_id(num_controle)
+    if parsed_ctrl:
+        c_cnpj, c_ano, c_seq_int, _ = parsed_ctrl
+        pncp_url = f"https://pncp.gov.br/app/editais/{c_cnpj}/{c_ano}/{c_seq_int}"
+        cnpj = cnpj or c_cnpj
+        ano = ano or c_ano
+    else:
+        raw_uri = str(qinfo.get("pncp_or_compras_uri") or "").strip()
+        pncp_url = raw_uri if ("/app/editais/" in raw_uri and "?q=" not in raw_uri) else ""
+
+    chave_17 = str(compra.get("idCompra") or qinfo.get("purchase_key") or "").strip()
+    compras_url = str(compra.get("linkSistemaOrigem") or qinfo.get("comprasnet_uri") or build_comprasnet_direct_url(chave_17) or "").strip()
+    primary_qr_url = pncp_url or compras_url or "https://pncp.gov.br"
+
+    tipo_inst = str(compra.get("tipoInstrumentoConvocatorioNome") or compra.get("modalidadeNome") or qinfo.get("forma_compra") or "Contratação Pública").strip()
+    titulo_compra = f"{tipo_inst} nº {num_compra}" + (f"/{ano}" if ano and "/" not in num_compra else "")
+    modalidade = str(compra.get("modalidadeNome") or qinfo.get("forma_compra") or "—").strip()
+    amparo = str(compra.get("amparoLegalNome") or amp_obj.get("nome") or "Lei nº 14.133/2021").strip()
+    modo_disp = str(compra.get("modoDisputaNomePncp") or compra.get("modoDisputaNome") or "—").strip()
+    srp_str = "Sim" if compra.get("srp") else "Não"
+    situacao = str(compra.get("situacaoCompraNome") or "Divulgada no PNCP").strip()
+    dt_pub = _fmt_date_br(compra.get("dataPublicacaoPncp") or compra.get("dataInclusaoPncp") or qinfo.get("purchase_date") or "")
+    dt_upd = _fmt_date_br(compra.get("dataAtualizacao") or dt_pub)
+    dt_ini = _fmt_date_br(compra.get("dataAberturaProposta") or "")
+    dt_fim = _fmt_date_br(compra.get("dataEncerramentoProposta") or "")
+    objeto = str(compra.get("objetoCompra") or qinfo.get("objeto_compra") or qinfo.get("item_description") or "Contratação Pública Homologada no Compras.gov.br / PNCP.").strip()
+
+    val_est = compra.get("valorTotalEstimado")
+    val_hom = compra.get("valorTotalHomologado")
+
+    story = []
+
+    # Cabeçalho estilo Portal PNCP + QR Code no topo direito (espelho da Imagem 2!)
+    qr_img = _make_qr_rl_image(primary_qr_url, size_cm=2.5)
+    left_hdr = [
+        Paragraph("Portal Nacional de Contratações Públicas (PNCP) • Comprovante Oficial de Contratação", st_portal),
+        Spacer(1, 0.12 * cm),
+        Paragraph(xml_escape(titulo_compra), st_h1),
+        Paragraph(f"Última atualização: {xml_escape(dt_upd)} &nbsp;|&nbsp; Data de divulgação no PNCP: {xml_escape(dt_pub)}", st_upd),
+    ]
+    t_top = Table([[left_hdr, qr_img]], colWidths=[15.0 * cm, 3.0 * cm])
+    t_top.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    story.append(t_top)
+    story.append(HRFlowable(width="100%", thickness=1.2, color=colors.HexColor("#1e3a5f"), spaceBefore=4, spaceAfter=8))
+
+    # Bloco de Metadados Oficiais PNCP
+    cnpj_fmt = (
+        f"{cnpj[:2]}.{cnpj[2:5]}.{cnpj[5:8]}/{cnpj[8:12]}-{cnpj[12:14]}"
+        if len(cnpj) == 14
+        else (cnpj or "—")
+    )
+    meta_rows = [
+        [
+            Paragraph(f"<b>Órgão/Entidade:</b> {xml_escape(cnpj_fmt)} - {xml_escape(orgao_nome)}", st_body),
+            Paragraph(f"<b>Unidade compradora:</b> {xml_escape(uasg)}" + (f" - {xml_escape(unid_nome)}" if unid_nome else ""), st_body),
+        ],
+        [
+            Paragraph(f"<b>Localidade da Unidade:</b> {xml_escape(localidade)}", st_body),
+            Paragraph(f"<b>Fonte/Plataforma:</b> Compras.gov.br (ID Compra: {xml_escape(chave_17 or '—')})", st_body),
+        ],
+        [
+            Paragraph(f"<b>Modalidade:</b> {xml_escape(modalidade)} &nbsp;|&nbsp; <b>Amparo legal:</b> {xml_escape(amparo)}", st_body),
+            Paragraph(f"<b>Modo de disputa:</b> {xml_escape(modo_disp)} &nbsp;|&nbsp; <b>SRP:</b> {srp_str}", st_body),
+        ],
+        [
+            Paragraph(f"<b>Id contratação PNCP:</b> <font color='#0f766e'><b>{xml_escape(num_controle or 'Não indexado (Compras.gov.br direto)')}</b></font>", st_body),
+            Paragraph(f"<b>Situação:</b> {xml_escape(situacao)} &nbsp;|&nbsp; <b>Propostas:</b> {xml_escape(dt_ini)} a {xml_escape(dt_fim)}", st_body),
+        ],
+    ]
+    t_meta = Table(meta_rows, colWidths=[9.5 * cm, 8.5 * cm])
+    t_meta.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#e2e8f0")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(t_meta)
+    story.append(Spacer(1, 0.22 * cm))
+
+    # Objeto
+    story.append(Paragraph(f"<b>Objeto:</b> {xml_escape(objeto[:500])}", st_body))
+    story.append(Spacer(1, 0.25 * cm))
+
+    # Cards de Valor Total Estimado e Valor Total Homologado (espelho visual dos cards da Imagem 2!)
+    val_est_str = _fmt_brl_pncp(val_est) if val_est not in (None, "") else "Consultar no PNCP"
+    val_hom_str = _fmt_brl_pncp(val_hom) if val_hom not in (None, "") else "Consultar no PNCP"
+    t_cards = Table(
+        [[
+            Paragraph(f"VALOR TOTAL ESTIMADO DA COMPRA<br/><font size='11'><b>{val_est_str}</b></font>", st_card_lbl),
+            Paragraph(f"VALOR TOTAL HOMOLOGADO DA COMPRA<br/><font size='11'><b>{val_hom_str}</b></font>", st_card_lbl),
+            Paragraph(
+                "<b>ACESSO DIRETO VERIFICÁVEL:</b><br/>"
+                + (f'• <link href="{xml_escape(pncp_url)}" color="#1d4ed8"><u>Abrir Página no PNCP</u></link><br/>' if pncp_url else "")
+                + (f'• <link href="{xml_escape(compras_url)}" color="#0f766e"><u>Abrir Acompanhamento Compras.gov.br</u></link>' if compras_url else ""),
+                st_body,
+            ),
+        ]],
+        colWidths=[5.2 * cm, 5.2 * cm, 7.6 * cm],
+    )
+    t_cards.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, 0), colors.HexColor("#e0f2fe")),
+        ("BACKGROUND", (1, 0), (1, 0), colors.HexColor("#ccfbf1")),
+        ("BACKGROUND", (2, 0), (2, 0), colors.HexColor("#f8fafc")),
+        ("BOX", (0, 0), (0, 0), 0.7, colors.HexColor("#38bdf8")),
+        ("BOX", (1, 0), (1, 0), 0.7, colors.HexColor("#2dd4bf")),
+        ("BOX", (2, 0), (2, 0), 0.5, colors.HexColor("#cbd5e1")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING", (0, 0), (-1, -1), 7),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+    ]))
+    story.append(t_cards)
+    story.append(Spacer(1, 0.3 * cm))
+
+    # Cotações / Itens da Pesquisa vinculados a esta compra
+    q_list = linked_quotes if linked_quotes else ([qinfo] if qinfo.get("supplier_name") else [])
+    if q_list:
+        story.append(Paragraph("<b>ITENS E FORNECEDORES VINCULADOS NA PESQUISA DE PREÇOS (IN 65/2021):</b>", st_lbl))
+        story.append(Spacer(1, 0.1 * cm))
+        q_rows = [[
+            Paragraph("Item / Cód.", st_hdr),
+            Paragraph("Fornecedor Vencedor", st_hdr),
+            Paragraph("CNPJ", st_hdr),
+            Paragraph("Unid. / Qtd", st_hdr),
+            Paragraph("Preço Unitário", st_hdr),
+        ]]
+        for lq in q_list[:25]:
+            it_ref = lq.get("item_ref") or lq.get("catmat_code") or "—"
+            q_rows.append([
+                Paragraph(xml_escape(str(it_ref)), st_td),
+                Paragraph(xml_escape(str(lq.get("supplier_name") or "—")[:55]), st_td),
+                Paragraph(xml_escape(str(lq.get("supplier_cnpj") or "—")), st_td),
+                Paragraph(xml_escape(f"{lq.get('supply_unit') or 'UN'} / {float(lq.get('quantity_homologated') or 1):g}"), st_td),
+                Paragraph(_fmt_brl_pncp(lq.get("unit_price")), st_td_r),
+            ])
+        t_q = Table(q_rows, colWidths=[2.6 * cm, 6.8 * cm, 3.4 * cm, 2.5 * cm, 2.7 * cm], repeatRows=1)
+        t_q.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+            ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#cbd5e1")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        story.append(t_q)
+        story.append(Spacer(1, 0.25 * cm))
+
+    # Documentos / Arquivos publicados no PNCP (se disponíveis)
+    if arquivos:
+        story.append(Paragraph(f"<b>DOCUMENTOS PUBLICADOS NO PNCP ({len(arquivos)}):</b>", st_lbl))
+        story.append(Spacer(1, 0.08 * cm))
+        arq_rows = [[Paragraph("Tipo", st_hdr), Paragraph("Título", st_hdr), Paragraph("Publicação", st_hdr)]]
+        for a in arquivos[:15]:
+            arq_rows.append([
+                Paragraph(xml_escape(str(a.get("tipoDocumentoNome") or "Documento")), st_td),
+                Paragraph(xml_escape(str(a.get("titulo") or "Anexo")[:80]), st_td),
+                Paragraph(_fmt_date_br(a.get("dataInclusao") or ""), st_td),
+            ])
+        t_a = Table(arq_rows, colWidths=[5.0 * cm, 10.0 * cm, 3.0 * cm], repeatRows=1)
+        t_a.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
+            ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#cbd5e1")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+        ]))
+        story.append(t_a)
+        story.append(Spacer(1, 0.2 * cm))
+
+    # Rodapé com URLs literais completas
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cbd5e1"), spaceAfter=4))
+    url_footer = []
+    if pncp_url:
+        url_footer.append(f"<b>URL Oficial PNCP:</b> {xml_escape(pncp_url)}")
+    if compras_url:
+        url_footer.append(f"<b>URL Compras.gov.br:</b> {xml_escape(compras_url)}")
+    story.append(Paragraph(
+        " &nbsp;|&nbsp; ".join(url_footer)
+        + f"<br/><i>Comprovante auditável emitido em {datetime.now().strftime('%d/%m/%Y às %H:%M')} (Lei nº 14.133/2021 e IN SEGES/ME nº 65/2021). Escaneie o QR Code acima para conferir a contratação ao vivo.</i>",
+        st_upd,
+    ))
+    return story
+
+
 def generate_pncp_dossier_pdf(compra_data: dict, arquivos: list, quote_info: dict = None) -> bytes:
-    """Gera um PDF A4 Oficial consolidando o extrato completo da contratação no PNCP e termos via ReportLab."""
-    if not isinstance(compra_data, dict):
-        compra_data = {}
-    if not isinstance(arquivos, list):
-        arquivos = []
-    if not isinstance(quote_info, dict):
-        quote_info = {}
+    """Gera o PDF Comprovante Oficial da Contratação no PNCP com QR Code e cards de valores."""
+    compra = dict(compra_data or {})
+    qinfo = dict(quote_info or {})
+
+    # Enriquece automaticamente com /api/consulta/v1 para trazer Valor Total Estimado e Homologado oficiais
+    ctrl = compra.get("numeroControlePNCP") or qinfo.get("pncp_control_number")
+    parsed = parse_pncp_control_id(ctrl) if ctrl else None
+    if parsed and (compra.get("valorTotalEstimado") is None or not compra.get("linkSistemaOrigem")):
+        consulta = fetch_pncp_compra_consulta(parsed[0], parsed[1], parsed[2])
+        if consulta:
+            for k, v in consulta.items():
+                if compra.get(k) in (None, ""):
+                    compra[k] = v
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -576,188 +1014,120 @@ def generate_pncp_dossier_pdf(compra_data: dict, arquivos: list, quote_info: dic
         pagesize=A4,
         leftMargin=1.5 * cm,
         rightMargin=1.5 * cm,
-        topMargin=1.5 * cm,
-        bottomMargin=1.5 * cm
+        topMargin=1.3 * cm,
+        bottomMargin=1.3 * cm,
     )
+    story = _build_pncp_comprovante_story_block(compra, arquivos or [], qinfo)
+    doc.build(story)
+    return buf.getvalue()
 
+
+def build_pncp_comprovantes_caderno_pdf_bytes(
+    items_results: list,
+    om_name: str = "MARINHA DO BRASIL",
+    max_purchases: int = 80,
+) -> bytes:
+    """
+    Gera o Caderno Consolidado de Comprovantes Oficiais PNCP (PDF A4 com 1 página por
+    contratação única referenciada nas cotações válidas do lote), contendo QR Code direto,
+    Id contratação PNCP, valores estimado/homologado e links clicáveis PNCP + Compras.gov.br.
+    """
+    import concurrent.futures
+
+    # Agrupa todas as cotações válidas por contratação única (pncp_control_number ou purchase_key)
+    unique_purchases: dict = {}
+    for idx, it in enumerate(items_results, start=1):
+        rep = it.get("report") or {}
+        code = str(rep.get("catmat_catser_code") or it.get("code") or "—")
+        for q in (rep.get("valid_quotes") or []):
+            ctrl = str(q.get("pncp_control_number") or "").strip()
+            pkey = str(q.get("purchase_key") or "").strip()
+            uri = str(q.get("pncp_or_compras_uri") or "").strip()
+            if not ctrl and "/app/editais/" in uri:
+                m_u = re.match(r"https://pncp\.gov\.br/app/editais/(\d{14})/(\d{4})/(\d+)", uri)
+                if m_u:
+                    ctrl = f"{m_u.group(1)}-1-{m_u.group(3).zfill(6)}/{m_u.group(2)}"
+            uid = ctrl or pkey or uri
+            if not uid:
+                continue
+            if uid not in unique_purchases:
+                unique_purchases[uid] = {
+                    "ctrl": ctrl,
+                    "pkey": pkey,
+                    "sample_quote": dict(q),
+                    "linked_quotes": [],
+                }
+            lq = dict(q)
+            lq["item_ref"] = f"Item {idx} ({code})"
+            unique_purchases[uid]["linked_quotes"].append(lq)
+
+    entries = list(unique_purchases.values())[:max_purchases]
+
+    # Hidratação paralela segura (limita chamadas externas simultâneas para manter ZIP ultrarrápido no Render)
+    def _hydrate(idx_entry):
+        e_pos, entry = idx_entry
+        ctrl = entry["ctrl"]
+        pkey = entry["pkey"]
+        compra = {}
+        # Limita chamadas HTTP externas ao PNCP a no máximo 20 compras não cacheadas por ZIP (~1-2s total)
+        if e_pos < 20:
+            if ctrl:
+                parsed = parse_pncp_control_id(ctrl)
+                if parsed:
+                    compra = fetch_pncp_compra_consulta(parsed[0], parsed[1], parsed[2]) or {}
+                    if compra and not compra.get("numeroControlePNCP"):
+                        compra["numeroControlePNCP"] = ctrl
+            elif pkey and len(re.sub(r"\D", "", pkey)) >= 16:
+                c_da = resolve_pncp_compra(pkey)
+                if c_da:
+                    compra = dict(c_da)
+                    c_ctrl = compra.get("numeroControlePNCP")
+                    if c_ctrl:
+                        entry["ctrl"] = c_ctrl
+                        p2 = parse_pncp_control_id(c_ctrl)
+                        if p2:
+                            cons = fetch_pncp_compra_consulta(p2[0], p2[1], p2[2])
+                            if cons:
+                                for k, v in cons.items():
+                                    if compra.get(k) in (None, ""):
+                                        compra[k] = v
+        entry["compra"] = compra
+        return entry
+
+    if entries:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            entries = list(pool.map(_hydrate, list(enumerate(entries))))
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=1.5 * cm,
+        rightMargin=1.5 * cm,
+        topMargin=1.3 * cm,
+        bottomMargin=1.3 * cm,
+    )
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        "PNCPTitle",
-        parent=styles["Normal"],
-        fontName="Helvetica-Bold",
-        fontSize=12,
-        leading=15,
-        alignment=1,
-        textColor=colors.HexColor("#082849")
-    )
-    sub_style = ParagraphStyle(
-        "PNCPSub",
-        parent=styles["Normal"],
-        fontName="Helvetica-Bold",
-        fontSize=9,
-        leading=12,
-        alignment=1,
-        textColor=colors.HexColor("#4a5568")
-    )
-    body_style = ParagraphStyle(
-        "PNCPBody",
-        parent=styles["Normal"],
-        fontName="Helvetica",
-        fontSize=8.5,
-        leading=11,
-        textColor=colors.HexColor("#1a202c")
-    )
-    header_style = ParagraphStyle(
-        "PNCPHeader",
-        parent=styles["Normal"],
-        fontName="Helvetica-Bold",
-        fontSize=8.5,
-        leading=11,
-        textColor=colors.white
-    )
-
     story = []
 
-    # Cabeçalho
-    story.append(Paragraph("PORTAL NACIONAL DE CONTRATAÇÕES PÚBLICAS (PNCP)", title_style))
-    story.append(Paragraph("MINISTÉRIO DA GESTÃO E DA INOVAÇÃO EM SERVIÇOS PÚBLICOS • LEI Nº 14.133/2021", sub_style))
-    story.append(Spacer(1, 0.4 * cm))
-    story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#082849"), spaceAfter=10))
-
-    # Identificação da Compra
-    orgao_nome = compra_data.get("orgaoEntidadeRazaoSocial") or quote_info.get("buyer_org_name") or "ÓRGÃO PÚBLICO"
-    uasg = compra_data.get("unidadeOrgaoCodigoUnidade") or quote_info.get("buyer_uasg") or "—"
-    uf = compra_data.get("unidadeOrgaoUfSigla") or quote_info.get("buyer_uf") or "BR"
-    cnpj = compra_data.get("orgaoEntidadeCnpj") or "—"
-    num_compra = compra_data.get("numeroCompra") or quote_info.get("purchase_number_year") or "—"
-    ano = compra_data.get("anoCompraPncp") or datetime.now().year
-    num_controle = compra_data.get("numeroControlePNCP") or f"{cnpj}-1-{str(compra_data.get('sequencialCompraPncp', 0)).zfill(6)}/{ano}"
-    objeto = compra_data.get("objetoCompra") or quote_info.get("item_description") or "Contratação Pública Homologada"
-    modalidade = compra_data.get("modalidadeNome") or "Pregão Eletrônico"
-    modo_disputa = compra_data.get("modoDisputaNomePncp") or "Aberto/Fechado"
-    valor_homologado = float(compra_data.get("valorTotalHomologado") or 0)
-    data_pub = compra_data.get("dataPublicacaoPncp") or compra_data.get("dataInclusaoPncp") or ""
-    if data_pub and "T" in data_pub:
-        data_pub = data_pub.split("T")[0]
-
-    data_grid = [
-        [
-            Paragraph(f"<b>Órgão Comprador:</b> {orgao_nome} (UASG {uasg}/{uf})", body_style),
-            Paragraph(f"<b>CNPJ:</b> {cnpj}", body_style)
-        ],
-        [
-            Paragraph(f"<b>Contratação:</b> {modalidade} Nº {num_compra}/{ano}", body_style),
-            Paragraph(f"<b>Controle PNCP:</b> {num_controle}", body_style)
-        ],
-        [
-            Paragraph(f"<b>Modo de Disputa:</b> {modo_disputa}", body_style),
-            Paragraph(f"<b>Publicação:</b> {data_pub or '—'}", body_style)
-        ],
-        [
-            Paragraph(f"<b>Valor Total Homologado:</b> R$ {valor_homologado:,.2f}", body_style),
-            Paragraph(f"<b>Situação:</b> Contratação Homologada / Ativa", body_style)
-        ],
-        [
-            Paragraph(f"<b>Objeto:</b> {objeto}", body_style),
-            Paragraph(f"<b>Link Oficial:</b> {quote_info.get('pncp_or_compras_uri') or 'https://pncp.gov.br'}", body_style)
-        ]
-    ]
-
-    t_grid = Table(data_grid, colWidths=[10.5 * cm, 7.5 * cm])
-    t_grid.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
-        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-    ]))
-    story.append(t_grid)
-    story.append(Spacer(1, 0.4 * cm))
-
-    # Cotação Vencedora Referenciada na Pesquisa de Preços
-    if quote_info.get("supplier_name"):
-        story.append(Paragraph("<b>COTAÇÃO ESPECÍFICA UTILIZADA NA PESQUISA DE PREÇOS (IN 65/2021)</b>", sub_style))
-        story.append(Spacer(1, 0.15 * cm))
-        q_data = [
-            [
-                Paragraph("<b>FORNECEDOR VENCEDOR</b>", header_style),
-                Paragraph("<b>CNPJ</b>", header_style),
-                Paragraph("<b>PREÇO UNITÁRIO</b>", header_style),
-                Paragraph("<b>SITUAÇÃO ESTATÍSTICA</b>", header_style),
-            ],
-            [
-                Paragraph(str(quote_info.get("supplier_name") or "—"), body_style),
-                Paragraph(str(quote_info.get("supplier_cnpj") or "—"), body_style),
-                Paragraph(f"R$ {float(quote_info.get('unit_price') or 0):,.2f}", body_style),
-                Paragraph("VALIDADA DENTRO DO INTERVALO DE CONFIANÇA", body_style),
-            ]
-        ]
-        t_q = Table(q_data, colWidths=[6.5 * cm, 4.0 * cm, 3.5 * cm, 4.0 * cm])
-        t_q.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#082849")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#082849")),
-            ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ]))
-        story.append(t_q)
-        story.append(Spacer(1, 0.4 * cm))
-
-    # Tabela de Arquivos do PNCP
-    story.append(Paragraph(f"<b>DOCUMENTOS E TERMOS OFICIAIS PUBLICADOS NO PNCP ({len(arquivos)} ARQUIVOS)</b>", sub_style))
-    story.append(Spacer(1, 0.15 * cm))
-
-    arq_rows = [
-        [
-            Paragraph("<b>TIPO DE DOCUMENTO</b>", header_style),
-            Paragraph("<b>TÍTULO DO DOCUMENTO / TERMO</b>", header_style),
-            Paragraph("<b>DATA DE PUBLICAÇÃO</b>", header_style),
-        ]
-    ]
-
-    for a in arquivos:
-        tipo = a.get("tipoDocumentoNome") or "Termo Oficial"
-        titulo = a.get("titulo") or "Documento Anexo"
-        data_inc = a.get("dataInclusao") or ""
-        if data_inc and "T" in data_inc:
-            data_inc = data_inc.split("T")[0]
-        arq_rows.append([
-            Paragraph(tipo, body_style),
-            Paragraph(titulo, body_style),
-            Paragraph(data_inc or "—", body_style),
-        ])
-
-    if len(arq_rows) == 1:
-        arq_rows.append([
-            Paragraph("Edital / Termo de Julgamento", body_style),
-            Paragraph("Disponível na íntegra no Portal Nacional de Contratações Públicas e Compras.gov.br", body_style),
-            Paragraph(data_pub or "—", body_style),
-        ])
-
-    t_arq = Table(arq_rows, colWidths=[5.5 * cm, 9.0 * cm, 3.5 * cm])
-    t_arq.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#082849")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#082849")),
-        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
-    story.append(t_arq)
-    story.append(Spacer(1, 0.6 * cm))
-
-    # Rodapé
-    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cbd5e1"), spaceAfter=6))
-    story.append(Paragraph(
-        f"Documento gerado eletronicamente em {datetime.now().strftime('%d/%m/%Y às %H:%M:%S')} com trilha auditável no PNCP e Compras.gov.br conforme Lei nº 14.133/2021 e IN 65/2021.",
-        body_style
-    ))
+    if not entries:
+        story.append(Paragraph(f"<b>{xml_escape(om_name.upper())} — COMPROVANTES DE CONTRATAÇÕES PNCP</b>", styles["Heading2"]))
+        story.append(Paragraph("Nenhuma contratação pública com chave PNCP/Compras.gov.br identificada no lote.", styles["Normal"]))
+    else:
+        for e_idx, entry in enumerate(entries):
+            if e_idx > 0:
+                story.append(PageBreak())
+            q_sample = dict(entry["sample_quote"])
+            if entry["ctrl"] and not q_sample.get("pncp_control_number"):
+                q_sample["pncp_control_number"] = entry["ctrl"]
+            story.extend(
+                _build_pncp_comprovante_story_block(
+                    entry.get("compra") or {},
+                    [],
+                    q_sample,
+                    linked_quotes=entry["linked_quotes"],
+                )
+            )
 
     doc.build(story)
     return buf.getvalue()

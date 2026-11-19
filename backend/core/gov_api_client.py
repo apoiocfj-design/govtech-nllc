@@ -171,6 +171,16 @@ class GovProcurementAPIClient:
 
         return item_digits or compra_digits, str(id_compra_item or fallback_id_compra or "")
 
+    @staticmethod
+    def build_comprasnet_direct_uri(chave_17: str) -> Optional[str]:
+        """URL direta e real da contratação no Compras.gov.br (sem página genérica de busca)."""
+        digits = re.sub(r"\D", "", str(chave_17 or ""))
+        if len(digits) == 16:
+            digits = "0" + digits
+        if len(digits) >= 17:
+            return f"https://cnetmobile.estaleiro.serpro.gov.br/comprasnet-web/public/compras/acompanhamento-compra?compra={digits[:17]}"
+        return None
+
     @classmethod
     def build_audit_uri(
         cls,
@@ -180,31 +190,20 @@ class GovProcurementAPIClient:
         num_ano: Optional[str] = None,
     ) -> str:
         """
-        Gera URI 100% válida e funcional no PNCP (Portal Nacional de Contratações Públicas).
-        Elimina erros 404 e telas de 'Esta compra não existe'.
+        Gera URI direta e funcional para a página real da contratação (NUNCA links genéricos '?q=...'):
+        1. Prioridade máxima: Página oficial do Edital/Aviso no PNCP (/app/editais/{cnpj}/{ano}/{seq}).
+        2. Fallback direto: Página real de acompanhamento da compra no Compras.gov.br (?compra={chave_17}).
         """
         if pncp_control_number:
-            # Padrão PNCP: 00394502000144-1-014956/2026
+            # Padrão PNCP: 00394502000144-1-010123/2026 -> /app/editais/00394502000144/2026/10123
             m = re.match(r"^(\d{14})-\d+-(\d+)/(\d{4})$", str(pncp_control_number).strip())
             if m:
-                cnpj, seq, ano = m.group(1), str(m.group(2)).zfill(6), m.group(3)
-                return cls.PNCP_PORTAL_EDITAL_URI.format(cnpj=cnpj, ano=ano, sequencial=seq)
+                cnpj, seq_int, ano = m.group(1), int(m.group(2)), m.group(3)
+                return f"https://pncp.gov.br/app/editais/{cnpj}/{ano}/{seq_int}"
 
-        clean_uasg = re.sub(r"\D", "", str(buyer_uasg or ""))
-        if clean_uasg:
-            clean_num = re.sub(r"[^\d]", " ", str(num_ano or "")).strip()
-            if clean_num:
-                parts = clean_num.split()
-                first_num = parts[0]
-                ano_str = parts[1] if len(parts) > 1 else ""
-                if ano_str:
-                    return f"https://pncp.gov.br/app/editais?q={clean_uasg}&ano={ano_str}&numero={first_num}"
-                return f"https://pncp.gov.br/app/editais?q={clean_uasg}+{first_num}"
-            return f"https://pncp.gov.br/app/editais?q={clean_uasg}"
-
-        if chave_17 and len(chave_17) >= 6:
-            uasg_from_key = chave_17[:6]
-            return f"https://pncp.gov.br/app/editais?q={uasg_from_key}"
+        direct_compras = cls.build_comprasnet_direct_uri(chave_17)
+        if direct_compras:
+            return direct_compras
 
         return "https://pncp.gov.br/app/editais"
 
@@ -308,6 +307,7 @@ class GovProcurementAPIClient:
 
             buyer_uasg_val = str(rec.get("codigoUasg") or "")
             audit_uri = self.build_audit_uri(chave_17, pncp_ctrl, buyer_uasg=buyer_uasg_val, num_ano=num_ano)
+            compras_direct = self.build_comprasnet_direct_uri(chave_17)
             raw_date = str(rec.get("dataCompra") or rec.get("dataResultado") or "")[:10]
 
             supply_u = str(
@@ -359,6 +359,7 @@ class GovProcurementAPIClient:
                     numero_item_compra=str(rec.get("numeroItemCompra") or "").strip() or None,
                     criterio_julgamento=str(rec.get("criterioJulgamento") or "").strip() or None,
                     is_extended_24m=(months_back > 12),
+                    comprasnet_uri=compras_direct,
                 )
             )
 
@@ -832,32 +833,61 @@ class PriceResearchController:
         except Exception as exc:
             logger.debug(f"Não foi possível consultar PDM/Classe local para {catalog_code}: {exc}")
 
-        # Resolução paralela dos links literais e diretos no PNCP para todas as cotações auditadas
+        # Resolução paralela e deduplicada de Id contratação PNCP + URL direta PNCP + URL direta Compras.gov.br
         try:
             import concurrent.futures
             try:
-                from pncp_extractor import resolve_pncp_webpage_url
+                from pncp_extractor import (
+                    build_comprasnet_direct_url,
+                    parse_pncp_control_id,
+                    resolve_pncp_compra,
+                )
             except ImportError:
-                from core.pncp_extractor import resolve_pncp_webpage_url
+                from core.pncp_extractor import (
+                    build_comprasnet_direct_url,
+                    parse_pncp_control_id,
+                    resolve_pncp_compra,
+                )
 
-            def _enrich_quote_pncp(q):
-                if q.pncp_control_number and "/editais/" in (q.pncp_or_compras_uri or "") and "?q=" not in (q.pncp_or_compras_uri or ""):
-                    return
-                key = q.purchase_key or (q.id_compra_item[:17] if len(q.id_compra_item) >= 17 else "")
-                if key and len(key) == 16:
-                    key = "0" + key
-                if key and len(key) >= 17:
-                    literal_url = resolve_pncp_webpage_url(key)
-                    if literal_url:
-                        q.pncp_or_compras_uri = literal_url
-                        m = re.match(r"https://pncp\.gov\.br/app/editais/(\d+)/(\d+)/(\d+)", literal_url)
-                        if m:
-                            q.pncp_control_number = f"{m.group(1)}-1-{m.group(3)}/{m.group(2)}"
+            quotes_to_enrich = report.valid_quotes + report.purged_quotes[:25]
+            unique_keys = []
+            seen_keys = set()
+            for q in quotes_to_enrich:
+                raw_k = q.purchase_key or (q.id_compra_item[:17] if len(q.id_compra_item) >= 17 else "")
+                k_digits = re.sub(r"\D", "", str(raw_k or ""))
+                if len(k_digits) == 16:
+                    k_digits = "0" + k_digits
+                if len(k_digits) >= 17:
+                    k17 = k_digits[:17]
+                    q.purchase_key = k17
+                    if not q.comprasnet_uri:
+                        q.comprasnet_uri = build_comprasnet_direct_url(k17)
+                    if k17 not in seen_keys and not (q.pncp_control_number and "/app/editais/" in (q.pncp_or_compras_uri or "")):
+                        seen_keys.add(k17)
+                        unique_keys.append(k17)
 
-            quotes_to_enrich = report.valid_quotes + report.purged_quotes[:15]
-            if quotes_to_enrich:
+            resolved_map = {}
+            if unique_keys:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-                    list(executor.map(_enrich_quote_pncp, quotes_to_enrich))
+                    for k17, comp in zip(unique_keys, executor.map(resolve_pncp_compra, unique_keys)):
+                        if comp:
+                            resolved_map[k17] = comp
+
+            for q in quotes_to_enrich:
+                k17 = q.purchase_key or ""
+                comp = resolved_map.get(k17)
+                if comp:
+                    ctrl = str(comp.get("numeroControlePNCP") or "").strip()
+                    parsed = parse_pncp_control_id(ctrl)
+                    if parsed:
+                        cnpj, ano, seq_int, seq_6 = parsed
+                        q.pncp_control_number = f"{cnpj}-1-{seq_6}/{ano}"
+                        q.pncp_or_compras_uri = f"https://pncp.gov.br/app/editais/{cnpj}/{ano}/{seq_int}"
+                    if not q.objeto_compra and comp.get("objetoCompra"):
+                        q.objeto_compra = str(comp.get("objetoCompra")).strip()
+                # Garantia absoluta: NUNCA deixar link genérico '?q='
+                if "?q=" in (q.pncp_or_compras_uri or "") and q.comprasnet_uri:
+                    q.pncp_or_compras_uri = q.comprasnet_uri
         except Exception as exc_enrich:
             logger.debug(f"Não foi possível enriquecer links literais do PNCP: {exc_enrich}")
 
