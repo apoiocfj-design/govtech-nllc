@@ -1420,3 +1420,474 @@ def build_category_detailed_report_pdf_bytes(
 
     doc.build(elements)
     return buf.getvalue()
+
+
+# =============================================================================
+# 4. RAIO-X CONSOLIDADO DE CERTIDÕES DAS EMPRESAS DO LOTE EM WORD (.DOCX)
+# =============================================================================
+
+def build_consolidated_suppliers_dossier_docx_bytes(
+    items_results: List[Dict[str, Any]],
+    om_name: str = "MARINHA DO BRASIL",
+    ordenador_nome: str = "ORDENADOR DE DESPESAS",
+    elaborador_nome: str = "ENCARREGADO DO SETOR DE OBTENÇÃO",
+) -> bytes:
+    """
+    Gera o Raio-X Consolidado de Certidões de TODOS os fornecedores únicos (CNPJ)
+    presentes nas cotações do lote em formato Word (.DOCX) Paisagem A4 editável.
+    Fundamento: Art. 68 e Art. 156 da Lei nº 14.133/2021.
+    """
+    try:
+        from sanctions_checker import check_supplier_full_compliance
+    except ImportError:
+        from core.sanctions_checker import check_supplier_full_compliance
+
+    unique_suppliers: Dict[str, Dict[str, Any]] = {}
+    for idx, item in enumerate(items_results, start=1):
+        rep = item.get("report") or {}
+        for q in (rep.get("valid_quotes") or []):
+            cnpj_raw = str(q.get("supplier_cnpj") or q.get("cnpj") or "").strip()
+            clean = re.sub(r"\D", "", cnpj_raw)
+            if len(clean) == 14 and clean not in unique_suppliers:
+                unique_suppliers[clean] = {
+                    "cnpj_raw": cnpj_raw,
+                    "name": str(q.get("supplier_name") or q.get("fornecedor") or "Fornecedor Cotado").strip(),
+                    "items": [idx],
+                }
+            elif len(clean) == 14:
+                if len(unique_suppliers[clean]["items"]) < 10 and idx not in unique_suppliers[clean]["items"]:
+                    unique_suppliers[clean]["items"].append(idx)
+
+    doc = docx.Document()
+    for s in doc.sections:
+        s.orientation = docx.enum.section.WD_ORIENT.LANDSCAPE
+        s.page_width = Inches(11.69)
+        s.page_height = Inches(8.27)
+        s.top_margin = Cm(1.3)
+        s.bottom_margin = Cm(1.3)
+        s.left_margin = Cm(1.3)
+        s.right_margin = Cm(1.3)
+
+    p_hdr = doc.add_paragraph()
+    p_hdr.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_hdr.paragraph_format.space_after = Pt(4)
+    r1 = p_hdr.add_run(f"{om_name.upper()}\n")
+    r1.bold = True
+    r1.font.size = Pt(11.5)
+    r2 = p_hdr.add_run("RAIO-X CONSOLIDADO DE CERTIDÕES E REGULARIDADE DAS EMPRESAS COTADAS\n")
+    r2.bold = True
+    r2.font.size = Pt(12.5)
+    r2.font.color.rgb = RGBColor(30, 45, 61)
+    r3 = p_hdr.add_run(
+        f"Art. 68 e Art. 156 da Lei nº 14.133/2021 • {len(unique_suppliers)} empresa(s) única(s) auditada(s) em {len(items_results)} item(ns) • Emitido em {_data_extenso_hoje()}"
+    )
+    r3.font.size = Pt(8.5)
+    r3.font.color.rgb = RGBColor(71, 85, 105)
+
+    p_note = doc.add_paragraph()
+    p_note.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    p_note.paragraph_format.space_after = Pt(6)
+    rn = p_note.add_run(
+        "ORIENTAÇÃO NORMATIVA: A pesquisa de preços (Art. 23 da Lei nº 14.133/2021 e IN SEGES/ME nº 65/2021) não sofre "
+        "impedimento legal na formação da cesta de referência caso alguma empresa cotada apresente certidão vencida; "
+        "contudo, o presente Raio-X acompanha os autos para transparência plena e controle prévio de habilitação (Art. 68) "
+        "e sanções impeditivas (CEIS/CNEP/TCU — Art. 156) na fase de contratação."
+    )
+    rn.font.size = Pt(8.5)
+    rn.italic = True
+
+    tbl = doc.add_table(rows=1, cols=10)
+    tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
+    _set_table_borders(tbl)
+    hdrs = ["#", "CNPJ", "RAZÃO SOCIAL / FORNECEDOR", "ITENS", "RFB / PGFN", "FGTS (CRF)", "CNDT (TST)", "CEIS / CNEP / TCU", "SICAF", "SITUAÇÃO"]
+    for ci, h in enumerate(hdrs):
+        cell = tbl.rows[0].cells[ci]
+        cell.text = h
+        _set_cell_shading(cell, "1E2D3D")
+        for p in cell.paragraphs:
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            for r in p.runs:
+                r.bold = True
+                r.font.size = Pt(7.8)
+                r.font.color.rgb = RGBColor(255, 255, 255)
+
+    reg_count = 0
+    irreg_count = 0
+    for s_idx, (clean_cnpj, info) in enumerate(list(unique_suppliers.items())[:500], start=1):
+        comp = check_supplier_full_compliance(clean_cnpj, info["name"])
+        cert_map = {c.get("id"): c for c in (comp.get("dossie_certidoes") or [])}
+        sanctions_ok = "NADA CONSTA" if not comp.get("has_sanctions") else "IMPEDIDO"
+        is_ok = bool(comp.get("is_eligible"))
+        if is_ok:
+            reg_count += 1
+        else:
+            irreg_count += 1
+        sit = "REGULAR" if is_ok else "ATENÇÃO / IRREGULAR"
+
+        def _fmt_cert(cid: str) -> str:
+            cobj = cert_map.get(cid) or {}
+            st = str(cobj.get("status") or "REGULAR")
+            val = str(cobj.get("data_validade") or "")
+            return f"{st}\n(val. {val})" if val and st == "REGULAR" else st
+
+        rc = tbl.add_row().cells
+        vals = [
+            str(s_idx),
+            comp.get("cnpj") or clean_cnpj,
+            info["name"][:58],
+            ", ".join(str(x) for x in info["items"]),
+            _fmt_cert("receita_federal"),
+            _fmt_cert("fgts"),
+            _fmt_cert("cndt"),
+            sanctions_ok,
+            str((cert_map.get("sicaf") or {}).get("status") or "HABILITADO").replace("_", " "),
+            sit,
+        ]
+        for ci, v in enumerate(vals):
+            rc[ci].text = v
+            if not is_ok:
+                _set_cell_shading(rc[ci], "FEE2E2")
+            elif s_idx % 2 == 0:
+                _set_cell_shading(rc[ci], "F8FAFC")
+            for p in rc[ci].paragraphs:
+                p.alignment = WD_ALIGN_PARAGRAPH.LEFT if ci == 2 else WD_ALIGN_PARAGRAPH.CENTER
+                for r in p.runs:
+                    r.font.size = Pt(7.3)
+                    if ci == 9:
+                        r.bold = True
+
+    if not unique_suppliers:
+        rc = tbl.add_row().cells
+        rc[2].text = "Nenhum CNPJ identificado nas cotações válidas do lote."
+
+    p_sum = doc.add_paragraph()
+    p_sum.paragraph_format.space_before = Pt(8)
+    rs = p_sum.add_run(
+        f"Síntese do Raio-X: {len(unique_suppliers)} empresa(s) única(s) auditada(s) — "
+        f"{reg_count} REGULAR(ES) | {irreg_count} com ALERTA/PENDÊNCIA.\n"
+        f"Responsável pela Pesquisa: {elaborador_nome} | Autoridade Competente: {ordenador_nome}."
+    )
+    rs.bold = True
+    rs.font.size = Pt(8.5)
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+# =============================================================================
+# 5. MANUAL DIDÁTICO DO PROCESSO (ESTILO MANUAL OFICIAL — PDF E TXT)
+# =============================================================================
+
+def build_process_manual_txt(
+    items_results: List[Dict[str, Any]],
+    om_name: str = "MARINHA DO BRASIL",
+    n_12m: int = 0,
+    n_24m: int = 0,
+    n_cats_12m: int = 0,
+    n_cats_24m: int = 0,
+    n_unique_suppliers: int = 0,
+) -> str:
+    """Versão texto estruturada em formato de Manual Didático para abertura rápida."""
+    stats = _compute_batch_stats(items_results)
+    total_extenso = brl_por_extenso(stats["total_geral"])
+    lines = [
+        "╔══════════════════════════════════════════════════════════════════════════════╗",
+        "║       MANUAL DIDÁTICO DO PROCESSO DE PESQUISA DE PREÇOS — GOVTECH NLLC      ║",
+        "║      Lei Federal nº 14.133/2021 • IN SEGES/ME nº 65/2021 • Modelo AGU       ║",
+        "╚══════════════════════════════════════════════════════════════════════════════╝",
+        "",
+        f"  Órgão / OM ...............: {om_name.upper()}",
+        f"  Data de Emissão ..........: {_data_extenso_hoje()}",
+        f"  Total de Itens ...........: {stats['total_items']} item(ns)",
+        f"  Valor Global Estimado ....: {_fmt_brl(stats['total_geral'])} ({total_extenso})",
+        f"  Janela Padrão (≤ 12M) ....: {n_12m} item(ns) em {n_cats_12m} categoria(s) CNBS",
+        f"  Janela Excepcional (13-24M): {n_24m} item(ns) em {n_cats_24m} categoria(s) CNBS",
+        f"  Itens com < 3 cotações ...: {len(stats['items_under_3'])} item(ns) (Art. 6º § 5º)",
+        f"  Empresas Únicas Auditadas : {n_unique_suppliers} CNPJ(s)",
+        "",
+        "────────────────────────────────────────────────────────────────────────────────",
+        "  PARTE 1 — COMO ESTÁ ORGANIZADO ESTE PACOTE (.ZIP)",
+        "────────────────────────────────────────────────────────────────────────────────",
+        "",
+        "  [RAIZ DO PACOTE — PEÇAS MESTRES PARA JUNTADA DIRETA NO SEI]",
+        "    • 00_MANUAL_DIDATICO_DO_PROCESSO_LEIA_ME.pdf",
+        "      Versão visual completa deste guia passo a passo para a equipe de licitação.",
+        "",
+        "    • 00_Mapa_Comparativo_Geral_Completo.xlsx",
+        "      Planilha Mestre em Excel com 4 abas integradas:",
+        "        1) Resumo Geral do Lote (totais, médias, medianas, CV% e janela temporal);",
+        "        2) Mapa Geral - Todas Cotações (100% das empresas e cotações de todos os itens,",
+        "           com Id contratação PNCP e links diretos clicáveis PNCP + Compras.gov.br);",
+        "        3) Expurgos e Inconsistências (espelho da Seção 4.2 da Nota Técnica AGU);",
+        "        4) Resumo por Categoria (totalização por Classe CNBS/PDM).",
+        "",
+        "    • 01_Nota_Tecnica_AGU_IN65_Pesquisa_Precos (.docx e .pdf)",
+        "      Nota Técnica fiel ao modelo oficial da AGU/SEGES (Seções I a VI, valor por",
+        "      extenso, quadro de consulta direta, tabela de expurgos e assinaturas).",
+        "",
+        "    • 02_RaioX_Certidoes_Empresas_Consolidado (.docx e .pdf)",
+        "      Raio-X de regularidade fiscal, trabalhista e sancionatória (RFB/PGFN, FGTS,",
+        "      CNDT, CEIS/CNEP/TCU e SICAF — Art. 68 e 156 NLLC) de todas as empresas do lote.",
+        "",
+        "    • 03_Justificativa_Consolidada_Art6_Par5 (.docx e .pdf)",
+        "      Despacho único consolidando justificativa para itens com menos de 3 cotações",
+        "      válidas (Art. 6º, § 5º) e/ou que utilizaram a janela excepcional de 13 a 24 meses.",
+        "",
+        "    • 04_Comprovantes_PNCP_Contratacoes_QRCode.pdf",
+        "      Prova documental oficial (1 página por contratação única, espelho do portal PNCP",
+        "      com QR Code, Id contratação PNCP, valores estimado/homologado e links diretos).",
+        "",
+        "  [PASTAS SEGREGADAS POR JANELA TEMPORAL — ZERO REDUNDÂNCIA]",
+        f"    • 01_Pesquisas_Ate_12_Meses_IN65/ ({n_12m} item(ns))",
+        f"    • 02_Pesquisas_13_a_24_Meses_Excepcional/ ({n_24m} item(ns))",
+        "      Dentro de cada pasta você encontrará:",
+        "        ├─ Caderno_Resumo_Executivo (.pdf e .docx) -> Quadro geral daquela janela;",
+        "        ├─ Relatorio_Detalhado_Completo (.pdf)     -> Modelo Compras.gov.br contínuo;",
+        "        ├─ Por_Categoria/                          -> 1 PDF detalhado por Classe CNBS;",
+        "        └─ Relatorios_CATMAT_CATSER/               -> Relatório oficial de 2 páginas",
+        "           (Brasão, QR Codes individuais, Boxplot e Curva Gaussiana) de CADA ITEM!",
+        "",
+        "────────────────────────────────────────────────────────────────────────────────",
+        "  PARTE 2 — PASSO A PASSO DIDÁTICO PARA MONTAGEM DO PROCESSO NO SEI",
+        "────────────────────────────────────────────────────────────────────────────────",
+        "",
+        "  PASSO 1 — Conferir e numerar a Nota Técnica AGU:",
+        "            Abra '01_Nota_Tecnica_AGU_IN65_Pesquisa_Precos.docx', informe o nº da",
+        "            Nota Técnica, matrícula do agente e ajuste o objeto se necessário.",
+        "            Depois junte o PDF oficial assinado no SEI.",
+        "",
+        "  PASSO 2 — Juntar o Mapa Comparativo Geral:",
+        "            Anexe '00_Mapa_Comparativo_Geral_Completo.xlsx' como planilha de",
+        "            memória de cálculo (a aba 'Mapa Geral - Todas Cotações' prova todas",
+        "            as empresas consultadas sem necessidade de múltiplas planilhas).",
+        "",
+        "  PASSO 3 — Juntar os Relatórios CATMAT/CATSER e por Categoria (≤ 12 Meses):",
+        "            Utilize os relatórios da pasta '01_Pesquisas_Ate_12_Meses_IN65/'.",
+        "            Cada item possui seu Relatório CATMAT/CATSER com Boxplot, Curva",
+        "            Gaussiana e QR Codes individuais na subpasta 'Relatorios_CATMAT_CATSER/'.",
+        "",
+        "  PASSO 4 — Tratar separadamente os itens de 13 a 24 Meses (se houver):",
+        "            Os itens da pasta '02_Pesquisas_13_a_24_Meses_Excepcional/' não tiveram",
+        "            compras nos últimos 12 meses. Avalie a conveniência de atualização",
+        "            monetária pelo IPCA/IBGE e colha anuência na Justificativa Consolidada.",
+        "",
+        "  PASSO 5 — Juntar Comprovantes PNCP e Raio-X das Empresas:",
+        "            Anexe '04_Comprovantes_PNCP_Contratacoes_QRCode.pdf' (prova cabal de",
+        "            que as compras existem no PNCP) e '02_RaioX_Certidoes_Empresas_Consolidado'.",
+        "",
+        "  PASSO 6 — Colher Assinaturas:",
+        "            Submeta a Nota Técnica AGU e a Justificativa Consolidada (Art. 6º § 5º)",
+        "            à ratificação da Autoridade Competente / Ordenador de Despesas.",
+        "",
+        "────────────────────────────────────────────────────────────────────────────────",
+        "  PARTE 3 — CHECKLIST RÁPIDO DE CONFORMIDADE (TCU / CGU / IN 65/2021)",
+        "────────────────────────────────────────────────────────────────────────────────",
+        "  [ ] Nota Técnica AGU conferida, numerada e assinada (Seções I a VI).",
+        "  [ ] Mapa Comparativo Geral (.xlsx) anexado com todas as empresas e expurgos.",
+        "  [ ] Relatórios CATMAT/CATSER (com gráficos e QR Codes) verificados.",
+        "  [ ] Comprovantes PNCP (com QR Code e Id contratação PNCP) juntados aos autos.",
+        "  [ ] Raio-X de Certidões das Empresas (Art. 68 NLLC) anexado para ciência.",
+        "  [ ] Justificativa Art. 6º § 5º / Janela 13-24M aprovada pela Autoridade (se aplicável).",
+        "════════════════════════════════════════════════════════════════════════════════",
+    ]
+    return "\n".join(lines)
+
+
+def build_process_manual_pdf_bytes(
+    items_results: List[Dict[str, Any]],
+    om_name: str = "MARINHA DO BRASIL",
+    ordenador_nome: str = "ORDENADOR DE DESPESAS",
+    elaborador_nome: str = "ENCARREGADO DO SETOR DE OBTENÇÃO",
+    n_12m: int = 0,
+    n_24m: int = 0,
+    n_cats_12m: int = 0,
+    n_cats_24m: int = 0,
+    n_unique_suppliers: int = 0,
+) -> bytes:
+    """
+    Gera o Manual Didático Visual do Processo (`00_MANUAL_DIDATICO_DO_PROCESSO_LEIA_ME.pdf`)
+    em estilo guia institucional prático, passo a passo para instrução no SEI.
+    """
+    stats = _compute_batch_stats(items_results)
+    total_extenso = brl_por_extenso(stats["total_geral"])
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=1.6 * cm,
+        rightMargin=1.6 * cm,
+        topMargin=1.4 * cm,
+        bottomMargin=1.4 * cm,
+    )
+    styles = getSampleStyleSheet()
+    st_tag = ParagraphStyle("ManTag", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=8, leading=10, textColor=colors.HexColor("#d8be86"))
+    st_hero = ParagraphStyle("ManHero", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=14.5, leading=18, textColor=colors.white)
+    st_hsub = ParagraphStyle("ManHSub", parent=styles["Normal"], fontName="Helvetica", fontSize=8.5, leading=11.5, textColor=colors.HexColor("#cbd5e1"))
+    st_sec = ParagraphStyle("ManSec", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=10.5, leading=13.5, textColor=colors.HexColor("#1e293b"), spaceBefore=10, spaceAfter=4, keepWithNext=True)
+    st_body = ParagraphStyle("ManBody", parent=styles["Normal"], fontName="Helvetica", fontSize=8.6, leading=12.2, alignment=4, textColor=colors.HexColor("#334155"), spaceAfter=4)
+    st_card_lbl = ParagraphStyle("ManCLbl", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=7.0, leading=9, alignment=1, textColor=colors.HexColor("#475569"))
+    st_card_val = ParagraphStyle("ManCVal", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=11, leading=13.5, alignment=1, textColor=colors.HexColor("#0f172a"))
+    st_th = ParagraphStyle("ManTH", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=7.5, leading=9.5, alignment=1, textColor=colors.white)
+    st_td = ParagraphStyle("ManTD", parent=styles["Normal"], fontName="Helvetica", fontSize=7.6, leading=10.0, textColor=colors.HexColor("#1e293b"))
+    st_step_num = ParagraphStyle("ManSNum", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=9.5, leading=11.5, alignment=1, textColor=colors.white)
+    st_step_txt = ParagraphStyle("ManSTxt", parent=styles["Normal"], fontName="Helvetica", fontSize=8.2, leading=11.2, textColor=colors.HexColor("#1e293b"))
+
+    el: List[Any] = []
+
+    # Capa / Banner estilo Manual Oficial
+    hero_tbl = Table(
+        [[
+            Paragraph(
+                f"<font color='#d8be86'><b>MANUAL DIDÁTICO DO PROCESSO • GUIA DE INSTRUÇÃO SEI</b></font><br/>"
+                f"<font size='14' color='#ffffff'><b>DOSSIÊ CONSOLIDADO DE PESQUISA DE PREÇOS</b></font><br/>"
+                f"<font size='8.5' color='#cbd5e1'>{_safe_xml(om_name.upper())} &nbsp;|&nbsp; Lei nº 14.133/2021, IN SEGES/ME nº 65/2021 e Modelo AGU &nbsp;|&nbsp; Emitido em {_data_extenso_hoje()}</font>",
+                st_hsub,
+            )
+        ]],
+        colWidths=[17.8 * cm],
+    )
+    hero_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#1e293b")),
+        ("TOPPADDING", (0, 0), (-1, -1), 12),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+    ]))
+    el.append(hero_tbl)
+    el.append(Spacer(1, 0.3 * cm))
+
+    # Seção 1: Painel Executivo do Lote (4 Cards)
+    cards = [[
+        Paragraph(f"TOTAL DE ITENS<br/><font size='12' color='#0f172a'><b>{stats['total_items']}</b></font><br/>{n_cats_12m + n_cats_24m} categoria(s)", st_card_lbl),
+        Paragraph(f"VALOR GLOBAL ESTIMADO<br/><font size='10.5' color='#15803d'><b>{_fmt_brl(stats['total_geral'])}</b></font><br/>Referência IN 65/2021", st_card_lbl),
+        Paragraph(f"JANELA TEMPORAL<br/><font size='10' color='#0f172a'><b>{n_12m} (≤12M) | {n_24m} (13-24M)</b></font><br/>Pastas segregadas", st_card_lbl),
+        Paragraph(f"AUDITORIA & EMPRESAS<br/><font size='10' color='#0f172a'><b>{n_unique_suppliers} CNPJ(s)</b></font><br/>{len(stats['items_under_3'])} item(ns) &lt; 3 cot.", st_card_lbl),
+    ]]
+    t_cards = Table(cards, colWidths=[4.1 * cm, 4.9 * cm, 4.5 * cm, 4.3 * cm])
+    t_cards.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+        ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor("#cbd5e1")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    el.append(t_cards)
+    el.append(Spacer(1, 0.15 * cm))
+    el.append(Paragraph(
+        f"<b>Valor Global por Extenso:</b> {_safe_xml(total_extenso)}. &nbsp; "
+        f"<b>Responsável Técnico:</b> {_safe_xml(elaborador_nome)} &nbsp;|&nbsp; <b>Autoridade:</b> {_safe_xml(ordenador_nome)}.",
+        st_body,
+    ))
+
+    # Seção 2: Mapa Visual de Pastas e Arquivos
+    el.append(Paragraph("1. MAPA DIDÁTICO DOS ARQUIVOS E PASTAS DESTE PACOTE (.ZIP)", st_sec))
+    map_rows = [
+        [Paragraph("Arquivo / Pasta", st_th), Paragraph("O que contém e para que serve no processo", st_th), Paragraph("Base Legal", st_th)],
+        [
+            Paragraph("<b>00_Mapa_Comparativo_Geral_Completo.xlsx</b>", st_td),
+            Paragraph("Planilha Excel completa com 4 abas: <i>Resumo Geral</i>, <b>Mapa Geral - Todas Cotações</b> (100% das empresas de todos os itens com Id PNCP e links diretos), <i>Expurgos</i> e <i>Resumo por Categoria</i>.", st_td),
+            Paragraph("Art. 23 NLLC<br/>IN 65/2021", st_td),
+        ],
+        [
+            Paragraph("<b>01_Nota_Tecnica_AGU_IN65_Pesquisa_Precos</b><br/>(.docx e .pdf)", st_td),
+            Paragraph("Nota Técnica fiel ao modelo oficial AGU/SEGES (Seções I a VI), contendo fontes consultadas, tabela de preços desconsiderados (§ 4.2), valor por extenso (§ 5.1) e assinaturas (§ VI).", st_td),
+            Paragraph("Modelo AGU<br/>IN 65/2021", st_td),
+        ],
+        [
+            Paragraph("<b>02_RaioX_Certidoes_Empresas_Consolidado</b><br/>(.docx e .pdf)", st_td),
+            Paragraph("Raio-X único de regularidade fiscal, trabalhista e sancionatória (RFB/PGFN, FGTS, CNDT, CEIS/CNEP/TCU e SICAF) de todas as empresas cotadas no lote.", st_td),
+            Paragraph("Art. 68 e 156<br/>Lei 14.133/21", st_td),
+        ],
+        [
+            Paragraph("<b>03_Justificativa_Consolidada_Art6_Par5</b><br/>(.docx e .pdf)", st_td),
+            Paragraph("Despacho único que justifica todos os itens com menos de 3 cotações válidas e/ou pesquisa ampliada (13–24 meses), evitando dezenas de despachos repetitivos.", st_td),
+            Paragraph("Art. 6º, § 5º<br/>IN 65/2021", st_td),
+        ],
+        [
+            Paragraph("<b>04_Comprovantes_PNCP_Contratacoes_QRCode.pdf</b>", st_td),
+            Paragraph("Prova documental das compras públicas utilizadas: 1 página estilo portal PNCP por contratação única, com <b>QR Code</b>, <b>Id contratação PNCP</b>, valores estimado/homologado e links diretos.", st_td),
+            Paragraph("Art. 174 NLLC<br/>PNCP Oficial", st_td),
+        ],
+        [
+            Paragraph("<b>01_Pesquisas_Ate_12_Meses_IN65/</b><br/><i>(e 02_Pesquisas_13_a_24_Meses_Excepcional/)</i>", st_td),
+            Paragraph("Pastas separadas por janela temporal contendo: <b>Caderno Executivo</b> (.pdf/.docx), <b>Relatório Detalhado Completo</b> (padrão Compras.gov.br), <b>Por_Categoria/</b> (agrupado por Classe CNBS) e <b>Relatorios_CATMAT_CATSER/</b> (relatório oficial de 2 páginas com Brasão, QR Codes, Boxplot e Curva Gaussiana de cada item!).", st_td),
+            Paragraph("Art. 5º e 6º<br/>IN 65/2021", st_td),
+        ],
+    ]
+    t_map = Table(map_rows, colWidths=[5.4 * cm, 9.8 * cm, 2.6 * cm], repeatRows=1)
+    t_map_style = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#233242")),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 3.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5),
+    ]
+    for r_i in range(1, len(map_rows)):
+        if r_i % 2 == 0:
+            t_map_style.append(("BACKGROUND", (0, r_i), (-1, r_i), colors.HexColor("#f8fafc")))
+    t_map.setStyle(TableStyle(t_map_style))
+    el.append(t_map)
+
+    # Seção 3: Passo a Passo Didático para Instrução no SEI
+    el.append(Paragraph("2. PASSO A PASSO PRÁTICO PARA INSTRUIR O PROCESSO NO SEI", st_sec))
+    steps_data = [
+        ("PASSO 1", "<b>Revisar e numerar a Nota Técnica AGU:</b> Abra o arquivo <i>01_Nota_Tecnica_AGU_IN65_Pesquisa_Precos.docx</i>, preencha o número da Nota Técnica e a matrícula do agente na Seção VI (se ainda não preenchidos). Converta/junte o PDF no SEI para assinatura."),
+        ("PASSO 2", "<b>Juntar o Mapa Comparativo Geral (.XLSX):</b> Anexe <i>00_Mapa_Comparativo_Geral_Completo.xlsx</i>. A aba <i>Mapa Geral - Todas Cotações</i> reúne 100% das empresas e links diretos de todos os itens em um único arquivo auditável."),
+        ("PASSO 3", "<b>Juntar os Relatórios CATMAT/CATSER e por Categoria (≤ 12 Meses):</b> Na pasta <i>01_Pesquisas_Ate_12_Meses_IN65/</i>, utilize o <i>Relatorio_Detalhado_Completo_12M.pdf</i> (ou os arquivos em <i>Por_Categoria/</i>) e os relatórios individuais de 2 páginas em <i>Relatorios_CATMAT_CATSER/</i>."),
+        ("PASSO 4", "<b>Tratar a pasta de 13 a 24 Meses (quando existente):</b> Os itens da pasta <i>02_Pesquisas_13_a_24_Meses_Excepcional/</i> não possuíam compras homologadas nos últimos 12 meses. Avalie a aplicação de atualização monetária (IPCA/IBGE) e mantenha a justificativa registrada."),
+        ("PASSO 5", "<b>Anexar Comprovantes PNCP e Raio-X das Empresas:</b> Junte <i>04_Comprovantes_PNCP_Contratacoes_QRCode.pdf</i> (prova cabal da existência de cada compra no PNCP) e <i>02_RaioX_Certidoes_Empresas_Consolidado.pdf</i> (controle prévio de regularidade fiscal/sancionatória)."),
+        ("PASSO 6", "<b>Aprovação da Autoridade Competente:</b> Caso existam itens com menos de 3 cotações ou janela de 13–24 meses, submeta <i>03_Justificativa_Consolidada_Art6_Par5</i> junto com a Nota Técnica AGU à ratificação do Ordenador de Despesas."),
+    ]
+    step_rows = []
+    for tag, desc_html in steps_data:
+        step_rows.append([Paragraph(tag, st_step_num), Paragraph(desc_html, st_step_txt)])
+    t_steps = Table(step_rows, colWidths=[2.2 * cm, 15.6 * cm])
+    t_steps.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#34495e")),
+        ("BACKGROUND", (1, 0), (1, -1), colors.HexColor("#f8fafc")),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    el.append(t_steps)
+
+    # Seção 4: Glossário Estatístico + Checklist Final
+    el.append(KeepTogether([
+        Paragraph("3. GLOSSÁRIO RÁPIDO IN 65/2021 &amp; CHECKLIST FINAL DE CONFERÊNCIA", st_sec),
+        Paragraph(
+            "• <b>Série Homogênea (CV ≤ 25%):</b> baixa dispersão entre os preços válidos → adota-se a <b>MÉDIA ARITMÉTICA</b>.<br/>"
+            "• <b>Série Heterogênea (CV &gt; 25%):</b> dispersão elevada → adota-se a <b>MEDIANA</b> (protege contra distorções).<br/>"
+            "• <b>Saneamento de Outliers:</b> expurgo automático em duplo estágio (barreira robusta pela mediana + corte μ ± 1σ), com registro nominal na Seção 4.2 da Nota Técnica AGU e na aba <i>Expurgos</i> do Excel.<br/>"
+            "• <b>Certidões na Pesquisa de Preços:</b> não há vedação legal para cotar preços de empresas com certidão vencida na formação da cesta; a regularidade fiscal/trabalhista (Art. 68) é exigida na fase de habilitação/contratação, razão pela qual o Raio-X acompanha os autos como ferramenta gerencial preventiva.",
+            st_body,
+        ),
+        Table(
+            [[Paragraph(
+                "<b>CHECKLIST FINAL ANTES DE ENCAMINHAR O PROCESSO:</b><br/>"
+                "☐ Nota Técnica AGU numerada e assinada &nbsp;&nbsp; ☐ Mapa Geral Excel (.xlsx) juntado &nbsp;&nbsp; "
+                "☐ Relatórios CATMAT/CATSER conferidos<br/>"
+                "☐ Comprovantes PNCP (QR Code) juntados &nbsp;&nbsp; ☐ Raio-X de Certidões anexado &nbsp;&nbsp; "
+                "☐ Justificativa Art. 6º § 5º / 13-24M ratificada",
+                st_td,
+            )]],
+            colWidths=[17.8 * cm],
+            style=TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fef3c7")),
+                ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#d97706")),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ]),
+        ),
+    ]))
+
+    doc.build(el)
+    return buf.getvalue()
+

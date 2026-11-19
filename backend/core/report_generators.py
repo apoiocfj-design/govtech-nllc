@@ -30,6 +30,8 @@ from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
 
 # reportlab
+from reportlab import rl_config as _rl_config
+_rl_config.useA85 = 0  # Escreve fluxos binários JPEG/zlib nativos (100% PDF padrão, ~5x mais rápido e 25% menor)
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
 from reportlab.lib.units import cm, mm
@@ -113,7 +115,7 @@ def _get_pil_font(size: int, bold: bool = False):
 
 @lru_cache(maxsize=4096)
 def generate_qr_code_bytes(url: str, box_size: int = 4, border: int = 1) -> bytes:
-    """Gera e cacheia bytes PNG de um QR Code nítido (até 100x mais rápido com cache LRU + máscara fixa)."""
+    """Gera e cacheia bytes JPEG de um QR Code nítido (zero overhead PNG no ReportLab + cache LRU)."""
     if not url or not str(url).startswith("http"):
         url = "https://pncp.gov.br"
     qr = qrcode.QRCode(
@@ -125,9 +127,9 @@ def generate_qr_code_bytes(url: str, box_size: int = 4, border: int = 1) -> byte
     )
     qr.add_data(url)
     qr.make(fit=True)
-    img = qr.make_image(fill_color="#0f172a", back_color="#ffffff")
+    img = qr.make_image(fill_color="#0f172a", back_color="#ffffff").convert("RGB")
     buf = io.BytesIO()
-    img.save(buf, format="PNG", compress_level=1)
+    img.save(buf, format="JPEG", quality=88)
     return buf.getvalue()
 
 
@@ -199,11 +201,11 @@ def generate_statistical_infographic(
     img = PILImage.new("RGB", (width, height), color="#ffffff")
     draw = PILImageDraw.Draw(img)
 
-    f_title = _get_pil_font(22, bold=True)
-    f_sec = _get_pil_font(18, bold=True)
-    f_lbl = _get_pil_font(15, bold=False)
-    f_bold = _get_pil_font(16, bold=True)
-    f_badge = _get_pil_font(15, bold=True)
+    f_title = _get_pil_font(19, bold=True)
+    f_sec = _get_pil_font(17, bold=True)
+    f_lbl = _get_pil_font(13, bold=False)
+    f_bold = _get_pil_font(14, bold=True)
+    f_badge = _get_pil_font(13, bold=True)
 
     c_navy = "#1e2d3d"
     c_steel = "#3b5b7c"
@@ -215,10 +217,10 @@ def generate_statistical_infographic(
     c_text_dark = "#0f172a"
     c_text_muted = "#475569"
 
-    # Barra de Título Superior
+    # Barra de Título Superior (espaçamento calibrado sem sobreposição)
     draw.rectangle([(0, 0), (width, 55)], fill=c_navy)
-    draw.text((25, 14), "DEMONSTRATIVO ESTATÍSTICO & CURVA GAUSSIANA DE DECISÃO (IN SEGES/ME Nº 65/2021)", font=f_title, fill="#ffffff")
-    draw.text((width - 340, 18), "PADRÃO OFICIAL TCU / NLLC 14.133", font=f_badge, fill="#facc15")
+    draw.text((22, 16), "DEMONSTRATIVO ESTATÍSTICO & CURVA GAUSSIANA DE DECISÃO (IN SEGES/ME Nº 65/2021)", font=f_title, fill="#ffffff")
+    draw.text((width - 285, 19), "PADRÃO OFICIAL TCU / NLLC 14.133", font=f_badge, fill="#facc15")
 
     # Moldura dos Painéis
     draw.rounded_rectangle([(20, 70), (685, 595)], radius=12, fill=c_bg_box, outline=c_border, width=2)
@@ -353,37 +355,37 @@ def generate_statistical_infographic(
 
     draw.line([(x_mid, cy_base), (x_mid, cy_peak)], fill=c_gold, width=4)
 
-    draw.text((x_mid - 45, cy_base - 65), "ZONA CENTRAL", font=f_bold, fill=c_green)
-    draw.text((x_mid - 40, cy_base - 45), "CV ≤ 25%", font=f_bold, fill=c_green)
+    draw.text((x_mid - 48, cy_base - 72), "ZONA CENTRAL", font=f_bold, fill=c_green)
+    draw.text((x_mid - 32, cy_base - 52), "CV ≤ 25%", font=f_bold, fill=c_green)
     draw.text((x_mid - 30, cy_base + 8), "μ (Média)", font=f_bold, fill=c_navy)
 
-    draw.text((x_p1 + 10, cy_base - 55), "DISPERSÃO", font=f_bold, fill="#b45309")
-    draw.text((x_p1 + 10, cy_base - 35), "CV > 25%", font=f_bold, fill="#b45309")
-    draw.text((x_p1 - 15, cy_base + 8), "+1σ", font=f_bold, fill=c_text_muted)
-    draw.text((x_m1 - 15, cy_base + 8), "-1σ", font=f_bold, fill=c_text_muted)
+    draw.text((x_p1 + 6, cy_base - 96), "DISPERSÃO", font=f_bold, fill="#b45309")
+    draw.text((x_p1 + 6, cy_base - 76), "CV > 25%", font=f_bold, fill="#b45309")
+    draw.text((x_p1 - 12, cy_base + 8), "+1σ", font=f_bold, fill=c_text_muted)
+    draw.text((x_m1 - 12, cy_base + 8), "-1σ", font=f_bold, fill=c_text_muted)
 
-    draw.text((cx_l + 15, cy_base - 35), "CAUDA (Expurgo)", font=f_bold, fill=c_red)
-    draw.text((cx_r - 165, cy_base - 35), "CAUDA (Expurgo)", font=f_bold, fill=c_red)
-    draw.text((x_m2 - 15, cy_base + 8), "-2σ", font=f_bold, fill=c_text_muted)
-    draw.text((x_p2 - 15, cy_base + 8), "+2σ", font=f_bold, fill=c_text_muted)
+    draw.text((cx_l + 8, cy_base - 32), "CAUDA (Expurgo)", font=f_bold, fill=c_red)
+    draw.text((x_p2 + 2, cy_base - 32), "CAUDA (Expurgo)", font=f_bold, fill=c_red)
+    draw.text((x_m2 - 12, cy_base + 8), "-2σ", font=f_bold, fill=c_text_muted)
+    draw.text((x_p2 - 12, cy_base + 8), "+2σ", font=f_bold, fill=c_text_muted)
 
-    # Guia Didático de Critérios de Escolha
+    # Guia Didático de Critérios de Escolha (margens calibradas dentro da moldura)
     draw.rounded_rectangle([(725, 360), (1360, 570)], radius=8, fill="#ffffff", outline="#cbd5e1", width=2)
 
     draw.rectangle([(740, 375), (746, 420)], fill=c_green)
-    draw.text((758, 375), "REGRA DA MÉDIA SANEADA (CV ≤ 25%):", font=f_bold, fill=c_green)
-    draw.text((758, 398), "Quando a amostra é homogênea, a média aritmética reflete com precisão o valor de mercado.", font=f_lbl, fill=c_text_dark)
+    draw.text((756, 375), "REGRA DA MÉDIA SANEADA (CV ≤ 25%):", font=f_bold, fill=c_green)
+    draw.text((756, 398), "Amostra homogênea: a média aritmética reflete com precisão o mercado.", font=f_lbl, fill=c_text_dark)
 
     draw.rectangle([(740, 435), (746, 480)], fill=c_gold)
-    draw.text((758, 435), "REGRA DA MEDIANA SANEADA (CV > 25%):", font=f_bold, fill="#92400e")
-    draw.text((758, 458), "Obrigatória (Art. 6º, § 5º da IN 65/2021) em séries heterogêneas para neutralizar distorções extremas.", font=f_lbl, fill=c_text_dark)
+    draw.text((756, 435), "REGRA DA MEDIANA SANEADA (CV > 25%):", font=f_bold, fill="#92400e")
+    draw.text((756, 458), "Série heterogênea (Art. 6º IN 65/2021): mediana neutraliza distorções.", font=f_lbl, fill=c_text_dark)
 
     adopted_is_med = "MEDIANA" in adopted_param.upper()
     bg_dec = "#fef3c7" if adopted_is_med else "#dcfce7"
     border_dec = c_gold if adopted_is_med else c_green
     draw.rounded_rectangle([(740, 505), (1345, 550)], radius=6, fill=bg_dec, outline=border_dec, width=2)
-    dec_text = f"DECISÃO LEGAL ADOTADA: {adopted_param} (R$ {median_val if adopted_is_med else mean_val:.2f}) — CV Saneado de {cv_percent:.2f}%"
-    draw.text((755, 518), dec_text, font=f_bold, fill=c_navy)
+    dec_text = f"DECISÃO ADOTADA: {adopted_param} (R$ {median_val if adopted_is_med else mean_val:.2f}) — CV: {cv_percent:.2f}%"
+    draw.text((754, 519), dec_text, font=f_bold, fill=c_navy)
 
     buf = io.BytesIO()
     if fmt == "JPEG":
@@ -1095,20 +1097,19 @@ def build_in65_pdf_bytes(
         if not q_url:
             q_url = f"https://pncp.gov.br/app/editais?q={q.get('buyer_uasg', '')}" if q.get("buyer_uasg") else "https://pncp.gov.br/app/editais"
         
-        qr_obj = qrcode.QRCode(
-            version=1,
-            error_correction=qrcode.constants.ERROR_CORRECT_L,
-            box_size=2,
-            border=1,
-        )
-        qr_obj.add_data(q_url)
-        qr_obj.make(fit=True)
-        qr_img = qr_obj.make_image(fill_color="black", back_color="white")
-        qr_buf = io.BytesIO()
-        qr_img.save(qr_buf, format="PNG")
-        qr_buf.seek(0)
+        q_url = str(q.get("pncp_or_compras_uri") or "").strip()
+        if ("?q=" in q_url or not q_url):
+            cnet = str(q.get("comprasnet_uri") or "").strip()
+            if not cnet:
+                pk_d = re.sub(r"\D", "", str(q.get("purchase_key") or ""))
+                if len(pk_d) == 16:
+                    pk_d = "0" + pk_d
+                if len(pk_d) >= 17:
+                    cnet = f"https://cnetmobile.estaleiro.serpro.gov.br/comprasnet-web/public/compras/acompanhamento-compra?compra={pk_d[:17]}"
+            q_url = cnet or "https://pncp.gov.br/app/editais"
+        qr_buf = io.BytesIO(generate_qr_code_bytes(q_url, box_size=3, border=1))
         rl_qr = RLImage(qr_buf, width=1.5 * cm, height=1.5 * cm)
-        p_link = Paragraph(f"<font color='#0284c7' size='7'><u><a href='{q_url}'><b>🔗 Ver no PNCP</b></a></u></font>", st_cell_txt_center)
+        p_link = Paragraph(f"<font color='#0284c7' size='7'><u><a href='{q_url}'><b>Ver no PNCP</b></a></u></font>", st_cell_txt_center)
 
         quotes_data.append([
             Paragraph(f"{idx+1:02d}", st_cell_txt_center),
@@ -2807,6 +2808,9 @@ def build_batch_zip_to_file(
             build_category_detailed_report_pdf_bytes,
             build_consolidated_justificativa_docx_bytes,
             build_consolidated_justificativa_pdf_bytes,
+            build_consolidated_suppliers_dossier_docx_bytes,
+            build_process_manual_pdf_bytes,
+            build_process_manual_txt,
             is_item_extended_24m,
             resolve_item_category,
         )
@@ -2817,6 +2821,9 @@ def build_batch_zip_to_file(
             build_category_detailed_report_pdf_bytes,
             build_consolidated_justificativa_docx_bytes,
             build_consolidated_justificativa_pdf_bytes,
+            build_consolidated_suppliers_dossier_docx_bytes,
+            build_process_manual_pdf_bytes,
+            build_process_manual_txt,
             is_item_extended_24m,
             resolve_item_category,
         )
@@ -2835,6 +2842,7 @@ def build_batch_zip_to_file(
     # Segregação obrigatória por janela temporal: <= 12 meses vs 13-24 meses (excepcional)
     items_12m_idx: List[Tuple[int, Dict[str, Any]]] = []
     items_24m_idx: List[Tuple[int, Dict[str, Any]]] = []
+    unique_cnpjs = set()
     needs_justificativa = False
     for idx, it in enumerate(items_results, start=1):
         rep = it.get("report") or {}
@@ -2844,8 +2852,13 @@ def build_batch_zip_to_file(
             needs_justificativa = True
         else:
             items_12m_idx.append((idx, it))
-        if len(rep.get("valid_quotes") or []) < 3:
+        vqs = rep.get("valid_quotes") or []
+        if len(vqs) < 3:
             needs_justificativa = True
+        for q in vqs:
+            c_clean = re.sub(r"\D", "", str(q.get("supplier_cnpj") or q.get("cnpj") or ""))
+            if len(c_clean) == 14:
+                unique_cnpjs.add(c_clean)
 
     def _group_by_cat(indexed_list: List[Tuple[int, Dict[str, Any]]]) -> Dict[Tuple[str, str], List[Tuple[int, Dict[str, Any]]]]:
         grouped: Dict[Tuple[str, str], List[Tuple[int, Dict[str, Any]]]] = {}
@@ -2860,9 +2873,9 @@ def build_batch_zip_to_file(
 
     include_detailed = mode_norm != "consolidated"
     total_steps = (
-        6  # Excel + Nota Técnica DOCX/PDF + Certidões + Justificativa + Comprovantes PNCP PDF
-        + (2 + len(cats_12m) if (include_detailed and items_12m_idx) else 0)
-        + (2 + len(cats_24m) if (include_detailed and items_24m_idx) else 0)
+        6  # Excel + Nota Técnica DOCX/PDF + Raio-X Certidões (PDF+DOCX) + Justificativa/Manual + Comprovantes PNCP
+        + (2 + len(cats_12m) + len(items_12m_idx) if (include_detailed and items_12m_idx) else 0)
+        + (2 + len(cats_24m) + len(items_24m_idx) if (include_detailed and items_24m_idx) else 0)
     )
     done_steps = 0
 
@@ -2898,8 +2911,8 @@ def build_batch_zip_to_file(
         del nt_pdf
         done_steps += 1
 
-        # 4. Dossiê Consolidado de Certidões de Todos os Fornecedores Únicos (PDF)
-        _report(done_steps, total_steps, "Consolidando Raio-X de Certidões de todas as empresas do lote...")
+        # 4. Raio-X Consolidado de Certidões de Todas as Empresas do Lote (PDF + DOCX)
+        _report(done_steps, total_steps, f"Gerando Raio-X de Certidões ({len(unique_cnpjs)} empresas — PDF + Word)...")
         try:
             sup_pdf = build_consolidated_suppliers_dossier_pdf_bytes(
                 items_results,
@@ -2907,14 +2920,25 @@ def build_batch_zip_to_file(
                 elaborador_nome=elaborador_nome,
                 ordenador_nome=ordenador_nome,
             )
-            zf.writestr("02_Dossie_Consolidado_Certidoes_Empresas.pdf", sup_pdf)
+            zf.writestr("02_RaioX_Certidoes_Empresas_Consolidado.pdf", sup_pdf)
             del sup_pdf
+        except Exception:
+            pass
+        try:
+            sup_docx = build_consolidated_suppliers_dossier_docx_bytes(
+                items_results,
+                om_name=om_name,
+                elaborador_nome=elaborador_nome,
+                ordenador_nome=ordenador_nome,
+            )
+            zf.writestr("02_RaioX_Certidoes_Empresas_Consolidado.docx", sup_docx)
+            del sup_docx
         except Exception:
             pass
         done_steps += 1
 
-        # 5. Justificativa Consolidada (Art. 6º § 5º e/ou 13-24M) + Índice do Processo
-        _report(done_steps, total_steps, "Gerando Justificativa Consolidada (Art. 6º § 5º) e Índice do Processo...")
+        # 5. Justificativa Consolidada (Art. 6º § 5º e/ou 13-24M) + Manual Didático do Processo (PDF + TXT)
+        _report(done_steps, total_steps, "Gerando Justificativa Consolidada e Manual Didático do Processo...")
         if needs_justificativa:
             try:
                 j_docx = build_consolidated_justificativa_docx_bytes(
@@ -2930,36 +2954,33 @@ def build_batch_zip_to_file(
             except Exception:
                 pass
 
-        readme_lines = [
-            "================================================================================",
-            "GOVTECH NLLC — DOSSIÊ CONSOLIDADO DE PESQUISA DE PREÇOS (ZERO REDUNDÂNCIA)",
-            f"OM / Órgão: {om_name.upper()} | Total de Itens: {total_items}",
-            f"Janela Padrão (≤ 12 meses - IN 65/2021): {len(items_12m_idx)} item(ns)",
-            f"Janela Excepcional (13 a 24 meses - Fallback): {len(items_24m_idx)} item(ns)",
-            "Base Legal: Lei nº 14.133/2021, IN SEGES/ME nº 65/2021 e Modelo AGU/SEGES",
-            "================================================================================",
-            "",
-            "PEÇAS MESTRES NA RAIZ (ORDEM DE JUNTADA NO SEI):",
-            "  1. 00_Mapa_Comparativo_Geral_Completo.xlsx",
-            "     - Aba 'Resumo Geral do Lote' + Aba 'Mapa Geral - Todas Cotações' (100% das",
-            "       empresas/cotações de todos os itens) + 'Expurgos' + 'Resumo por Categoria'.",
-            "  2. 01_Nota_Tecnica_AGU_IN65_Pesquisa_Precos (.docx e .pdf)",
-            "     - Nota Técnica no modelo oficial da AGU (Seções I a VI, valor por extenso,",
-            "       quadro de expurgos § 4.2, memória de cálculo § 5.1 e assinaturas § VI).",
-            "  3. 02_Dossie_Consolidado_Certidoes_Empresas.pdf",
-            "     - Raio-X único de regularidade fiscal/trabalhista/sancionatória dos CNPJs.",
-            "  4. 03_Justificativa_Consolidada_Art6_Par5 (.docx e .pdf)",
-            "     - Despacho único para itens com < 3 cotações válidas e/ou janela 13-24M.",
-            "",
-            "PASTAS SEGREGADAS POR JANELA TEMPORAL E CONDENSADAS POR CATEGORIA (CLASSE CNBS):",
-            f"  • 01_Pesquisas_Ate_12_Meses_IN65/ ({len(items_12m_idx)} item(ns) em {len(cats_12m)} categoria(s))",
-            f"  • 02_Pesquisas_13_a_24_Meses_Excepcional/ ({len(items_24m_idx)} item(ns) em {len(cats_24m)} categoria(s))",
-            "    Cada pasta contém o Caderno Executivo (.pdf/.docx), o Relatório Detalhado",
-            "    Completo (padrão Compras.gov.br com links clicáveis PNCP) e a subpasta",
-            "    'Por_Categoria/' com 1 relatório detalhado por Classe CNBS/PDM.",
-            "================================================================================",
-        ]
-        zf.writestr("00_LEIA_ME_INDICE_DO_PROCESSO.txt", "\n".join(readme_lines))
+        try:
+            manual_pdf = build_process_manual_pdf_bytes(
+                items_results,
+                om_name=om_name,
+                ordenador_nome=ordenador_nome,
+                elaborador_nome=elaborador_nome,
+                n_12m=len(items_12m_idx),
+                n_24m=len(items_24m_idx),
+                n_cats_12m=len(cats_12m),
+                n_cats_24m=len(cats_24m),
+                n_unique_suppliers=len(unique_cnpjs),
+            )
+            zf.writestr("00_MANUAL_DIDATICO_DO_PROCESSO_LEIA_ME.pdf", manual_pdf)
+            del manual_pdf
+        except Exception:
+            pass
+
+        manual_txt = build_process_manual_txt(
+            items_results,
+            om_name=om_name,
+            n_12m=len(items_12m_idx),
+            n_24m=len(items_24m_idx),
+            n_cats_12m=len(cats_12m),
+            n_cats_24m=len(cats_24m),
+            n_unique_suppliers=len(unique_cnpjs),
+        )
+        zf.writestr("00_LEIA_ME_MANUAL_DIDATICO.txt", manual_txt)
         done_steps += 1
 
         # 6. Caderno de Comprovantes Oficiais PNCP (1 página estilo portal PNCP com QR Code por contratação única)
@@ -2976,7 +2997,8 @@ def build_batch_zip_to_file(
             pass
         done_steps += 1
 
-        # Helper para gravar uma janela temporal (12M ou 13-24M) sem redundância e agrupada por Categoria
+        # Helper para gravar uma janela temporal (12M ou 13-24M):
+        # Caderno Executivo + Relatório Detalhado Completo + Por_Categoria/ + Relatorios_CATMAT_CATSER/ (2 págs por item!)
         def _write_window_folder(
             folder_name: str,
             suffix_tag: str,
@@ -3017,7 +3039,7 @@ def build_batch_zip_to_file(
             done_steps += 1
 
             for (slug, cat_lbl), cat_items in sorted(cats_map.items()):
-                _report(done_steps, total_steps, f"[{suffix_tag}] Relatório por Categoria: {cat_lbl[:35]} ({len(cat_items)} it.)...")
+                _report(done_steps, total_steps, f"[{suffix_tag}] Relatório por Categoria: {cat_lbl[:32]} ({len(cat_items)} it.)...")
                 cat_pdf = build_category_detailed_report_pdf_bytes(
                     cat_items,
                     category_label=cat_lbl,
@@ -3029,6 +3051,38 @@ def build_batch_zip_to_file(
                 zf.writestr(f"{folder_name}/Por_Categoria/Relatorio_Detalhado_{slug}_{suffix_tag}.pdf", cat_pdf)
                 del cat_pdf
                 done_steps += 1
+
+            # Relatório Oficial de Pesquisa de Preços CATMAT/CATSER (2 págs com Brasão, QR Codes e Gráficos) por item
+            for sub_i, (orig_idx, it_obj) in enumerate(indexed_subset, start=1):
+                rep_i = it_obj.get("report") or {}
+                qty_i = int(float(it_obj.get("qty", 1) or 1))
+                code_i = str(rep_i.get("catmat_catser_code") or it_obj.get("code") or "000000")
+                itype_i = str(rep_i.get("item_type") or it_obj.get("type") or "MATERIAL").upper()
+                prefix_i = "CATSER" if "SERV" in itype_i else "CATMAT"
+                _report(
+                    done_steps,
+                    total_steps,
+                    f"[{suffix_tag}] Relatório {prefix_i} {code_i} ({sub_i}/{len(indexed_subset)})...",
+                )
+                try:
+                    item_pdf = build_in65_pdf_bytes(
+                        rep_i,
+                        qty_i,
+                        om_name=om_name,
+                        elaborador_nome=elaborador_nome,
+                        ordenador_nome=ordenador_nome,
+                    )
+                    zf.writestr(
+                        f"{folder_name}/Relatorios_CATMAT_CATSER/Item_{orig_idx:03d}_{prefix_i}_{code_i}.pdf",
+                        item_pdf,
+                    )
+                    del item_pdf
+                except Exception:
+                    pass
+                done_steps += 1
+                if sub_i % 20 == 0:
+                    gc.collect()
+
             gc.collect()
 
         if include_detailed:

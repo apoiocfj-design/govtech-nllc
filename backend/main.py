@@ -57,6 +57,7 @@ from report_generators import (
 from agu_batch_reports import (
     build_agu_nota_tecnica_docx_bytes,
     build_agu_nota_tecnica_pdf_bytes,
+    build_consolidated_suppliers_dossier_docx_bytes,
 )
 from job_manager import batch_job_manager
 from audited_document_engine import (
@@ -1661,6 +1662,55 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                         out_bytes,
                         "application/pdf",
                         f"Nota_Tecnica_AGU_IN65_{len(items_results)}_itens.pdf",
+                    )
+            except Exception as exc:
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        # 0.07 Exportar Raio-X Consolidado de Certidões das Empresas do Lote (.DOCX ou .PDF)
+        if parsed.path in ("/api/v1/prices/export-batch-certidoes-docx", "/api/v1/prices/export-batch-certidoes-pdf"):
+            try:
+                data = json.loads(raw_body)
+                items_in = data.get("items", [])
+                om_name = str(data.get("om_name", "MARINHA DO BRASIL"))
+                ordenador = str(data.get("ordenador", "ORDENADOR DE DESPESAS"))
+                elaborador = str(data.get("elaborador", "ENCARREGADO DO SETOR DE OBTENÇÃO"))
+
+                items_results = []
+                for idx, it in enumerate(items_in, start=1):
+                    rep = it.get("report")
+                    qty = float(it.get("qty", 1) or 1)
+                    if rep and rep.get("sanitized_metrics"):
+                        items_results.append({
+                            "item_index": idx,
+                            "code": rep.get("catmat_catser_code", it.get("code")),
+                            "type": it.get("type", "MATERIAL"),
+                            "unit": it.get("unit", rep.get("target_supply_unit", "UN")),
+                            "qty": qty,
+                            "report": rep,
+                        })
+
+                if not items_results:
+                    self._send_json(404, {"error": "Nenhum item do lote possui cotações válidas para gerar o Raio-X de Certidões."})
+                    return
+
+                if parsed.path.endswith("-docx"):
+                    out_bytes = build_consolidated_suppliers_dossier_docx_bytes(
+                        items_results, om_name=om_name, ordenador_nome=ordenador, elaborador_nome=elaborador
+                    )
+                    self._send_binary(
+                        out_bytes,
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        f"RaioX_Certidoes_Empresas_{len(items_results)}_itens.docx",
+                    )
+                else:
+                    out_bytes = build_consolidated_suppliers_dossier_pdf_bytes(
+                        items_results, om_name=om_name, ordenador_nome=ordenador, elaborador_nome=elaborador
+                    )
+                    self._send_binary(
+                        out_bytes,
+                        "application/pdf",
+                        f"RaioX_Certidoes_Empresas_{len(items_results)}_itens.pdf",
                     )
             except Exception as exc:
                 self._send_json(500, {"error": str(exc)})

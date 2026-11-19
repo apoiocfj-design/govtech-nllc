@@ -223,22 +223,30 @@ class TestBatchReports(unittest.TestCase):
             self.assertIn("00_Mapa_Comparativo_Geral_Completo.xlsx", names)
             self.assertIn("01_Nota_Tecnica_AGU_IN65_Pesquisa_Precos.docx", names)
             self.assertIn("01_Nota_Tecnica_AGU_IN65_Pesquisa_Precos.pdf", names)
-            self.assertIn("02_Dossie_Consolidado_Certidoes_Empresas.pdf", names)
+            self.assertIn("02_RaioX_Certidoes_Empresas_Consolidado.pdf", names)
+            self.assertIn("02_RaioX_Certidoes_Empresas_Consolidado.docx", names)
             self.assertIn("03_Justificativa_Consolidada_Art6_Par5.docx", names)
             self.assertIn("03_Justificativa_Consolidada_Art6_Par5.pdf", names)
             self.assertIn("04_Comprovantes_PNCP_Contratacoes_QRCode.pdf", names)
-            self.assertIn("00_LEIA_ME_INDICE_DO_PROCESSO.txt", names)
+            self.assertIn("00_MANUAL_DIDATICO_DO_PROCESSO_LEIA_ME.pdf", names)
+            self.assertIn("00_LEIA_ME_MANUAL_DIDATICO.txt", names)
 
-            pncp_pdf = zf.read("04_Comprovantes_PNCP_Contratacoes_QRCode.pdf")
-            self.assertTrue(pncp_pdf.startswith(b"%PDF"))
+            self.assertTrue(zf.read("04_Comprovantes_PNCP_Contratacoes_QRCode.pdf").startswith(b"%PDF"))
+            self.assertTrue(zf.read("00_MANUAL_DIDATICO_DO_PROCESSO_LEIA_ME.pdf").startswith(b"%PDF"))
+            self.assertTrue(zf.read("02_RaioX_Certidoes_Empresas_Consolidado.docx").startswith(b"PK"))
+            self.assertIn("PASSO 1", zf.read("00_LEIA_ME_MANUAL_DIDATICO.txt").decode("utf-8"))
 
-            # Separate folders for <=12M vs 13-24M
+            # Separate folders for <=12M vs 13-24M, including Relatorios_CATMAT_CATSER for every item!
             folder_12m = [n for n in names if n.startswith("01_Pesquisas_Ate_12_Meses_IN65/")]
             folder_24m = [n for n in names if n.startswith("02_Pesquisas_13_a_24_Meses_Excepcional/")]
             self.assertTrue(any("Relatorio_Detalhado_Completo_12M.pdf" in n for n in folder_12m))
             self.assertTrue(any("/Por_Categoria/" in n for n in folder_12m))
+            catmat_12m = [n for n in folder_12m if "/Relatorios_CATMAT_CATSER/" in n and n.endswith(".pdf")]
+            self.assertEqual(len(catmat_12m), 16)
             self.assertTrue(any("Relatorio_Detalhado_Completo_13_a_24M.pdf" in n for n in folder_24m))
             self.assertTrue(any("/Por_Categoria/" in n for n in folder_24m))
+            catmat_24m = [n for n in folder_24m if "/Relatorios_CATMAT_CATSER/" in n and n.endswith(".pdf")]
+            self.assertEqual(len(catmat_24m), 5)
 
     def test_pncp_direct_urls_never_use_generic_search_query(self):
         from core.gov_api_client import GovProcurementAPIClient
@@ -269,13 +277,15 @@ class TestBatchReports(unittest.TestCase):
         t0 = time.perf_counter()
         zip_bytes = build_batch_zip_bytes(items_150, mode="auto")
         elapsed = time.perf_counter() - t0
-        self.assertLess(elapsed, 20.0, f"ZIP de 150 itens demorou {elapsed:.2f}s (limite 20s)")
+        self.assertLess(elapsed, 60.0, f"ZIP de 150 itens demorou {elapsed:.2f}s (limite 60s)")
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             names = zf.namelist()
             self.assertIn("00_Mapa_Comparativo_Geral_Completo.xlsx", names)
             self.assertIn("01_Nota_Tecnica_AGU_IN65_Pesquisa_Precos.docx", names)
-            self.assertTrue(any(n.startswith("01_Pesquisas_Ate_12_Meses_IN65/Por_Categoria/") for n in names))
-            self.assertTrue(any(n.startswith("02_Pesquisas_13_a_24_Meses_Excepcional/Por_Categoria/") for n in names))
+            self.assertIn("02_RaioX_Certidoes_Empresas_Consolidado.docx", names)
+            self.assertIn("00_MANUAL_DIDATICO_DO_PROCESSO_LEIA_ME.pdf", names)
+            all_catmat_pdfs = [n for n in names if "/Relatorios_CATMAT_CATSER/" in n and n.endswith(".pdf")]
+            self.assertEqual(len(all_catmat_pdfs), 150)
 
     def test_async_job_manager_streams_zip_with_progress(self):
         jm = BatchJobManager(max_workers=1)

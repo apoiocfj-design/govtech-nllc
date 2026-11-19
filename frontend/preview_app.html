@@ -406,6 +406,9 @@
               <button onclick="downloadBatchCadernoBoth()" class="h-10 bg-slate-700/80 hover:bg-slate-600 text-white font-semibold px-3 py-1.5 rounded-xl text-xs border border-slate-500/50 flex items-center justify-center gap-1.5" title="1 clique gera e baixa o Caderno Consolidado de Preços em Word (.DOCX) e PDF (.PDF) simultaneamente">
                 <span>📑</span> <span>Caderno (Word + PDF)</span>
               </button>
+              <button onclick="downloadBatchCertidoesBoth()" class="h-10 bg-slate-700/80 hover:bg-slate-600 text-white font-semibold px-3 py-1.5 rounded-xl text-xs border border-slate-500/50 flex items-center justify-center gap-1.5" title="1 clique gera e baixa o Raio-X Consolidado de Certidões das Empresas em Word (.DOCX) e PDF (.PDF) simultaneamente">
+                <span>🛡️</span> <span>Raio-X Certidões (Word + PDF)</span>
+              </button>
               <button onclick="downloadBatchExcel()" class="h-10 bg-[#3d6b5d] hover:bg-[#335a4e] text-white font-semibold px-3 py-1.5 rounded-xl text-xs border border-emerald-200/20 flex items-center justify-center gap-1.5" title="Baixar Mapa Comparativo Geral Excel com todas as empresas e cotações">
                 <span>📊</span> <span>Mapa Geral (.XLSX)</span>
               </button>
@@ -5078,6 +5081,28 @@
           { url: "/api/v1/prices/export-batch-pdf", payload, filename: `Caderno_Consolidado_Precos_${validItems.length}_itens.pdf` }
         ],
         `Caderno Consolidado (${validItems.length} itens)`
+      );
+    }
+
+    async function downloadBatchCertidoesBoth() {
+      const validItems = (batchResearchResults || []).filter(r => r && r.report && r.report.sanitized_metrics);
+      if (validItems.length === 0) {
+        showAppNotification("Processe o lote com pelo menos 1 item válido antes de gerar o Raio-X de Certidões.", "warn");
+        return;
+      }
+      const p = getReportParams();
+      const payload = {
+        items: slimBatchItemsForExport(validItems),
+        om_name: getGlobalOrgName(),
+        elaborador: p.elab,
+        ordenador: p.orden
+      };
+      await fetchAndSavePostPair(
+        [
+          { url: "/api/v1/prices/export-batch-certidoes-docx", payload, filename: `RaioX_Certidoes_Empresas_${validItems.length}_itens.docx` },
+          { url: "/api/v1/prices/export-batch-certidoes-pdf", payload, filename: `RaioX_Certidoes_Empresas_${validItems.length}_itens.pdf` }
+        ],
+        `Raio-X de Certidões (${validItems.length} itens)`
       );
     }
 

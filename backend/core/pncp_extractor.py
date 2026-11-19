@@ -7,6 +7,8 @@ import io
 import re
 import requests
 from datetime import datetime
+from reportlab import rl_config as _rl_config
+_rl_config.useA85 = 0
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm, mm
@@ -66,7 +68,7 @@ def parse_pncp_control_id(ctrl_id: str):
     return cnpj, ano, seq_int, str(seq_int).zfill(6)
 
 
-def fetch_pncp_compra_consulta(cnpj: str, ano, sequencial) -> dict:
+def fetch_pncp_compra_consulta(cnpj: str, ano, sequencial, fast: bool = False) -> dict:
     """
     Consulta a API oficial pública de consulta do PNCP:
     GET https://pncp.gov.br/api/consulta/v1/orgaos/{cnpj}/compras/{ano}/{int(sequencial)}
@@ -88,21 +90,24 @@ def fetch_pncp_compra_consulta(cnpj: str, ano, sequencial) -> dict:
 
     url = f"https://pncp.gov.br/api/consulta/v1/orgaos/{cnpj}/compras/{ano}/{seq_int}"
     result = {}
-    for attempt in range(2):
+    max_attempts = 1 if fast else 2
+    req_timeout = 3.5 if fast else 8
+    for attempt in range(max_attempts):
         try:
-            resp = SESSION.get(url, timeout=8)
+            resp = SESSION.get(url, timeout=req_timeout)
             if resp.status_code == 200:
                 data = resp.json()
                 if isinstance(data, dict):
                     result = data
                     break
-            elif resp.status_code in (429, 500, 502, 503, 504):
+            elif not fast and resp.status_code in (429, 500, 502, 503, 504):
                 time.sleep(0.4 * (attempt + 1))
                 continue
             else:
                 break
         except Exception:
-            time.sleep(0.3)
+            if not fast:
+                time.sleep(0.3)
 
     with _PNCP_CACHE_LOCK:
         if len(_PNCP_CONSULTA_CACHE) > 2000:
@@ -1069,12 +1074,12 @@ def build_pncp_comprovantes_caderno_pdf_bytes(
         ctrl = entry["ctrl"]
         pkey = entry["pkey"]
         compra = {}
-        # Limita chamadas HTTP externas ao PNCP a no máximo 20 compras não cacheadas por ZIP (~1-2s total)
-        if e_pos < 20:
+        # Limita chamadas HTTP externas ao PNCP a no máximo 12 compras não cacheadas com timeout curto (~2s total)
+        if e_pos < 12:
             if ctrl:
                 parsed = parse_pncp_control_id(ctrl)
                 if parsed:
-                    compra = fetch_pncp_compra_consulta(parsed[0], parsed[1], parsed[2]) or {}
+                    compra = fetch_pncp_compra_consulta(parsed[0], parsed[1], parsed[2], fast=True) or {}
                     if compra and not compra.get("numeroControlePNCP"):
                         compra["numeroControlePNCP"] = ctrl
             elif pkey and len(re.sub(r"\D", "", pkey)) >= 16:
@@ -1086,7 +1091,7 @@ def build_pncp_comprovantes_caderno_pdf_bytes(
                         entry["ctrl"] = c_ctrl
                         p2 = parse_pncp_control_id(c_ctrl)
                         if p2:
-                            cons = fetch_pncp_compra_consulta(p2[0], p2[1], p2[2])
+                            cons = fetch_pncp_compra_consulta(p2[0], p2[1], p2[2], fast=True)
                             if cons:
                                 for k, v in cons.items():
                                     if compra.get(k) in (None, ""):
