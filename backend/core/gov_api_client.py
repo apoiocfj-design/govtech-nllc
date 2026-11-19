@@ -317,6 +317,16 @@ class GovProcurementAPIClient:
                 or ("SV" if not is_material else "UN")
             ).strip().upper()
 
+            cap_val = rec.get("capacidadeUnidadeFornecimento")
+            sigla_med = str(rec.get("siglaUnidadeMedida") or rec.get("nomeUnidadeMedida") or "").strip()
+            cap_str = None
+            if cap_val not in (None, "", 0, "0"):
+                cap_str = f"{cap_val} {sigla_med}".strip()
+
+            esfera_raw = str(rec.get("esfera") or "").strip().upper()
+            esfera_map = {"F": "Federal", "E": "Estadual", "M": "Municipal", "D": "Distrital"}
+            esfera_label = esfera_map.get(esfera_raw, esfera_raw or None)
+
             quotes_out.append(
                 RawQuoteInput(
                     id_compra_item=id_compra_item or chave_17,
@@ -338,13 +348,98 @@ class GovProcurementAPIClient:
                     modalidade_codigo=str(rec.get("codigoModalidadeCompra") or "").strip() or None,
                     codigo_pdm=str(rec.get("codigoPdm") or "").strip() or None,
                     nome_pdm=str(rec.get("nomePdm") or "").strip() or None,
+                    codigo_classe=str(rec.get("codigoClasse") or "").strip() or None,
+                    nome_classe=str(rec.get("nomeClasse") or "").strip() or None,
                     municipio=str(rec.get("municipio") or "").strip() or None,
                     nome_uasg=str(rec.get("nomeUasg") or "").strip() or None,
                     objeto_compra=str(rec.get("objetoCompra") or "").strip() or None,
+                    source_inciso="Inciso I - Compras.gov.br",
+                    esfera=esfera_label,
+                    capacidade_unidade=cap_str,
+                    numero_item_compra=str(rec.get("numeroItemCompra") or "").strip() or None,
+                    criterio_julgamento=str(rec.get("criterioJulgamento") or "").strip() or None,
+                    is_extended_24m=(months_back > 12),
                 )
             )
 
         return item_description, quotes_out
+
+    def fetch_contract_item_prices(
+        self,
+        catalog_code: int,
+        item_type: str = "MATERIAL",
+        months_back: int = 12,
+    ) -> Tuple[str, List[RawQuoteInput]]:
+        """
+        Consulta complementar no Módulo Contratos do Compras.gov.br Dados Abertos (OAS 3.1):
+        Endpoint oficial: /modulo-contratos/2_consultarContratosItem
+        Fundamento: Art. 5º, Inciso II da IN SEGES/ME nº 65/2021 (contratações similares feitas
+        pela Administração Pública).
+        """
+        url = f"{self.COMPRAS_GOV_BASE_URL}/modulo-contratos/2_consultarContratosItem"
+        end_date = date.today()
+        start_date = end_date - timedelta(days=30 * months_back)
+        params: Dict[str, Any] = {
+            "codigoItem": int(catalog_code),
+            "dataVigenciaInicialMin": start_date.isoformat(),
+            "dataVigenciaInicialMax": end_date.isoformat(),
+            "tamanhoPagina": 50,
+            "pagina": 1,
+        }
+        try:
+            resp = self.session.get(url, params=params, timeout=10)
+            if resp.status_code != 200:
+                return "", []
+            payload = resp.json()
+            rows = payload.get("resultado") or []
+            if not rows:
+                return "", []
+
+            desc = str(rows[0].get("descricaoComplementarItem") or rows[0].get("descricaoItem") or f"Item Catálogo {catalog_code}").strip()
+            out: List[RawQuoteInput] = []
+            for rec in rows:
+                u_price = float(rec.get("valorUnitarioItem") or rec.get("valorUnitario") or 0.0)
+                if u_price <= 0:
+                    continue
+                uasg = str(rec.get("codigoUnidadeGestora") or rec.get("codigoUasg") or "").strip()
+                num_contrato = str(rec.get("numeroContrato") or rec.get("id") or "").strip()
+                raw_date = str(rec.get("dataVigenciaInicial") or rec.get("dataAssinatura") or "")[:10]
+                supply_u = str(rec.get("unidadeMedida") or rec.get("siglaUnidadeMedida") or ("SV" if item_type.upper() != "MATERIAL" else "UN")).strip().upper()
+                ctrl_pncp = str(rec.get("numeroControlePncpContrato") or "").strip() or None
+                audit_uri = f"https://pncp.gov.br/app/contratos/{ctrl_pncp}" if ctrl_pncp else f"https://contratos.comprasnet.gov.br/transparencia/contratos?numero={num_contrato}"
+
+                out.append(
+                    RawQuoteInput(
+                        id_compra_item=str(rec.get("id") or f"CTR-{uasg}-{num_contrato}"),
+                        purchase_number_year=f"CTR {num_contrato}" if num_contrato else "Contrato Público",
+                        buyer_uasg=uasg,
+                        buyer_org_name=str(rec.get("nomeOrgao") or rec.get("nomeUnidadeGestora") or "Órgão Público Federal").strip(),
+                        buyer_uf=str(rec.get("ufUnidadeGestora") or rec.get("estado") or "").strip(),
+                        supplier_cnpj=str(rec.get("niFornecedor") or rec.get("cnpjFornecedor") or "").strip(),
+                        supplier_name=str(rec.get("nomeRazaoSocialFornecedor") or rec.get("nomeFornecedor") or "Fornecedor Contratado").strip(),
+                        supply_unit=supply_u,
+                        quantity_homologated=float(rec.get("quantidadeItem") or rec.get("quantidade") or 1.0),
+                        unit_price=u_price,
+                        purchase_date=raw_date,
+                        pncp_or_compras_uri=audit_uri,
+                        brand=str(rec.get("marca") or "").strip() or None,
+                        pncp_control_number=ctrl_pncp,
+                        forma_compra="Contrato Administrativo (Inciso II)",
+                        codigo_pdm=str(rec.get("codigoPdm") or "").strip() or None,
+                        nome_pdm=str(rec.get("nomePdm") or "").strip() or None,
+                        codigo_classe=str(rec.get("codigoClasse") or "").strip() or None,
+                        nome_classe=str(rec.get("nomeClasse") or "").strip() or None,
+                        nome_uasg=str(rec.get("nomeUnidadeGestora") or "").strip() or None,
+                        objeto_compra=str(rec.get("objetoContrato") or "").strip() or None,
+                        source_inciso="Inciso II - Contratos Públicos (Compras.gov.br)",
+                        esfera="Federal",
+                        is_extended_24m=(months_back > 12),
+                    )
+                )
+            return desc, out
+        except Exception as exc:
+            logger.debug(f"Consulta complementar de Contratos (Inciso II) para {catalog_code} indisponível: {exc}")
+            return "", []
 
     def fetch_active_arps(
         self,
@@ -553,17 +648,21 @@ class PriceResearchController:
         months_back: int = 12,
         uf: Optional[str] = None,
         uasg: Optional[str] = None,
+        allow_24m_fallback: bool = True,
     ) -> Dict[str, Any]:
         """
         Fluxo ponta a ponta:
-        1. Busca cotações homologadas na API Oficial do Compras.gov.br (OAS 3.1).
-        2. Aplica o Motor de Saneamento Estatístico (IN 65/2021).
-        3. Devolve o relatório auditável completo em JSON pronto para o Frontend / PDF.
-
-        Possui cache em memória (TTL 30 min) para que uma mesma pesquisa NÃO seja
-        refeita no Compras.gov.br ao exportar Word/PDF/Excel ou ao repetir o lote.
+        1. Busca cotações homologadas na API Oficial do Compras.gov.br (OAS 3.1) em até 12 meses.
+        2. Complementa com Módulo de Contratos (Inciso II) quando a amostra for reduzida (< 3).
+        3. Se não houver cotações válidas em 12 meses e allow_24m_fallback=True, amplia automaticamente
+           para janela excepcional de até 24 meses (separando em pasta distinta no ZIP).
+        4. Aplica o Motor de Saneamento Estatístico (IN 65/2021).
+        5. Devolve o relatório auditável completo em JSON pronto para o Frontend / PDF / ZIP.
         """
-        cache_key = f"{(item_type or 'MATERIAL').upper()}:{catalog_code}:{(target_supply_unit or '').upper()}:{months_back}:{uf or ''}:{uasg or ''}"
+        cache_key = (
+            f"{(item_type or 'MATERIAL').upper()}:{catalog_code}:"
+            f"{(target_supply_unit or '').upper()}:{months_back}:{uf or ''}:{uasg or ''}:fb{int(bool(allow_24m_fallback))}"
+        )
         if not hasattr(self, "_research_cache"):
             self._research_cache = {}
         cached = self._research_cache.get(cache_key)
@@ -572,22 +671,28 @@ class PriceResearchController:
             return copy.deepcopy(cached[1])
 
         result = self._execute_in65_research_uncached(
-            catalog_code, target_supply_unit, item_type, months_back, uf, uasg
+            catalog_code,
+            target_supply_unit,
+            item_type,
+            months_back,
+            uf,
+            uasg,
+            allow_24m_fallback=allow_24m_fallback,
         )
         if result.get("status") in ("SUCCESS", "NO_DATA"):
             import copy
             self._research_cache[cache_key] = (time.time(), copy.deepcopy(result))
         return result
 
-    def _execute_in65_research_uncached(
+    def _fetch_quotes_for_window(
         self,
         catalog_code: int,
-        target_supply_unit: str = "UN",
-        item_type: str = "MATERIAL",
-        months_back: int = 12,
-        uf: Optional[str] = None,
-        uasg: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        item_type: str,
+        months_back: int,
+        uf: Optional[str],
+        uasg: Optional[str],
+    ) -> Tuple[str, List[RawQuoteInput], str]:
+        """Executa busca primária (Inciso I) + fallback tipo complementar + complemento Contratos (Inciso II)."""
         description, raw_quotes = self.api_client.fetch_material_or_service_prices(
             catalog_code=catalog_code,
             item_type=item_type,
@@ -607,16 +712,71 @@ class PriceResearchController:
                 uasg=uasg,
             )
             if alt_quotes:
-                logger.info(f"Fallback automático Compras.gov.br: código {catalog_code} convergiu com tipo {alt_type}")
+                logger.info(f"Fallback automático Compras.gov.br: código {catalog_code} convergiu com tipo {alt_type} ({months_back}M)")
                 description = alt_desc
                 raw_quotes = alt_quotes
                 item_type = alt_type
+
+        # Complemento automático via Módulo de Contratos (Art. 5º, Inciso II IN 65/2021) se amostra primária < 3
+        pos_count = sum(1 for q in raw_quotes if (q.unit_price or 0) > 0)
+        if pos_count < 3:
+            c_desc, c_quotes = self.api_client.fetch_contract_item_prices(
+                catalog_code=catalog_code,
+                item_type=item_type,
+                months_back=months_back,
+            )
+            if c_quotes:
+                if not raw_quotes and c_desc:
+                    description = c_desc
+                raw_quotes.extend(c_quotes)
+
+        return description, raw_quotes, item_type
+
+    def _execute_in65_research_uncached(
+        self,
+        catalog_code: int,
+        target_supply_unit: str = "UN",
+        item_type: str = "MATERIAL",
+        months_back: int = 12,
+        uf: Optional[str] = None,
+        uasg: Optional[str] = None,
+        allow_24m_fallback: bool = True,
+    ) -> Dict[str, Any]:
+        effective_months = int(months_back or 12)
+        used_24m_fallback = effective_months > 12
+
+        description, raw_quotes, item_type = self._fetch_quotes_for_window(
+            catalog_code=catalog_code,
+            item_type=item_type,
+            months_back=effective_months,
+            uf=uf,
+            uasg=uasg,
+        )
+
+        # Fallback automático 12M -> 24M quando o item não possui compras homologadas nos últimos 12 meses
+        has_positive = any((q.unit_price or 0) > 0 for q in raw_quotes)
+        if not has_positive and allow_24m_fallback and effective_months <= 12:
+            logger.info(f"[Fallback 12M -> 24M] Sem cotações em 12 meses para {catalog_code}; ampliando para 24 meses.")
+            desc_24, quotes_24, type_24 = self._fetch_quotes_for_window(
+                catalog_code=catalog_code,
+                item_type=item_type,
+                months_back=24,
+                uf=uf,
+                uasg=uasg,
+            )
+            if any((q.unit_price or 0) > 0 for q in quotes_24):
+                description = desc_24
+                raw_quotes = quotes_24
+                item_type = type_24
+                effective_months = 24
+                used_24m_fallback = True
 
         if not raw_quotes:
             return {
                 "status": "NO_DATA",
                 "catmat_catser_code": catalog_code,
-                "message": "Sem compras homologadas nos últimos 12 meses — pesquisa sem convergência.",
+                "search_window_months": effective_months,
+                "message": "Sem compras homologadas nos últimos 12 e 24 meses — pesquisa sem convergência.",
             }
 
         try:
@@ -630,8 +790,22 @@ class PriceResearchController:
             return {
                 "status": "NO_DATA",
                 "catmat_catser_code": catalog_code,
+                "search_window_months": effective_months,
                 "message": str(exc),
             }
+
+        report.search_window_months = effective_months
+        report.is_extended_24m = used_24m_fallback
+        if used_24m_fallback:
+            report.fallback_24m_note = (
+                "JANELA EXCEPCIONAL (13 a 24 MESES): Não foram localizadas contratações homologadas nos últimos 12 meses "
+                "(Art. 5º, I e II da IN SEGES/ME nº 65/2021). Aplicou-se pesquisa ampliada até 24 meses conforme diretrizes "
+                "do Caderno de Logística de Pesquisa de Preços (SEGES/MGI), recomendando-se justificativa nos autos e "
+                "eventual atualização monetária (IPCA/IBGE) até a data do orçamento estimado."
+            )
+            report.legal_methodology_justification = (
+                f"{report.legal_methodology_justification} {report.fallback_24m_note}"
+            )
 
         # Consulta Atas de Registro de Preços (SRP) vigentes (Art. 86 da Lei 14.133/2021)
         try:
@@ -651,8 +825,10 @@ class PriceResearchController:
                     cur.execute("SELECT nome_pdm_ou_classe, nome_classe FROM catalog_items WHERE codigo=? LIMIT 1", (catalog_code,))
                     row = cur.fetchone()
                     if row:
-                        report.nome_pdm = row[0] or None
-                        report.nome_classe = row[1] or None
+                        if not report.nome_pdm and row[0]:
+                            report.nome_pdm = row[0]
+                        if not report.nome_classe and row[1]:
+                            report.nome_classe = row[1]
         except Exception as exc:
             logger.debug(f"Não foi possível consultar PDM/Classe local para {catalog_code}: {exc}")
 

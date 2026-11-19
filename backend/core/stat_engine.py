@@ -71,6 +71,11 @@ class RawQuoteInput:
     nome_uasg: Optional[str] = None
     objeto_compra: Optional[str] = None
     source_inciso: str = "Inciso I - Compras.gov.br"
+    esfera: Optional[str] = None
+    capacidade_unidade: Optional[str] = None
+    numero_item_compra: Optional[str] = None
+    criterio_julgamento: Optional[str] = None
+    is_extended_24m: bool = False
 
 
 @dataclass
@@ -101,6 +106,11 @@ class AuditedQuoteOutput:
     nome_uasg: Optional[str] = None
     objeto_compra: Optional[str] = None
     source_inciso: str = "Inciso I - Compras.gov.br"
+    esfera: Optional[str] = None
+    capacidade_unidade: Optional[str] = None
+    numero_item_compra: Optional[str] = None
+    criterio_julgamento: Optional[str] = None
+    is_extended_24m: bool = False
     is_outlier: bool = False
     purge_status: str = "VALIDA"  # VALIDA | EXPURGADA_UNIDADE_DIVERGENTE | EXPURGADA_INEXEQUIVEL | EXPURGADA_ACIMA_LIMITE
     purge_justification: Optional[str] = None
@@ -142,6 +152,9 @@ class IN65ResearchReport:
     codigo_classe: Optional[str] = None
     nome_classe: Optional[str] = None
     arp_atas_vigentes: List[Dict[str, Any]] = field(default_factory=list)
+    search_window_months: int = 12
+    is_extended_24m: bool = False
+    fallback_24m_note: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -439,6 +452,17 @@ class IN65StatisticalEngine:
             f"{param_reason} {min_quotes_note}"
         )
 
+        # Extrai PDM e Classe CNBS predominantes das cotações oficiais do Compras.gov.br
+        def _first_non_empty(attr: str) -> Optional[str]:
+            vals = [str(getattr(q, attr) or "").strip() for q in quotes if str(getattr(q, attr) or "").strip()]
+            return Counter(vals).most_common(1)[0][0] if vals else None
+
+        rep_cod_pdm = _first_non_empty("codigo_pdm")
+        rep_nome_pdm = _first_non_empty("nome_pdm")
+        rep_cod_classe = _first_non_empty("codigo_classe")
+        rep_nome_classe = _first_non_empty("nome_classe")
+        has_24m = any(bool(getattr(q, "is_extended_24m", False)) for q in valid_list)
+
         return IN65ResearchReport(
             catmat_catser_code=catmat_code,
             item_description=item_description,
@@ -454,6 +478,12 @@ class IN65StatisticalEngine:
             legal_methodology_justification=justification,
             valid_quotes=valid_list,
             purged_quotes=purged_list,
+            codigo_pdm=rep_cod_pdm,
+            nome_pdm=rep_nome_pdm,
+            codigo_classe=rep_cod_classe,
+            nome_classe=rep_nome_classe,
+            search_window_months=24 if has_24m else 12,
+            is_extended_24m=has_24m,
         )
 
     def recalculate_curated_quotes(

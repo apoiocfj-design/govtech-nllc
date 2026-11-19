@@ -54,6 +54,10 @@ from report_generators import (
     build_supplier_compliance_dossier_docx_bytes,
     build_supplier_compliance_dossier_pdf_bytes,
 )
+from agu_batch_reports import (
+    build_agu_nota_tecnica_docx_bytes,
+    build_agu_nota_tecnica_pdf_bytes,
+)
 from job_manager import batch_job_manager
 from audited_document_engine import (
     DocumentLayoutParser,
@@ -1250,7 +1254,9 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                         "qty": qty,
                         "has_data": has_data,
                         "status": res.get("status", "SUCCESS" if has_data else "NO_DATA"),
-                        "message": res.get("message", "Pesquisa homologada com sucesso" if has_data else "Sem compras homologadas nos últimos 12 meses"),
+                        "message": res.get("message", "Pesquisa homologada com sucesso" if has_data else "Sem compras homologadas nos últimos 12 e 24 meses"),
+                        "search_window_months": int(rep.get("search_window_months") or 12) if isinstance(rep, dict) else 12,
+                        "is_extended_24m": bool(rep.get("is_extended_24m")) if isinstance(rep, dict) else False,
                         "unit_price": unit_est,
                         "total_price": qty * unit_est,
                         "report": rep,
@@ -1589,6 +1595,73 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     f"Caderno_Consolidado_Precos_Lote_{len(items_results)}_itens.docx",
                 )
+            except Exception as exc:
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        # 0.06 Exportar Nota Técnica Oficial AGU (.DOCX ou .PDF) — Modelo SEGES/AGU
+        if parsed.path in ("/api/v1/prices/export-agu-nota-tecnica-docx", "/api/v1/prices/export-agu-nota-tecnica-pdf"):
+            try:
+                data = json.loads(raw_body)
+                items_in = data.get("items", [])
+                om_name = str(data.get("om_name", "MARINHA DO BRASIL"))
+                ordenador = str(data.get("ordenador", "ORDENADOR DE DESPESAS"))
+                elaborador = str(data.get("elaborador", "ENCARREGADO DO SETOR DE OBTENÇÃO"))
+                matricula = str(data.get("matricula", "A INFORMAR"))
+                cidade = str(data.get("cidade", "Rio de Janeiro - RJ"))
+                nota_num = str(data.get("nota_num", ""))
+                objeto_geral = str(data.get("objeto_geral", ""))
+
+                items_results = []
+                for idx, it in enumerate(items_in, start=1):
+                    rep = it.get("report")
+                    qty = float(it.get("qty", 1) or 1)
+                    if rep and rep.get("sanitized_metrics"):
+                        items_results.append({
+                            "item_index": idx,
+                            "code": rep.get("catmat_catser_code", it.get("code")),
+                            "type": it.get("type", "MATERIAL"),
+                            "unit": it.get("unit", rep.get("target_supply_unit", "UN")),
+                            "qty": qty,
+                            "report": rep,
+                        })
+
+                if not items_results:
+                    self._send_json(404, {"error": "Nenhum item do lote possui cotações válidas para gerar a Nota Técnica AGU."})
+                    return
+
+                if parsed.path.endswith("-docx"):
+                    out_bytes = build_agu_nota_tecnica_docx_bytes(
+                        items_results,
+                        om_name=om_name,
+                        ordenador_nome=ordenador,
+                        elaborador_nome=elaborador,
+                        elaborador_matricula=matricula,
+                        cidade=cidade,
+                        nota_num=nota_num,
+                        objeto_geral=objeto_geral,
+                    )
+                    self._send_binary(
+                        out_bytes,
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        f"Nota_Tecnica_AGU_IN65_{len(items_results)}_itens.docx",
+                    )
+                else:
+                    out_bytes = build_agu_nota_tecnica_pdf_bytes(
+                        items_results,
+                        om_name=om_name,
+                        ordenador_nome=ordenador,
+                        elaborador_nome=elaborador,
+                        elaborador_matricula=matricula,
+                        cidade=cidade,
+                        nota_num=nota_num,
+                        objeto_geral=objeto_geral,
+                    )
+                    self._send_binary(
+                        out_bytes,
+                        "application/pdf",
+                        f"Nota_Tecnica_AGU_IN65_{len(items_results)}_itens.pdf",
+                    )
             except Exception as exc:
                 self._send_json(500, {"error": str(exc)})
             return
