@@ -1950,7 +1950,7 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 # Auditoria Semântica Profunda (Multi-Artefato + Prompt de Engenharia Jurídica via Gemini API)
                 context_note = str(data.get("context_note") or "").strip()
                 gemini_api_key = str(data.get("gemini_api_key") or "").strip()
-                gemini_model = str(data.get("gemini_model") or "gemini-2.5-flash").strip()
+                gemini_model = str(data.get("gemini_model") or "gemini-3.8-flash").strip()
                 extra_files = data.get("extra_files") or []
 
                 combined_chunks = [f"=== DOCUMENTO PRINCIPAL: {filename or 'Minuta'} ==="]
@@ -1958,6 +1958,14 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                     t_el = (el.get("text") or "").strip()
                     if t_el:
                         combined_chunks.append(f"[El {idx_el}] {t_el}")
+                    elif el.get("type") == "TABLE":
+                        hdrs_t = " | ".join(str(x) for x in (el.get("headers") or []))
+                        if hdrs_t:
+                            combined_chunks.append(f"[Tabela El {idx_el} Cabeçalho] {hdrs_t}")
+                        for r_t in (el.get("rows") or []):
+                            row_str = " | ".join(str(x) for x in r_t)
+                            if row_str.strip():
+                                combined_chunks.append(f"[Tabela El {idx_el} Linha] {row_str}")
 
                 for ef in extra_files:
                     if not isinstance(ef, dict):
@@ -1979,21 +1987,30 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                             ef_t = (ef_el.get("text") or "").strip()
                             if ef_t:
                                 combined_chunks.append(ef_t)
+                            elif ef_el.get("type") == "TABLE":
+                                hdrs_ef = " | ".join(str(x) for x in (ef_el.get("headers") or []))
+                                if hdrs_ef:
+                                    combined_chunks.append(f"[Tabela Cabeçalho] {hdrs_ef}")
+                                for r_ef in (ef_el.get("rows") or []):
+                                    r_ef_str = " | ".join(str(x) for x in r_ef)
+                                    if r_ef_str.strip():
+                                        combined_chunks.append(f"[Tabela Linha] {r_ef_str}")
                     except Exception:
                         pass
 
                 deep_audit_result = {"status": "SKIPPED", "achados": [], "roteiro_saneamento": []}
                 try:
                     try:
-                        from core.gemini_legal_auditor import run_gemini_deep_audit
+                        from core.gemini_legal_auditor import run_gemini_deep_audit, merge_deep_audit_into_findings
                     except ImportError:
-                        from gemini_legal_auditor import run_gemini_deep_audit
+                        from gemini_legal_auditor import run_gemini_deep_audit, merge_deep_audit_into_findings
                     deep_audit_result = run_gemini_deep_audit(
                         combined_text="\n".join(combined_chunks),
                         context_note=context_note,
                         api_key_override=gemini_api_key,
                         model_name=gemini_model,
                     )
+                    merge_deep_audit_into_findings(audited_doc, deep_audit_result)
                 except Exception as deep_exc:
                     deep_audit_result = {"status": "ERROR", "reason": str(deep_exc), "achados": [], "roteiro_saneamento": []}
 

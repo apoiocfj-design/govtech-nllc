@@ -4575,45 +4575,102 @@
 
       if (countsEl) {
         countsEl.innerHTML = `
-          <div class="p-2.5 rounded-xl bg-rose-50 border border-rose-200"><div class="text-[10px] font-bold text-rose-700 uppercase">Críticas</div><div class="text-lg font-black text-rose-800">${nCrit}</div></div>
-          <div class="p-2.5 rounded-xl bg-amber-50 border border-amber-200"><div class="text-[10px] font-bold text-amber-800 uppercase">Normativas</div><div class="text-lg font-black text-amber-900">${nNorm}</div></div>
-          <div class="p-2.5 rounded-xl bg-sky-50 border border-sky-200"><div class="text-[10px] font-bold text-sky-800 uppercase">Processuais (Art. 72)</div><div class="text-lg font-black text-sky-900">${nProc}</div></div>
-          <div class="p-2.5 rounded-xl bg-slate-100 border border-slate-200"><div class="text-[10px] font-bold text-slate-600 uppercase">Contradições Internas</div><div class="text-lg font-black text-slate-800">${nCont}</div></div>
+          <div class="p-2.5 rounded-xl bg-rose-50 border border-rose-200"><div class="text-[10px] font-bold text-rose-700 uppercase">Críticas (${nCrit} de ${achados.length})</div><div class="text-lg font-black text-rose-800">${nCrit}</div></div>
+          <div class="p-2.5 rounded-xl bg-amber-50 border border-amber-200"><div class="text-[10px] font-bold text-amber-800 uppercase">1. Normativas (NLLC/INs)</div><div class="text-lg font-black text-amber-900">${nNorm}</div></div>
+          <div class="p-2.5 rounded-xl bg-sky-50 border border-sky-200"><div class="text-[10px] font-bold text-sky-800 uppercase">2. Processuais (Art. 72)</div><div class="text-lg font-black text-sky-900">${nProc}</div></div>
+          <div class="p-2.5 rounded-xl bg-slate-100 border border-slate-200"><div class="text-[10px] font-bold text-slate-600 uppercase">3. Contradições Internas</div><div class="text-lg font-black text-slate-800">${nCont}</div></div>
         `;
       }
 
       if (listEl) {
-        listEl.innerHTML = achados.map(a => {
+        const rowsHtml = achados.map((a, idx) => {
           const crit = String(a.criticidade || "ALTA").toUpperCase();
           const critCls = crit === "CRITICA" ? "bg-rose-600 text-white" : (crit === "ALTA" ? "bg-amber-500 text-white" : "bg-slate-600 text-white");
+          const textoCorrigido = a.texto_apos_correcao || a.trecho_sugerido || a.acao_corretiva || "";
           return `
-            <div class="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 space-y-1.5 text-xs">
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <div class="flex items-center gap-1.5 flex-wrap">
-                  <span class="px-2 py-0.5 rounded text-[10px] font-black ${critCls}">${escapeHtml(crit)}</span>
-                  <span class="px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-[10px] font-bold">${escapeHtml(a.id || "AUD")}</span>
-                  <strong class="text-[#1e2d3d]">${escapeHtml(a.titulo || "Apontamento")}</strong>
-                </div>
-                <span class="text-[10px] font-bold text-slate-500">${escapeHtml(a.localizacao || "")}</span>
-              </div>
-              <p class="text-slate-700 leading-relaxed">${escapeHtml(a.descricao_erro || "")}</p>
-              <div class="text-[11px] bg-white p-2 rounded-lg border border-slate-200">
-                <div><strong class="text-[#1e2d3d]">Base Legal:</strong> ${escapeHtml(a.base_legal || "")}</div>
-                ${a.extrato_norma ? `<div class="text-slate-500 mt-0.5 italic">${escapeHtml(a.extrato_norma)}</div>` : ""}
-              </div>
-              <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] pt-0.5">
-                <span class="text-emerald-800"><strong>Ação Corretiva:</strong> ${escapeHtml(a.acao_corretiva || "")}</span>
-                <span class="px-2 py-0.5 rounded bg-indigo-50 text-indigo-800 font-bold text-[10px]">${escapeHtml(a.setor_responsavel || "Licitações")}</span>
-              </div>
-            </div>
+            <tr class="border-b border-slate-200 hover:bg-amber-50/30 align-top">
+              <td class="p-2.5 whitespace-nowrap">
+                <div class="font-black text-[#1e2d3d] text-xs">${escapeHtml(a.id || ("A-" + (idx + 1)))}</div>
+                <span class="inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] font-black ${critCls}">${escapeHtml(crit)}</span>
+                <div class="text-[10px] font-bold text-slate-500 mt-1">${escapeHtml(a.localizacao || "Autos")}</div>
+              </td>
+              <td class="p-2.5 text-xs text-slate-800 leading-relaxed">
+                <div class="font-black text-[#1e2d3d] mb-0.5">${escapeHtml(a.titulo || "Inconsistência Identificada")}</div>
+                <div>${escapeHtml(a.descricao_erro || "")}</div>
+              </td>
+              <td class="p-2.5 text-xs leading-relaxed bg-slate-50/70">
+                <div class="font-black text-indigo-900">${escapeHtml(a.base_legal || "Lei nº 14.133/2021")}</div>
+                ${a.extrato_norma ? `<blockquote class="mt-1 pl-2 border-l-2 border-indigo-400 text-[11px] italic text-slate-600">"${escapeHtml(String(a.extrato_norma).replace(/^"+|"+$/g, ""))}"</blockquote>` : ""}
+              </td>
+              <td class="p-2.5 text-xs leading-relaxed">
+                ${textoCorrigido ? `<div class="p-2 rounded-lg bg-yellow-50 border border-amber-300 text-slate-900 font-medium"><span class="block text-[9px] font-black uppercase text-amber-900 mb-0.5">Redação / Texto Após Correção:</span>${escapeHtml(textoCorrigido)}</div>` : ""}
+                ${a.acao_corretiva && a.acao_corretiva !== textoCorrigido ? `<div class="text-[11px] text-emerald-800 mt-1"><strong>Providência:</strong> ${escapeHtml(a.acao_corretiva)}</div>` : ""}
+                <div class="mt-1"><span class="px-2 py-0.5 rounded bg-indigo-50 text-indigo-800 font-bold text-[10px]">Responsável: ${escapeHtml(a.setor_responsavel || "Licitações")}</span></div>
+              </td>
+            </tr>
           `;
         }).join("");
+
+        const catmatList = Array.isArray(deep.divergencias_catmat) ? deep.divergencias_catmat : [];
+        const catmatHtml = catmatList.length > 0 ? `
+          <div class="mt-4 border border-rose-200 rounded-xl overflow-hidden">
+            <div class="bg-rose-900 text-white px-3 py-2 text-xs font-black">Tabela 1.1 — Divergências Críticas entre Códigos CATMAT (DFD) e Objeto Real (ETP / TR)</div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse text-[11px]">
+                <thead class="bg-rose-50 text-rose-950 font-black uppercase text-[10px]">
+                  <tr>
+                    <th class="p-2">Item</th>
+                    <th class="p-2">Descrição no ETP / TR</th>
+                    <th class="p-2">CATMAT Atual</th>
+                    <th class="p-2">Especificação Puxada no DFD (Catálogo)</th>
+                    <th class="p-2">Unidade (DFD × TR)</th>
+                    <th class="p-2">Correção Necessária</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-rose-100">
+                  ${catmatList.map(dc => `
+                    <tr>
+                      <td class="p-2 font-black">${escapeHtml(dc.item || "")}</td>
+                      <td class="p-2 font-semibold">${escapeHtml(dc.descricao_etp_tr || "")}</td>
+                      <td class="p-2 font-mono font-bold text-rose-700">${escapeHtml(dc.catmat_atual || "")}</td>
+                      <td class="p-2 text-slate-600">${escapeHtml(dc.descricao_dfd_catalogo || "")}</td>
+                      <td class="p-2 font-bold">${escapeHtml(dc.unidade_dfd_vs_tr || "")}</td>
+                      <td class="p-2 text-emerald-900 font-semibold">${escapeHtml(dc.correcao_necessaria || "")}</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ` : "";
+
+        listEl.innerHTML = `
+          <div class="overflow-x-auto border border-slate-200 rounded-xl">
+            <table class="w-full text-left border-collapse">
+              <thead class="bg-[#1e2d3d] text-white text-[10px] font-black uppercase">
+                <tr>
+                  <th class="p-2.5 w-28">ID / Local</th>
+                  <th class="p-2.5 w-1/3">1. O Que Está Errado no Documento</th>
+                  <th class="p-2.5 w-1/3">2. Norma de Amparo & Citação Direta (Extrato)</th>
+                  <th class="p-2.5 w-1/3">3. Como Deve Ser o Texto Após a Correção</th>
+                </tr>
+              </thead>
+              <tbody>${rowsHtml}</tbody>
+            </table>
+          </div>
+          ${catmatHtml}
+        `;
       }
 
       const roteiro = deep.roteiro_saneamento || [];
       if (rotBox && rotList && roteiro.length > 0) {
         rotBox.classList.remove("hidden");
-        rotList.innerHTML = roteiro.map(s => `<li>${escapeHtml(s)}</li>`).join("");
+        rotList.innerHTML = roteiro.map(s => {
+          if (typeof s === "object" && s !== null) {
+            return `<li><strong>${escapeHtml(s.etapa || "")}:</strong> ${escapeHtml(s.atividade || "")} <span class="text-slate-500">(${escapeHtml(s.itens_atendidos || "")} — ${escapeHtml(s.setor_executor || "")})</span></li>`;
+          }
+          return `<li>${escapeHtml(String(s))}</li>`;
+        }).join("");
       } else if (rotBox) {
         rotBox.classList.add("hidden");
       }
@@ -4626,19 +4683,21 @@
         return;
       }
       const btn = document.getElementById("btnDownloadDespachoSaneamento");
-      if (btn) { btn.disabled = true; btn.textContent = "⏳ Emitindo Despacho (Word + PDF)..."; }
+      if (btn) { btn.disabled = true; btn.textContent = "⏳ Emitindo Checklist e Despacho (Word + PDF)..."; }
       try {
         const omName = (document.getElementById("userGlobalOrgName")?.value || "MARINHA DO BRASIL").trim();
         const payload = {
           om_name: omName,
           processo_ref: window.lastDeepAuditFilename || "Processo Administrativo",
+          metadados_processo: deep.metadados_processo || {},
           parecer_preventivo: deep.parecer_preventivo || {},
           achados: deep.achados || [],
+          divergencias_catmat: deep.divergencias_catmat || [],
           roteiro_saneamento: deep.roteiro_saneamento || []
         };
         for (const fmt of [
-          { path: "/api/v1/rag/despacho-saneamento/docx", fname: "Despacho_Saneamento_Auditoria_NLLC.docx" },
-          { path: "/api/v1/rag/despacho-saneamento/pdf", fname: "Despacho_Saneamento_Auditoria_NLLC.pdf" }
+          { path: "/api/v1/rag/despacho-saneamento/docx", fname: "Checklist_Conformidade_e_Saneamento_NLLC.docx" },
+          { path: "/api/v1/rag/despacho-saneamento/pdf", fname: "Checklist_Conformidade_e_Saneamento_NLLC.pdf" }
         ]) {
           const resp = await fetch(fmt.path, {
             method: "POST",
@@ -4656,11 +4715,11 @@
           a.remove();
           setTimeout(() => URL.revokeObjectURL(url), 10000);
         }
-        showAppNotification("Despacho de Saneamento emitido em Word (.docx) e PDF!", "success");
+        showAppNotification("Checklist e Despacho de Saneamento emitidos em Word (.docx) e PDF!", "success");
       } catch (err) {
         showAppNotification("Erro ao emitir Despacho: " + (err.message || err), "error");
       } finally {
-        if (btn) { btn.disabled = false; btn.textContent = "⚖️ Emitir Despacho de Saneamento (Word + PDF)"; }
+        if (btn) { btn.disabled = false; btn.textContent = "⚖️ Emitir Checklist & Despacho de Saneamento (Word + PDF)"; }
       }
     }
 
