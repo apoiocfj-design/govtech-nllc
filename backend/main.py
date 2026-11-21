@@ -1004,10 +1004,11 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
             q = qs.get("q", [""])[0]
             status = qs.get("status", ["aberta"])[0]
             uf = qs.get("uf", [""])[0]
+            esfera = qs.get("esfera", [""])[0]
             pagina = int(qs.get("pagina", ["1"])[0] or 1)
             tam_pagina = int(qs.get("tam_pagina", qs.get("tamanhoPagina", ["20"]))[0] or 20)
             try:
-                res = search_irps(q=q, status=status, uf=uf, pagina=pagina, tam_pagina=tam_pagina)
+                res = search_irps(q=q, status=status, uf=uf, esfera=esfera, pagina=pagina, tam_pagina=tam_pagina)
                 self._send_json(200, res)
             except Exception as exc:
                 self._send_json(500, {"status": "ERROR", "error": str(exc), "items": []})
@@ -1057,6 +1058,90 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 self._send_json(200, result)
             except Exception as exc:
                 self._send_json(400, {"status": "ERROR", "error": str(exc), "top_suggestions": []})
+            return
+
+        # 0.001B Gerador de Ofício de Manifestação de Interesse (IRP) / Pedido de Adesão (Carona) - DOCX ou PDF
+        if parsed.path in ("/api/v1/irp/oficio/docx", "/api/v1/irp/oficio/pdf"):
+            try:
+                data = json.loads(raw_body)
+                try:
+                    from core.irp_oficio_generator import build_irp_oficio_docx_bytes, build_irp_oficio_pdf_bytes
+                except ImportError:
+                    from irp_oficio_generator import build_irp_oficio_docx_bytes, build_irp_oficio_pdf_bytes
+
+                seq_tag = str(data.get("sequencial") or "IRP").replace("/", "_")
+                ano_tag = str(data.get("ano") or "2026")
+                if parsed.path.endswith("/docx"):
+                    content = build_irp_oficio_docx_bytes(data)
+                    self._send_binary(
+                        content,
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        f"Oficio_Adesao_IRP_{seq_tag}_{ano_tag}.docx",
+                    )
+                else:
+                    content = build_irp_oficio_pdf_bytes(data)
+                    self._send_binary(
+                        content,
+                        "application/pdf",
+                        f"Oficio_Adesao_IRP_{seq_tag}_{ano_tag}.pdf",
+                    )
+            except Exception as exc:
+                self._send_json(500, {"status": "ERROR", "error": f"Falha ao gerar Ofício: {exc}"})
+            return
+
+        # 0.001C Termômetro Instantâneo de Vantajosidade da Ata (Preço da Ata vs Mediana Nacional CATMAT/CATSER)
+        if parsed.path == "/api/v1/irp/vantajosidade":
+            try:
+                data = json.loads(raw_body)
+                item_desc = str(data.get("descricao") or "").strip()
+                item_type = str(data.get("tipo_codigo") or "MATERIAL").upper()
+                ata_price = float(data.get("valor_unitario") or 0.0)
+                cod_cat = str(data.get("codigo_item_catalogo") or "").strip()
+
+                resolved_code = int(cod_cat) if cod_cat.isdigit() else 0
+                if not resolved_code and item_desc:
+                    words = [w for w in re.split(r"[,;\s\-/]+", item_desc) if len(w) > 3]
+                    q_cat = words[0] if words else item_desc[:15]
+                    cat_res = catalog_engine.search(q_cat, item_type=item_type, limit=1)
+                    if cat_res:
+                        resolved_code = int(cat_res[0].get("code") or 0)
+
+                if not resolved_code:
+                    self._send_json(200, {
+                        "status": "NO_CODE",
+                        "message": "Não foi possível resolver um código CATMAT/CATSER para este item.",
+                    })
+                    return
+
+                rep = fetch_and_analyze_item(resolved_code, item_type=item_type, description=item_desc)
+                mediana_nac = float(rep.get("median_price") or rep.get("recommended_price") or 0.0)
+                media_nac = float(rep.get("mean_price") or 0.0)
+                valid_count = int(rep.get("valid_quotes_count") or 0)
+
+                economia_pct = None
+                veredito = "SEM_REFERENCIA"
+                if mediana_nac > 0 and ata_price > 0:
+                    economia_pct = round(((mediana_nac - ata_price) / mediana_nac) * 100.0, 2)
+                    if economia_pct >= 0:
+                        veredito = "VANTAJOSO"
+                    elif economia_pct >= -10:
+                        veredito = "NA_MEDIA"
+                    else:
+                        veredito = "ACIMA_MERCADO"
+
+                self._send_json(200, {
+                    "status": "SUCCESS",
+                    "resolved_code": resolved_code,
+                    "item_type": item_type,
+                    "ata_price": ata_price,
+                    "mediana_nacional": mediana_nac,
+                    "media_nacional": media_nac,
+                    "valid_quotes_count": valid_count,
+                    "economia_pct": economia_pct,
+                    "veredito": veredito,
+                })
+            except Exception as exc:
+                self._send_json(500, {"status": "ERROR", "error": str(exc)})
             return
 
         # 0.002 Registro de Evento na Trilha de Auditoria Imutável (SHA-256)

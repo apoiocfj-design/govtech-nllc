@@ -1138,11 +1138,11 @@
     <div class="bg-white rounded-2xl p-4 shadow-xs border border-slate-200 space-y-3">
       <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5">
         <!-- Campo de Busca -->
-        <div class="md:col-span-6 relative">
+        <div class="md:col-span-4 relative">
           <input
             id="irpSearchInput"
             type="text"
-            placeholder="Buscar por termo ou objeto (ex: veículos, limpeza, computadores, medicamentos, pneus, geradores)..."
+            placeholder="Buscar por termo ou objeto (ex: veículos, limpeza, computadores, medicamentos, pneus)..."
             class="w-full pl-9 pr-3 py-2 text-xs font-medium rounded-xl border border-slate-300 focus:border-[#c5a365] focus:ring-1 focus:ring-[#c5a365] outline-none"
             onkeydown="if(event.key === 'Enter') executeIRPSearch(1)"
           />
@@ -1198,6 +1198,21 @@
             <option value="SE">SE - Sergipe</option>
             <option value="SP">SP - São Paulo</option>
             <option value="TO">TO - Tocantins</option>
+          </select>
+        </div>
+
+        <!-- Filtro por Esfera (Federal / Estadual / Municipal / Distrital) -->
+        <div class="md:col-span-2">
+          <select
+            id="irpEsferaSelect"
+            onchange="executeIRPSearch(1)"
+            class="w-full py-2 px-2.5 text-xs font-bold rounded-xl border border-slate-300 bg-white focus:border-[#c5a365] outline-none text-slate-700"
+          >
+            <option value="">🏛️ Todas as Esferas</option>
+            <option value="F">🇧🇷 Federal (União / Forças Armadas)</option>
+            <option value="E">🏢 Estadual</option>
+            <option value="M">🏘️ Municipal</option>
+            <option value="D">🏛️ Distrital (DF)</option>
           </select>
         </div>
 
@@ -1370,10 +1385,20 @@
       </div>
 
       <!-- Modal Footer -->
-      <div class="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-        <a id="modalIrpOfficialLink" href="#" target="_blank" class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 flex items-center gap-1.5 transition">
-          🌐 Abrir IRP no Portal PNCP ↗
-        </a>
+      <div class="p-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <a id="modalIrpOfficialLink" href="#" target="_blank" class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 flex items-center gap-1.5 transition">
+            🌐 Abrir no Portal PNCP ↗
+          </a>
+          <button
+            id="btnDownloadIrpOficioBoth"
+            onclick="downloadIrpOficioBoth()"
+            class="px-3 py-1.5 rounded-lg text-xs font-black bg-[#c5a365] hover:bg-[#d6b476] text-[#1e2d3d] shadow-xs flex items-center gap-1.5 transition"
+            title="Emite simultaneamente o Ofício formal de Manifestação de Interesse / Pedido de Adesão (Carona) em Word (.docx) e PDF"
+          >
+            ✉️ Emitir Ofício de Adesão / IRP (Word + PDF)
+          </button>
+        </div>
         <button onclick="closeModalIrpDetail()" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-slate-700 hover:bg-slate-800 text-white transition">
           Fechar
         </button>
@@ -6877,6 +6902,7 @@
       const q = (document.getElementById("irpSearchInput")?.value || "").trim();
       const status = document.getElementById("irpStatusSelect")?.value || "aberta";
       const uf = document.getElementById("irpUfSelect")?.value || "";
+      const esfera = document.getElementById("irpEsferaSelect")?.value || "";
 
       const loadingEl = document.getElementById("irpLoadingState");
       const emptyEl = document.getElementById("irpEmptyState");
@@ -6893,6 +6919,7 @@
           q: q,
           status: status,
           uf: uf,
+          esfera: esfera,
           pagina: irpCurrentPage,
           tam_pagina: 15
         });
@@ -7121,15 +7148,27 @@
                 <td class="p-2 font-bold ${it.tipo_codigo === 'SERVICO' ? 'text-amber-700' : 'text-sky-700'}">${escapeHtml(it.categoria || 'Material')}</td>
                 <td class="p-2 font-medium text-slate-800 leading-tight">${escapeHtml(it.descricao)}</td>
                 <td class="p-2 text-center font-bold text-slate-600">${escapeHtml(it.unidade_fornecimento || 'UN')}</td>
-                <td class="p-2 text-right font-black text-slate-700">${valUnit}</td>
+                <td class="p-2 text-right font-black text-slate-700">
+                  <div>${valUnit}</div>
+                  <div id="irpVantajBadge_${idx}" class="mt-0.5 text-[10px]"></div>
+                </td>
                 <td class="p-2 text-center">
-                  <button
-                    onclick="importIrpItemToBatch(${idx})"
-                    class="px-2.5 py-1 rounded-lg text-[10px] font-black bg-[#c5a365] hover:bg-[#d6b476] text-[#1e2d3d] shadow-xs transition flex items-center gap-1 mx-auto"
-                    title="Adicionar item à Cesta da Pesquisa de Preços (IN 65/2021)"
-                  >
-                    ➕ Importar para Lote
-                  </button>
+                  <div class="flex flex-col items-center gap-1">
+                    <button
+                      onclick="importIrpItemToBatch(${idx})"
+                      class="px-2.5 py-1 rounded-lg text-[10px] font-black bg-[#c5a365] hover:bg-[#d6b476] text-[#1e2d3d] shadow-xs transition flex items-center gap-1"
+                      title="Adicionar item à Cesta da Pesquisa de Preços (IN 65/2021)"
+                    >
+                      ➕ Importar para Lote
+                    </button>
+                    <button
+                      onclick="checkIrpItemVantajosidade(${idx}, this)"
+                      class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 transition"
+                      title="Comparar o preço desta Ata/IRP com a mediana nacional do Compras.gov.br (Vantajosidade TCU)"
+                    >
+                      🌡️ Vantajosidade
+                    </button>
+                  </div>
                 </td>
               </tr>
             `;
@@ -7222,6 +7261,106 @@
       closeModalIrpDetail();
       openTab("PRICES");
       showAppNotification(`${importedCount} item(ns) importado(s) do Registro de Preços para o seu Lote!`, "success");
+    }
+
+    async function downloadIrpOficioBoth() {
+      if (!currentIrpModalDetail) {
+        showAppNotification("Abra os detalhes de uma IRP/Ata antes de gerar o Ofício.", "warn");
+        return;
+      }
+      const btn = document.getElementById("btnDownloadIrpOficioBoth");
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "⏳ Emitindo Ofício (Word + PDF)...";
+      }
+      try {
+        const omName = (document.getElementById("omNameInput")?.value || "MARINHA DO BRASIL").trim();
+        const ordenador = (document.getElementById("ordenadorInput")?.value || "ORDENADOR DE DESPESAS").trim();
+        const elaborador = (document.getElementById("elaboradorInput")?.value || "ENCARREGADO DO SETOR DE OBTENÇÃO").trim();
+        const payload = {
+          ...currentIrpModalDetail,
+          om_solicitante: omName,
+          ordenador_nome: ordenador,
+          elaborador_nome: elaborador
+        };
+        const seqTag = String(currentIrpModalDetail.sequencial || "IRP").replace(/[^A-Za-z0-9_-]/g, "_");
+        const anoTag = String(currentIrpModalDetail.ano || "2026");
+
+        for (const fmt of [
+          { path: "/api/v1/irp/oficio/docx", fname: `Oficio_Adesao_IRP_${seqTag}_${anoTag}.docx` },
+          { path: "/api/v1/irp/oficio/pdf", fname: `Oficio_Adesao_IRP_${seqTag}_${anoTag}.pdf` }
+        ]) {
+          const resp = await fetch(fmt.path, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const blob = await resp.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = fmt.fname;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 10000);
+        }
+        showAppNotification("Ofício de Manifestação / Adesão emitido em Word (.docx) e PDF!", "success");
+      } catch (err) {
+        showAppNotification("Erro ao emitir Ofício: " + (err.message || err), "error");
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = "✉️ Emitir Ofício de Adesão / IRP (Word + PDF)";
+        }
+      }
+    }
+
+    async function checkIrpItemVantajosidade(idx, btnEl) {
+      if (!currentIrpModalDetail || !currentIrpModalDetail.itens || !currentIrpModalDetail.itens[idx]) return;
+      const item = currentIrpModalDetail.itens[idx];
+      const badgeEl = document.getElementById(`irpVantajBadge_${idx}`);
+      if (btnEl) {
+        btnEl.disabled = true;
+        btnEl.textContent = "⏳ Consultando...";
+      }
+      try {
+        const resp = await fetch("/api/v1/irp/vantajosidade", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            descricao: item.descricao || "",
+            tipo_codigo: item.tipo_codigo || "MATERIAL",
+            valor_unitario: item.valor_unitario_estimado || 0,
+            codigo_item_catalogo: item.codigo_item_catalogo || ""
+          })
+        });
+        const data = await resp.json();
+        if (data.status !== "SUCCESS" || !data.mediana_nacional) {
+          if (badgeEl) badgeEl.innerHTML = `<span class="text-slate-400 font-semibold">Sem mediana nacional</span>`;
+        } else {
+          const medStr = `R$ ${Number(data.mediana_nacional).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+          let pill = "";
+          if (data.veredito === "VANTAJOSO") {
+            pill = `<span class="inline-block px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-black">✅ ${data.economia_pct}% abaixo da mediana (${medStr})</span>`;
+          } else if (data.veredito === "NA_MEDIA") {
+            pill = `<span class="inline-block px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">⚖️ Na média nacional (${medStr})</span>`;
+          } else if (data.veredito === "ACIMA_MERCADO") {
+            pill = `<span class="inline-block px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-black">⚠️ Acima da mediana (${medStr})</span>`;
+          } else {
+            pill = `<span class="inline-block px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 font-bold">📊 Mediana Nac.: ${medStr} (${data.valid_quotes_count} cot.)</span>`;
+          }
+          if (badgeEl) badgeEl.innerHTML = pill;
+        }
+      } catch (err) {
+        if (badgeEl) badgeEl.innerHTML = `<span class="text-rose-600">Erro na consulta</span>`;
+      } finally {
+        if (btnEl) {
+          btnEl.disabled = false;
+          btnEl.textContent = "🌡️ Vantajosidade";
+        }
+      }
     }
 
     // =========================================================================

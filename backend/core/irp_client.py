@@ -342,12 +342,13 @@ def search_irps(
     q: str = "",
     status: str = "aberta",
     uf: str = "",
+    esfera: str = "",
     pagina: int = 1,
     tam_pagina: int = 20,
 ) -> Dict[str, Any]:
     """
     Pesquisa Intenções de Registro de Preços (IRP), Editais SRP e Atas de Registro de Preços (ARP)
-    no PNCP com filtragem rigorosa por Unidade da Federação (UF).
+    no PNCP com filtragem rigorosa por Unidade da Federação (UF) e Esfera (F/E/M/D).
 
     status suportados:
       - 'aberta': IRPs Abertas + Oportunidades SRP/ARP vigentes na UF selecionada
@@ -355,6 +356,8 @@ def search_irps(
       - 'todas': Todas as IRPs e Oportunidades SRP na UF
       - 'srp_edital': Editais e Pregões SRP recebendo propostas
       - 'ata_vigente': Atas de Registro de Preços (ARP) vigentes para Adesão (Carona)
+    esfera suportados:
+      - '' (todas), 'F' (Federal), 'E' (Estadual), 'M' (Municipal), 'D' (Distrital)
     """
     q_clean = (q or "").strip()
     status_clean = (status or "aberta").strip().lower()
@@ -362,13 +365,34 @@ def search_irps(
     if uf_clean and uf_clean not in VALID_UFS:
         uf_clean = ""
 
+    esfera_clean = (esfera or "").strip().upper()
+    if esfera_clean not in {"F", "E", "M", "D"}:
+        esfera_clean = ""
+
     pagina_num = max(1, int(pagina))
     tam_pagina_num = min(50, max(10, int(tam_pagina)))
 
-    cache_key = f"{q_clean.lower()}|{status_clean}|{uf_clean}|{pagina_num}|{tam_pagina_num}"
+    cache_key = f"{q_clean.lower()}|{status_clean}|{uf_clean}|{esfera_clean}|{pagina_num}|{tam_pagina_num}"
     cached = _IRP_SEARCH_CACHE.get(cache_key)
     if cached and (time.time() - cached["timestamp"] < CACHE_TTL_SECONDS):
         return cached["data"]
+
+    def _matches_esfera(it: Dict[str, Any]) -> bool:
+        if not esfera_clean:
+            return True
+        eid = str(it.get("esfera_id") or "").upper()
+        enome = str(it.get("esfera_nome") or "").upper()
+        if eid:
+            return eid == esfera_clean
+        if esfera_clean == "F":
+            return "FED" in enome
+        if esfera_clean == "E":
+            return "EST" in enome
+        if esfera_clean == "M":
+            return "MUN" in enome
+        if esfera_clean == "D":
+            return "DIST" in enome
+        return True
 
     is_srp_edital = status_clean in ["srp_edital", "edital_srp", "edital"]
     is_ata_vigente = status_clean in ["ata_vigente", "ata", "arp"]
@@ -391,11 +415,15 @@ def search_irps(
                 params["q"] = q_clean
             if uf_clean:
                 params["ufs"] = uf_clean
+            if esfera_clean:
+                params["esferas"] = esfera_clean
 
             raw_data = _query_pncp_search_api(params)
             items_raw = raw_data.get("items") or []
             if uf_clean:
                 items_raw = [it for it in items_raw if str(it.get("uf") or "").upper() == uf_clean]
+            if esfera_clean:
+                items_raw = [it for it in items_raw if _matches_esfera(it)]
             total_found = int(raw_data.get("total") or len(items_raw))
             formatted_items = [_format_search_item(it, "ata") for it in items_raw]
 
@@ -412,11 +440,15 @@ def search_irps(
                 params["q"] = q_clean
             if uf_clean:
                 params["ufs"] = uf_clean
+            if esfera_clean:
+                params["esferas"] = esfera_clean
 
             raw_data = _query_pncp_search_api(params)
             items_raw = raw_data.get("items") or []
             if uf_clean:
                 items_raw = [it for it in items_raw if str(it.get("uf") or "").upper() == uf_clean]
+            if esfera_clean:
+                items_raw = [it for it in items_raw if _matches_esfera(it)]
             total_found = int(raw_data.get("total") or len(items_raw))
             formatted_items = [_format_search_item(it, "edital") for it in items_raw]
 
@@ -435,12 +467,16 @@ def search_irps(
             if uf_clean:
                 # IMPORTANTE: a API /api/search/ do PNCP exige 'ufs' (no plural) para filtrar por estado!
                 params["ufs"] = uf_clean
+            if esfera_clean:
+                params["esferas"] = esfera_clean
 
             raw_data = _query_pncp_search_api(params)
             items_raw = raw_data.get("items") or []
             # Blindagem estrita: jamais permitir itens de outra UF quando uf_clean foi selecionado
             if uf_clean:
                 items_raw = [it for it in items_raw if str(it.get("uf") or "").upper() == uf_clean]
+            if esfera_clean:
+                items_raw = [it for it in items_raw if _matches_esfera(it)]
 
             total_found = int(raw_data.get("total") or len(items_raw)) if items_raw else 0
             formatted_items = [_format_search_item(it, "irp") for it in items_raw]
@@ -461,11 +497,15 @@ def search_irps(
                     edital_params["q"] = q_clean
                 if uf_clean:
                     edital_params["ufs"] = uf_clean
+                if esfera_clean:
+                    edital_params["esferas"] = esfera_clean
 
                 edital_data = _query_pncp_search_api(edital_params)
                 edital_items = edital_data.get("items") or []
                 if uf_clean:
                     edital_items = [it for it in edital_items if str(it.get("uf") or "").upper() == uf_clean]
+                if esfera_clean:
+                    edital_items = [it for it in edital_items if _matches_esfera(it)]
 
                 formatted_editais = [_format_search_item(it, "edital") for it in edital_items]
 
@@ -481,12 +521,16 @@ def search_irps(
                     ata_params["q"] = q_clean
                 if uf_clean:
                     ata_params["ufs"] = uf_clean
+                if esfera_clean:
+                    ata_params["esferas"] = esfera_clean
 
                 try:
                     ata_data = _query_pncp_search_api(ata_params)
                     ata_items = ata_data.get("items") or []
                     if uf_clean:
                         ata_items = [it for it in ata_items if str(it.get("uf") or "").upper() == uf_clean]
+                    if esfera_clean:
+                        ata_items = [it for it in ata_items if _matches_esfera(it)]
                     formatted_atas = [_format_search_item(it, "ata") for it in ata_items]
                 except Exception:
                     ata_data = {}
@@ -510,6 +554,7 @@ def search_irps(
             "page": pagina_num,
             "page_size": tam_pagina_num,
             "uf_filter": uf_clean,
+            "esfera_filter": esfera_clean,
             "source_mode": source_mode,
             "is_edital_mode": is_srp_edital,
             "items": formatted_items,

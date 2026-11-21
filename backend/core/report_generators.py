@@ -2887,8 +2887,8 @@ def build_batch_zip_to_file(
     include_detailed = mode_norm != "consolidated"
     total_steps = (
         6  # Excel + Nota Técnica DOCX/PDF + Raio-X Certidões (PDF+DOCX) + Justificativa/Manual + Comprovantes PNCP
-        + (2 + len(cats_12m) + len(items_12m_idx) if (include_detailed and items_12m_idx) else 0)
-        + (2 + len(cats_24m) + len(items_24m_idx) if (include_detailed and items_24m_idx) else 0)
+        + (1 + len(items_12m_idx) if (include_detailed and items_12m_idx) else 0)
+        + (1 + len(items_24m_idx) if (include_detailed and items_24m_idx) else 0)
     )
     done_steps = 0
 
@@ -2899,88 +2899,7 @@ def build_batch_zip_to_file(
         return (s[:max_len].strip("_") or "Item")
 
     with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED, compresslevel=1) as zf:
-        # 1. Mapa Comparativo Geral Completo (XLSX com TODAS as empresas/cotações de todos os itens)
-        _report(done_steps, total_steps, f"Gerando Mapa Comparativo Geral Excel ({total_items} itens + todas as empresas)...")
-        xlsx_consolidada = build_consolidated_in65_excel_bytes(items_results, uasg_name=uasg_label)
-        zf.writestr("00_Mapa_Comparativo_Geral_Completo.xlsx", xlsx_consolidada)
-        zf.writestr("01_Consolidacao_Geral/00_Mapa_Comparativo_Geral_Completo.xlsx", xlsx_consolidada)
-        zf.writestr("04_Planilhas_e_Auditoria/00_Mapa_Comparativo_Geral_Completo.xlsx", xlsx_consolidada)
-        del xlsx_consolidada
-        done_steps += 1
-
-        # 2. Nota Técnica Oficial AGU (DOCX editável)
-        _report(done_steps, total_steps, "Gerando Nota Técnica Oficial AGU (Word .DOCX)...")
-        nt_docx = build_agu_nota_tecnica_docx_bytes(
-            items_results,
-            om_name=om_name,
-            ordenador_nome=ordenador_nome,
-            elaborador_nome=elaborador_nome,
-        )
-        zf.writestr("01_Nota_Tecnica_AGU_IN65_Pesquisa_Precos.docx", nt_docx)
-        zf.writestr("03_Analise_Estatistica_e_Justificativas/01_Nota_Tecnica_AGU_IN65_Pesquisa_Precos.docx", nt_docx)
-        del nt_docx
-        done_steps += 1
-
-        # 3. Nota Técnica Oficial AGU (PDF pronto para SEI)
-        _report(done_steps, total_steps, "Gerando Nota Técnica Oficial AGU (PDF SEI)...")
-        nt_pdf = build_agu_nota_tecnica_pdf_bytes(
-            items_results,
-            om_name=om_name,
-            ordenador_nome=ordenador_nome,
-            elaborador_nome=elaborador_nome,
-        )
-        zf.writestr("01_Nota_Tecnica_AGU_IN65_Pesquisa_Precos.pdf", nt_pdf)
-        zf.writestr("03_Analise_Estatistica_e_Justificativas/01_Nota_Tecnica_AGU_IN65_Pesquisa_Precos.pdf", nt_pdf)
-        del nt_pdf
-        done_steps += 1
-
-        # 4. Raio-X Consolidado de Certidões de Todas as Empresas do Lote (PDF + DOCX)
-        _report(done_steps, total_steps, f"Gerando Raio-X de Certidões ({len(unique_cnpjs)} empresas — PDF + Word)...")
-        try:
-            sup_pdf = build_consolidated_suppliers_dossier_pdf_bytes(
-                items_results,
-                om_name=om_name,
-                elaborador_nome=elaborador_nome,
-                ordenador_nome=ordenador_nome,
-            )
-            zf.writestr("02_RaioX_Certidoes_Empresas_Consolidado.pdf", sup_pdf)
-            zf.writestr("03_Analise_Estatistica_e_Justificativas/02_RaioX_Certidoes_Empresas_Consolidado.pdf", sup_pdf)
-            del sup_pdf
-        except Exception:
-            pass
-        try:
-            sup_docx = build_consolidated_suppliers_dossier_docx_bytes(
-                items_results,
-                om_name=om_name,
-                elaborador_nome=elaborador_nome,
-                ordenador_nome=ordenador_nome,
-            )
-            zf.writestr("02_RaioX_Certidoes_Empresas_Consolidado.docx", sup_docx)
-            zf.writestr("03_Analise_Estatistica_e_Justificativas/02_RaioX_Certidoes_Empresas_Consolidado.docx", sup_docx)
-            del sup_docx
-        except Exception:
-            pass
-        done_steps += 1
-
-        # 5. Justificativa Consolidada (Art. 6º § 5º e/ou 13-24M) + Manual Didático do Processo (PDF + TXT)
-        _report(done_steps, total_steps, "Gerando Justificativa Consolidada e Manual Didático do Processo...")
-        if needs_justificativa:
-            try:
-                j_docx = build_consolidated_justificativa_docx_bytes(
-                    items_results, om_name=om_name, ordenador_nome=ordenador_nome, elaborador_nome=elaborador_nome
-                )
-                zf.writestr("03_Justificativa_Consolidada_Art6_Par5.docx", j_docx)
-                zf.writestr("03_Analise_Estatistica_e_Justificativas/03_Justificativa_Consolidada_Art6_Par5.docx", j_docx)
-                del j_docx
-                j_pdf = build_consolidated_justificativa_pdf_bytes(
-                    items_results, om_name=om_name, ordenador_nome=ordenador_nome, elaborador_nome=elaborador_nome
-                )
-                zf.writestr("03_Justificativa_Consolidada_Art6_Par5.pdf", j_pdf)
-                zf.writestr("03_Analise_Estatistica_e_Justificativas/03_Justificativa_Consolidada_Art6_Par5.pdf", j_pdf)
-                del j_pdf
-            except Exception:
-                pass
-
+        # 0. Manual Didático do Processo (Raiz — 1 PDF visual + 1 TXT leve para índice rápido, sem duplicatas)
         try:
             manual_pdf = build_process_manual_pdf_bytes(
                 items_results,
@@ -2993,7 +2912,7 @@ def build_batch_zip_to_file(
                 n_cats_24m=len(cats_24m),
                 n_unique_suppliers=len(unique_cnpjs),
             )
-            zf.writestr("00_MANUAL_DIDATICO_DO_PROCESSO_LEIA_ME.pdf", manual_pdf)
+            zf.writestr("00_Manual_Didatico_do_Processo.pdf", manual_pdf)
             del manual_pdf
         except Exception:
             pass
@@ -3007,11 +2926,84 @@ def build_batch_zip_to_file(
             n_cats_24m=len(cats_24m),
             n_unique_suppliers=len(unique_cnpjs),
         )
-        zf.writestr("00_LEIA_ME_MANUAL_DIDATICO.txt", manual_txt)
         zf.writestr("00_Indice_do_Processo.txt", manual_txt)
+
+        # 1. Mapa Comparativo Geral Completo (ÚNICA cópia em 01_Consolidacao_Geral/)
+        _report(done_steps, total_steps, f"Gerando Mapa Comparativo Geral Excel ({total_items} itens + todas as empresas)...")
+        xlsx_consolidada = build_consolidated_in65_excel_bytes(items_results, uasg_name=uasg_label)
+        zf.writestr("01_Consolidacao_Geral/01_Mapa_Comparativo_Geral_Completo.xlsx", xlsx_consolidada)
+        del xlsx_consolidada
         done_steps += 1
 
-        # 6. Caderno de Comprovantes Oficiais PNCP (1 página estilo portal PNCP com QR Code por contratação única)
+        # 2. Nota Técnica Oficial AGU (DOCX editável — ÚNICA cópia em 03_Analise_Estatistica_e_Justificativas/)
+        _report(done_steps, total_steps, "Gerando Nota Técnica Oficial AGU (Word .DOCX)...")
+        nt_docx = build_agu_nota_tecnica_docx_bytes(
+            items_results,
+            om_name=om_name,
+            ordenador_nome=ordenador_nome,
+            elaborador_nome=elaborador_nome,
+        )
+        zf.writestr("03_Analise_Estatistica_e_Justificativas/01_Nota_Tecnica_AGU_IN65.docx", nt_docx)
+        del nt_docx
+        done_steps += 1
+
+        # 3. Nota Técnica Oficial AGU (PDF pronto para SEI — ÚNICA cópia)
+        _report(done_steps, total_steps, "Gerando Nota Técnica Oficial AGU (PDF SEI)...")
+        nt_pdf = build_agu_nota_tecnica_pdf_bytes(
+            items_results,
+            om_name=om_name,
+            ordenador_nome=ordenador_nome,
+            elaborador_nome=elaborador_nome,
+        )
+        zf.writestr("03_Analise_Estatistica_e_Justificativas/01_Nota_Tecnica_AGU_IN65.pdf", nt_pdf)
+        del nt_pdf
+        done_steps += 1
+
+        # 4. Raio-X Consolidado de Certidões de Todas as Empresas do Lote (PDF + DOCX — ÚNICA cópia)
+        _report(done_steps, total_steps, f"Gerando Raio-X de Certidões ({len(unique_cnpjs)} empresas — PDF + Word)...")
+        try:
+            sup_pdf = build_consolidated_suppliers_dossier_pdf_bytes(
+                items_results,
+                om_name=om_name,
+                elaborador_nome=elaborador_nome,
+                ordenador_nome=ordenador_nome,
+            )
+            zf.writestr("03_Analise_Estatistica_e_Justificativas/02_RaioX_Certidoes_Empresas.pdf", sup_pdf)
+            del sup_pdf
+        except Exception:
+            pass
+        try:
+            sup_docx = build_consolidated_suppliers_dossier_docx_bytes(
+                items_results,
+                om_name=om_name,
+                elaborador_nome=elaborador_nome,
+                ordenador_nome=ordenador_nome,
+            )
+            zf.writestr("03_Analise_Estatistica_e_Justificativas/02_RaioX_Certidoes_Empresas.docx", sup_docx)
+            del sup_docx
+        except Exception:
+            pass
+        done_steps += 1
+
+        # 5. Justificativa Consolidada (Art. 6º § 5º e/ou 13-24M — ÚNICA cópia)
+        _report(done_steps, total_steps, "Gerando Justificativa Consolidada (Art. 6º § 5º / IN 65)...")
+        if needs_justificativa:
+            try:
+                j_docx = build_consolidated_justificativa_docx_bytes(
+                    items_results, om_name=om_name, ordenador_nome=ordenador_nome, elaborador_nome=elaborador_nome
+                )
+                zf.writestr("03_Analise_Estatistica_e_Justificativas/03_Justificativa_Art6_Par5.docx", j_docx)
+                del j_docx
+                j_pdf = build_consolidated_justificativa_pdf_bytes(
+                    items_results, om_name=om_name, ordenador_nome=ordenador_nome, elaborador_nome=elaborador_nome
+                )
+                zf.writestr("03_Analise_Estatistica_e_Justificativas/03_Justificativa_Art6_Par5.pdf", j_pdf)
+                del j_pdf
+            except Exception:
+                pass
+        done_steps += 1
+
+        # 6. Caderno de Comprovantes Oficiais PNCP com QR Code (ÚNICA cópia em 04_Comprovantes_PNCP_Auditoria/)
         _report(done_steps, total_steps, "Emitindo Comprovantes Oficiais PNCP com QR Code (prova das contratações)...")
         try:
             try:
@@ -3019,17 +3011,17 @@ def build_batch_zip_to_file(
             except ImportError:
                 from core.pncp_extractor import build_pncp_comprovantes_caderno_pdf_bytes
             pncp_pdf = build_pncp_comprovantes_caderno_pdf_bytes(items_results, om_name=om_name, max_purchases=60)
-            zf.writestr("04_Comprovantes_PNCP_Contratacoes_QRCode.pdf", pncp_pdf)
-            zf.writestr("04_Planilhas_e_Auditoria/04_Comprovantes_PNCP_Contratacoes_QRCode.pdf", pncp_pdf)
+            zf.writestr("04_Comprovantes_PNCP_Auditoria/01_Comprovantes_PNCP_Contratacoes_QRCode.pdf", pncp_pdf)
             del pncp_pdf
         except Exception:
             pass
         done_steps += 1
 
-        # Helper para gravar uma janela temporal (12M ou 13-24M):
-        # Caderno Executivo + Relatório Detalhado Completo + Por_Categoria/ + Relatorios_CATMAT_CATSER/ (2 págs por item!)
+        # Helper para gravar uma janela temporal (12M ou 13-24M) SEM duplicidades:
+        # - Caderno Executivo (PDF + DOCX) em 01_Consolidacao_Geral/
+        # - Relatório Individual CATMAT/CATSER (2 págs com Brasão, QR Codes e Gráficos) em 02_Pesquisa_por_Item/{janela}/
         def _write_window_folder(
-            folder_name: str,
+            subfolder_name: str,
             suffix_tag: str,
             window_label: str,
             indexed_subset: List[Tuple[int, Dict[str, Any]]],
@@ -3044,46 +3036,17 @@ def build_batch_zip_to_file(
             cad_pdf = build_consolidated_in65_pdf_bytes(
                 raw_subset, om_name=om_name, elaborador_nome=elaborador_nome, ordenador_nome=ordenador_nome
             )
-            zf.writestr(f"{folder_name}/Caderno_Resumo_Executivo_{suffix_tag}.pdf", cad_pdf)
-            zf.writestr(f"01_Consolidacao_Geral/Caderno_Resumo_Executivo_{suffix_tag}.pdf", cad_pdf)
+            zf.writestr(f"01_Consolidacao_Geral/02_Caderno_Resumo_Executivo_{suffix_tag}.pdf", cad_pdf)
             del cad_pdf
 
             cad_docx = build_consolidated_in65_docx_bytes(
                 raw_subset, om_name=om_name, elaborador_nome=elaborador_nome, ordenador_nome=ordenador_nome
             )
-            zf.writestr(f"{folder_name}/Caderno_Resumo_Executivo_{suffix_tag}.docx", cad_docx)
-            zf.writestr(f"01_Consolidacao_Geral/Caderno_Resumo_Executivo_{suffix_tag}.docx", cad_docx)
+            zf.writestr(f"01_Consolidacao_Geral/02_Caderno_Resumo_Executivo_{suffix_tag}.docx", cad_docx)
             del cad_docx
             done_steps += 1
 
-            _report(done_steps, total_steps, f"[{suffix_tag}] Gerando Relatório Detalhado Completo ({len(raw_subset)} itens)...")
-            full_det_pdf = build_category_detailed_report_pdf_bytes(
-                indexed_subset,
-                category_label=f"TODAS AS CATEGORIAS ({len(cats_map)} classe(s))",
-                window_label=window_label,
-                om_name=om_name,
-                elaborador_nome=elaborador_nome,
-                ordenador_nome=ordenador_nome,
-            )
-            zf.writestr(f"{folder_name}/Relatorio_Detalhado_Completo_{suffix_tag}.pdf", full_det_pdf)
-            del full_det_pdf
-            done_steps += 1
-
-            for (slug, cat_lbl), cat_items in sorted(cats_map.items()):
-                _report(done_steps, total_steps, f"[{suffix_tag}] Relatório por Categoria: {cat_lbl[:32]} ({len(cat_items)} it.)...")
-                cat_pdf = build_category_detailed_report_pdf_bytes(
-                    cat_items,
-                    category_label=cat_lbl,
-                    window_label=window_label,
-                    om_name=om_name,
-                    elaborador_nome=elaborador_nome,
-                    ordenador_nome=ordenador_nome,
-                )
-                zf.writestr(f"{folder_name}/Por_Categoria/Relatorio_Detalhado_{slug}_{suffix_tag}.pdf", cat_pdf)
-                del cat_pdf
-                done_steps += 1
-
-            # Relatório Oficial de Pesquisa de Preços CATMAT/CATSER (2 págs com Brasão, QR Codes e Gráficos) por item
+            # Relatório Oficial de Pesquisa de Preços CATMAT/CATSER (ÚNICA cópia por item, separado por janela 12M / 13-24M)
             for sub_i, (orig_idx, it_obj) in enumerate(indexed_subset, start=1):
                 rep_i = it_obj.get("report") or {}
                 qty_i = int(float(it_obj.get("qty", 1) or 1))
@@ -3105,11 +3068,7 @@ def build_batch_zip_to_file(
                     )
                     short_slug = _clean_short_slug(rep_i.get("item_description") or it_obj.get("desc") or prefix_i, 26)
                     zf.writestr(
-                        f"{folder_name}/Relatorios_CATMAT_CATSER/Item_{orig_idx:03d}_{prefix_i}_{code_i}.pdf",
-                        item_pdf,
-                    )
-                    zf.writestr(
-                        f"02_Pesquisa_por_Item/Item_{orig_idx:03d}_{code_i}_{short_slug}.pdf",
+                        f"02_Pesquisa_por_Item/{subfolder_name}/Item_{orig_idx:03d}_{prefix_i}_{code_i}_{short_slug}.pdf",
                         item_pdf,
                     )
                     del item_pdf
@@ -3124,7 +3083,7 @@ def build_batch_zip_to_file(
         if include_detailed:
             if items_12m_idx:
                 _write_window_folder(
-                    "01_Pesquisas_Ate_12_Meses_IN65",
+                    "Ate_12_Meses_IN65",
                     "12M",
                     "Até 12 Meses (Prioritária — IN SEGES/ME nº 65/2021)",
                     items_12m_idx,
@@ -3132,7 +3091,7 @@ def build_batch_zip_to_file(
                 )
             if items_24m_idx:
                 _write_window_folder(
-                    "02_Pesquisas_13_a_24_Meses_Excepcional",
+                    "13_a_24_Meses_Excepcional",
                     "13_a_24M",
                     "13 a 24 Meses (Fallback Excepcional — Recomenda-se Atualização IPCA)",
                     items_24m_idx,
