@@ -336,7 +336,7 @@ def build_agu_and_tcu_golden_corpus() -> List[ClauseChunk]:
                 "2.3. Declara-se, para fins de cumprimento do art. 75, § 1º, incisos I e II, da Lei nº 14.133/2021, "
                 "que o valor estimado desta contratação direta foi somado às demais despesas realizadas pela Unidade "
                 "Gestora no corrente exercício financeiro com objetos de mesma natureza (mesmo ramo de atividade/PDM), "
-                "não ultrapassando o limite legal fixado no inciso II do art. 75 (atualizado pelo Decreto nº 11.871/2023)."
+                "não ultrapassando o limite legal fixado no inciso II do art. 75 (atualizado pelo Decreto Federal nº 12.343/2024, c/c art. 182 da Lei nº 14.133/2021)."
             ),
             agu_explanatory_note=(
                 "Nota Explicativa AGU: Nas contratações diretas por dispensa em razão do valor, a instrução processual "

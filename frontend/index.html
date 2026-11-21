@@ -70,6 +70,9 @@
       box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.22) !important;
       outline: none !important;
     }
+    .font-mono, .tabular-nums, td, #batchGrandTotal, #resCV, #resRawCV, #resMean, #resMedian, #resTotalValue, #fracValorTotal {
+      font-variant-numeric: tabular-nums;
+    }
     @media (max-width: 640px) {
       button { min-height: 36px; }
     }
@@ -521,7 +524,7 @@
               <div class="flex items-center gap-1.5 flex-wrap">
                 <span class="bg-amber-200/80 text-amber-950 font-bold text-[9px] px-1.5 py-0.5 rounded uppercase">Art. 6º, § 5º IN 65/2021</span>
                 <h4 class="text-xs font-bold text-amber-950 uppercase">
-                  Auditoria: Cesta com <span id="justQuoteCount">0</span> cotação(ões) válida(s)
+                  Auditoria: Cesta com <span id="justQuoteCount">0</span> <span id="justQuoteLabel">cotações válidas</span>
                 </h4>
               </div>
               <p class="text-[11px] text-slate-600 mt-0.5">
@@ -580,7 +583,7 @@
 
       <!-- JUSTIFICATIVA AUTOMÁTICA COMPACTA -->
       <div class="bg-amber-50/70 border border-amber-200 rounded-lg p-2.5 text-[11px] text-slate-700 leading-snug">
-        <strong class="uppercase text-amber-950 font-bold block mb-0.5">Justificativa Automática p/ Anexar ao Processo Administrativo (Art. 6º IN 65/2021):</strong>
+        <strong class="uppercase text-amber-950 font-bold block mb-0.5">Justificativa Automática para Anexar ao Processo Administrativo (Art. 6º da IN SEGES/ME nº 65/2021):</strong>
         <span id="resJustification" class="text-slate-600">—</span>
       </div>
 
@@ -692,14 +695,14 @@
       </div>
 
       <!-- ALERTA DINÂMICO DE FRACIONAMENTO DE DESPESA (ART. 75, § 1º LEI 14.133/2021) -->
-      <div id="fracionamentoWarningBanner" class="hidden bg-rose-50 border-2 border-rose-300 rounded-xl p-3.5 space-y-1.5 text-xs text-rose-900 shadow-sm animate-pulse" role="alert" aria-live="assertive">
+      <div id="fracionamentoWarningBanner" class="hidden bg-rose-50 border-2 border-rose-300 rounded-xl p-3.5 space-y-1.5 text-xs text-rose-900 shadow-sm" role="alert" aria-live="assertive">
         <div class="flex items-center gap-2 font-black uppercase text-rose-950">
           <span class="text-lg">🚨</span>
           <span>Alerta de Controle Interno: Risco de Fracionamento de Despesa (Art. 75, § 1º)</span>
         </div>
         <p class="text-[11px] leading-relaxed">
           O valor acumulado neste lote para o PDM/Classe <strong id="fracPdmNome">—</strong> totaliza <strong id="fracValorTotal" class="font-mono font-black text-rose-950">R$ 0,00</strong>.
-          Caso a UASG possua outras contratações diretas deste mesmo objeto no exercício corrente que somadas ultrapassem o teto legal de <strong>R$ 62.725,59</strong> (Decreto Federal nº 11.871/2023), a dispensa será vedada pelo TCU, sendo obrigatória a instauração de <strong>Pregão Eletrônico</strong>.
+          Caso a UASG possua outras contratações diretas deste mesmo objeto no exercício corrente que somadas ultrapassem o teto legal de <strong id="fracTetoLegalValor">R$ 62.725,59</strong> (<span id="fracDecretoVigente">Decreto Federal nº 12.343/2024, c/c Art. 182 da Lei nº 14.133/2021</span>), a dispensa será vedada pelo TCU, sendo obrigatória a instauração de <strong>Pregão Eletrônico</strong>.
         </p>
       </div>
 
@@ -728,7 +731,7 @@
         <div class="flex items-center gap-2.5">
           <span class="text-xl">🏷️</span>
           <div>
-            <span class="text-[10px] uppercase font-bold text-slate-500 block">Classificação Não Fracionamento (Art. 75, § 1º da Lei 14.133/2021)</span>
+            <span class="text-[10px] uppercase font-bold text-slate-500 block">Classificação para Controle de Não Fracionamento (Art. 75, § 1º da Lei nº 14.133/2021)</span>
             <div class="mt-0.5">
               <strong class="text-slate-900" id="resPdmTitle">PDM: —</strong>
               <span class="text-slate-400 mx-1.5">•</span>
@@ -2748,13 +2751,15 @@
       const vQuotes = rep.valid_quotes || [];
       const pQuotes = rep.purged_quotes || [];
 
-      // Alerta de Justificativa Circunstanciada (< 3 cotações)
+      // Alerta de Justificativa Circunstanciada (< 3 cotações) com pluralização dinâmica formal
       const justCard = document.getElementById("justificativaCircunstanciadaCard");
       if (justCard) {
         if (vQuotes.length < 3) {
           justCard.classList.remove("hidden");
           const countEl = document.getElementById("justQuoteCount");
+          const labelEl = document.getElementById("justQuoteLabel");
           if (countEl) countEl.textContent = vQuotes.length;
+          if (labelEl) labelEl.textContent = vQuotes.length === 1 ? "cotação válida" : "cotações válidas";
         } else {
           justCard.classList.add("hidden");
         }
@@ -5469,22 +5474,27 @@
       });
 
       try {
-        const resp = await fetch("/api/v1/prices/batch-research", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            items: selectedItems.map(it => ({
-              code: it.code,
-              type: it.type || "MATERIAL",
-              description: it.description || "",
-              unit: it.unit === "UN" ? "" : (it.unit || ""),
-              qty: it.qty || 1
-            })),
-            months_back: 12
-          })
-        });
+        let resp = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          resp = await fetch("/api/v1/prices/batch-research", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              items: selectedItems.map(it => ({
+                code: it.code,
+                type: it.type || "MATERIAL",
+                description: it.description || "",
+                unit: it.unit === "UN" ? "" : (it.unit || ""),
+                qty: it.qty || 1
+              })),
+              months_back: 12
+            })
+          });
+          if (resp.ok || ![429, 502, 503, 504].includes(resp.status)) break;
+          await new Promise(r => setTimeout(r, 700 * Math.pow(2, attempt)));
+        }
         const data = await resp.json();
-        hideCountdownProgress();
+        hideCountdownProgress(false);
         if (btn) btn.disabled = false;
 
         if (!resp.ok || data.status !== "SUCCESS") {
@@ -5523,6 +5533,43 @@
       window.lastResearchSignature = batchSignature(batchTrayItems.filter(it => it.selected !== false));
       renderBatchTray();
       renderBatchResults();
+    }
+
+    async function retrySingleFailedBatchItem(idx) {
+      const r = batchResearchResults[idx];
+      if (!r) return;
+      showAppNotification(`Reprocessando item ${r.code} no Compras.gov.br (12M/24M)...`, "info");
+      try {
+        const resp = await fetch("/api/v1/prices/batch-research", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: [{
+              code: r.code,
+              type: r.type || "MATERIAL",
+              description: (r.report && r.report.item_description) || "",
+              unit: r.unit === "UN" ? "" : (r.unit || ""),
+              qty: r.qty || 1
+            }],
+            months_back: 12
+          })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.results && data.results[0]) {
+          const updated = data.results[0];
+          updated.item_index = r.item_index || (idx + 1);
+          batchResearchResults[idx] = updated;
+          renderBatchResults();
+          if (updated.has_data) {
+            inspectBatchItem(idx, false);
+            showAppNotification(`Item ${r.code} recuperado com sucesso!`, "success");
+          } else {
+            showAppNotification(`Item ${r.code} permanece sem compras homologadas (12M/24M).`, "warn");
+          }
+        }
+      } catch (err) {
+        showAppNotification("Falha ao reprocessar item: " + err.message, "error");
+      }
     }
 
     function updateWorkflowStepper() {
@@ -5674,12 +5721,18 @@
                   <span class="text-[10px] font-bold text-rose-700 font-mono">${qty} ${unit}</span>
                 </div>
                 <strong class="block text-xs text-rose-950 line-clamp-2">${rep.item_description || `Item ${code}`}</strong>
-                <div class="flex items-center justify-between pt-1 border-t border-rose-200/60">
-                  <span class="text-[10px] font-bold text-[#9e4747]">🚫 Sem compras nos últimos 12m/24m</span>
-                  <button onclick="event.stopPropagation(); removeResearchedItem(${idx});"
-                    class="text-[#9e4747] hover:text-white hover:bg-[#9e4747] font-bold text-[10px] px-2 py-0.5 rounded border border-[#9e4747]/40 transition">
-                    🗑️ Remover
-                  </button>
+                <div class="flex items-center justify-between pt-1 border-t border-rose-200/60 gap-1">
+                  <span class="text-[10px] font-bold text-[#9e4747]">🚫 Sem compras (12m/24m)</span>
+                  <div class="flex items-center gap-1">
+                    <button onclick="event.stopPropagation(); retrySingleFailedBatchItem(${idx});"
+                      class="text-slate-700 hover:text-white hover:bg-slate-700 font-bold text-[10px] px-2 py-0.5 rounded border border-slate-300 bg-white transition" title="Tentar consultar este item novamente no Compras.gov.br">
+                      🔄 Tentar
+                    </button>
+                    <button onclick="event.stopPropagation(); removeResearchedItem(${idx});"
+                      class="text-[#9e4747] hover:text-white hover:bg-[#9e4747] font-bold text-[10px] px-2 py-0.5 rounded border border-[#9e4747]/40 transition">
+                      🗑️ Remover
+                    </button>
+                  </div>
                 </div>
               </div>
             `;
@@ -7692,34 +7745,54 @@
 
     // =========================================================================
     // CONTROLE INTERNO: ALERTA DE FRACIONAMENTO (ART. 75, § 1º LEI 14.133/2021)
+    // Parametrizado por Exercício Fiscal (espelho de src/domain/config/legalThresholds.ts)
     // =========================================================================
+    window.GOVTECH_LEGAL_THRESHOLDS = {
+      2023: { decree: "Decreto Federal nº 11.317/2022", incisoI: 114416.65, incisoII: 57208.33, warningRatio: 0.7 },
+      2024: { decree: "Decreto Federal nº 11.871/2023", incisoI: 119812.02, incisoII: 59906.02, warningRatio: 0.7 },
+      2025: { decree: "Decreto Federal nº 12.343/2024", incisoI: 125451.15, incisoII: 62725.59, warningRatio: 0.7 },
+      2026: { decree: "Decreto Federal nº 12.343/2024, c/c Art. 182 da Lei nº 14.133/2021", incisoI: 125451.15, incisoII: 62725.59, warningRatio: 0.7 }
+    };
+
+    function getActiveLegalThresholdConfig(year) {
+      const y = Number(year) || new Date().getFullYear() || 2026;
+      return window.GOVTECH_LEGAL_THRESHOLDS[y] || window.GOVTECH_LEGAL_THRESHOLDS[2026];
+    }
+
     function checkFracionamentoRisk(rep, qty) {
       const banner = document.getElementById("fracionamentoWarningBanner");
       if (!banner || !rep) return;
 
-      const TETO_DISPENSA = 62725.59;
+      const cfg = getActiveLegalThresholdConfig(2026);
+      const tetoDispensa = cfg.incisoII;
       const pdmNome = rep.nome_pdm || "";
       const classeNome = rep.nome_classe || "";
 
-      let acumuladoPdm = 0;
+      // Somatório monetário seguro em centavos inteiros (evita erro IEEE-754)
+      let acumuladoCents = 0;
       batchTrayItems.forEach(it => {
         const r = getBatchItemReportByKey(it.key, it.code, it.type);
         if (r && (r.nome_pdm === pdmNome || (pdmNome && r.nome_pdm && r.nome_pdm.toLowerCase() === pdmNome.toLowerCase()))) {
           const uPrice = Number(r.final_estimated_unit_price || 0);
-          acumuladoPdm += (it.qty || 1) * uPrice;
+          acumuladoCents += Math.round((Number(it.qty || 1) * uPrice) * 100);
         }
       });
 
-      if (acumuladoPdm === 0) {
-        acumuladoPdm = (qty || 1) * Number(rep.final_estimated_unit_price || 0);
+      if (acumuladoCents === 0) {
+        acumuladoCents = Math.round((Number(qty || 1) * Number(rep.final_estimated_unit_price || 0)) * 100);
       }
+      const acumuladoPdm = acumuladoCents / 100;
 
-      if (acumuladoPdm > (TETO_DISPENSA * 0.7)) {
+      if (acumuladoPdm > (tetoDispensa * cfg.warningRatio)) {
         banner.classList.remove("hidden");
         const pdmEl = document.getElementById("fracPdmNome");
         const valEl = document.getElementById("fracValorTotal");
+        const tetoEl = document.getElementById("fracTetoLegalValor");
+        const decEl = document.getElementById("fracDecretoVigente");
         if (pdmEl) pdmEl.textContent = pdmNome || classeNome || "Itens da mesma natureza";
         if (valEl) valEl.textContent = `R$ ${acumuladoPdm.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        if (tetoEl) tetoEl.textContent = `R$ ${tetoDispensa.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        if (decEl) decEl.textContent = cfg.decree;
       } else {
         banner.classList.add("hidden");
       }

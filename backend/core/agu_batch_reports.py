@@ -1060,7 +1060,8 @@ def build_consolidated_justificativa_docx_bytes(
         reasons = []
         n_valid = len(rep.get("valid_quotes") or [])
         if n_valid < 3:
-            reasons.append(f"Apenas {n_valid} cotação(ões) válida(s) (< 3 — Art. 6º, § 5º IN 65/2021)")
+            lbl_v = "1 cotação válida" if n_valid == 1 else f"{n_valid} cotações válidas"
+            reasons.append(f"Apenas {lbl_v} (< 3 — Art. 6º, § 5º IN 65/2021)")
         if is_item_extended_24m(it):
             reasons.append("Janela temporal ampliada (13 a 24 meses — ausência de contratações em 12M)")
         if reasons:
@@ -1157,7 +1158,8 @@ def build_consolidated_justificativa_pdf_bytes(
         reasons = []
         n_valid = len(rep.get("valid_quotes") or [])
         if n_valid < 3:
-            reasons.append(f"{n_valid} cotação(ões) válida(s) (< 3 — Art. 6º § 5º)")
+            lbl_v = "1 cotação válida" if n_valid == 1 else f"{n_valid} cotações válidas"
+            reasons.append(f"{lbl_v} (< 3 — Art. 6º § 5º)")
         if is_item_extended_24m(it):
             reasons.append("Janela ampliada 13-24 meses (sem registros em 12M)")
         if reasons:

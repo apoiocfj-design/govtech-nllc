@@ -1398,10 +1398,13 @@ def build_in65_justificativa_docx_bytes(
         r1.font.size = Pt(9.5)
 
     # 2. DAS COTAÇÕES VÁLIDAS OBTIDAS
+    lbl_obt = "1 cotação obtida" if n_quotes == 1 else f"{n_quotes} cotações obtidas"
+    lbl_val_apta = "1 cotação válida apta" if n_quotes == 1 else f"{n_quotes} cotações válidas aptas"
+    lbl_base_val = "na 1 cotação válida identificada" if n_quotes == 1 else f"nas {n_quotes} cotações válidas identificadas"
     p_s2 = doc.add_paragraph()
     p_s2.paragraph_format.space_before = Pt(12)
     p_s2.paragraph_format.space_after = Pt(4)
-    p_s2.add_run(f"2. COTAÇÕES VÁLIDAS IDENTIFICADAS ({n_quotes} cotação(ões) obtida(s))").font.bold = True
+    p_s2.add_run(f"2. COTAÇÕES VÁLIDAS IDENTIFICADAS ({lbl_obt})").font.bold = True
 
     t_quotes = doc.add_table(rows=1 + max(1, n_quotes), cols=5)
     t_quotes.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -1450,7 +1453,7 @@ def build_in65_justificativa_docx_bytes(
         ("I. Da Abrangência da Pesquisa Pública:",
          "A pesquisa de preços foi conduzida de forma ampla e irrestrita nos bancos de dados oficiais do Governo Federal (Compras.gov.br e Portal Nacional de Contratações Públicas - PNCP), alcançando contratações executadas por órgãos e entidades da Administração Pública em âmbito nacional no período regulamentar de até 1 (um) ano."),
         ("II. Da Escassez de Registros Similares no Mercado Público:",
-         f"Não obstante a busca exaustiva efetuada, constatou-se a disponibilidade de apenas {n_quotes} cotação(ões) válida(s) apta(s) a compor a cesta de preços para o item especificado, em virtude da sazonalidade, especificidade do objeto demandado ou ausência de contratações análogas recentes por outros entes públicos."),
+         f"Não obstante a busca exaustiva efetuada, constatou-se a disponibilidade de apenas {lbl_val_apta} a compor a cesta de preços para o item especificado, em virtude da sazonalidade, especificidade do objeto demandado ou ausência de contratações análogas recentes por outros entes públicos."),
         ("III. Da Razoabilidade e Economicidade dos Preços Obtidos:",
          f"Os valores apurados ({_format_brl(unit_price)} un.) foram submetidos à análise crítica de exequibilidade e compatibilidade mercadológica, não se vislumbrando qualquer indício de sobrepreço ou distorção econômica, atendendo rigorosamente aos princípios da economicidade, eficiência e vantajosidade insculpidos no Art. 5º da Lei nº 14.133/2021."),
         ("IV. Da Necessidade Inadiável do Atendimento:",
@@ -1479,8 +1482,8 @@ def build_in65_justificativa_docx_bytes(
     p_dec.paragraph_format.space_after = Pt(12)
     r_dec = p_dec.add_run(
         f"Diante dos elementos técnicos e fáticos coligidos e com esteio no permissivo do Art. 6º, § 5º da Instrução Normativa SEGES/ME nº 65/2021, "
-        f"AUTORIZO e RATIFICO, em caráter excepcional e devidamente circunstanciado, a adoção do preço estimado com base na(s) {n_quotes} cotação(ões) "
-        f"válida(s) identificada(s), fixando o valor de referência em {_format_brl(unit_price)} por unidade (total: {_format_brl(total_price)}), "
+        f"AUTORIZO e RATIFICO, em caráter excepcional e devidamente circunstanciado, a adoção do preço estimado com base {lbl_base_val}, "
+        f"fixando o valor de referência em {_format_brl(unit_price)} por unidade (total: {_format_brl(total_price)}), "
         f"determinando o regular prosseguimento da instrução processual."
     )
     r_dec.font.bold = True
@@ -1713,7 +1716,10 @@ def build_in65_justificativa_pdf_bytes(
     story.append(Spacer(1, 2.5 * mm))
 
     # SEÇÃO 2: COTAÇÕES
-    story.append(Paragraph(f"2. COTAÇÕES VÁLIDAS IDENTIFICADAS ({n_quotes} cotação(ões) obtida(s))", st_sec_title))
+    lbl_obt_pdf = "1 cotação obtida" if n_quotes == 1 else f"{n_quotes} cotações obtidas"
+    lbl_val_pdf = "1 cotação válida apta" if n_quotes == 1 else f"{n_quotes} cotações válidas aptas"
+    lbl_base_pdf = "na 1 cotação obtida" if n_quotes == 1 else f"nas {n_quotes} cotações obtidas"
+    story.append(Paragraph(f"2. COTAÇÕES VÁLIDAS IDENTIFICADAS ({lbl_obt_pdf})", st_sec_title))
     story.append(Spacer(1, 1 * mm))
 
     quotes_data = [
@@ -1752,7 +1758,7 @@ def build_in65_justificativa_pdf_bytes(
 
     motivos = [
         "<b>I. Da Abrangência da Pesquisa:</b> A pesquisa de preços foi conduzida de forma ampla e irrestrita nos bancos de dados oficiais do Governo Federal (Compras.gov.br e PNCP), abrangendo todo o território nacional no período regulamentar de até 1 ano.",
-        f"<b>II. Da Escassez de Registros Similares:</b> Constatou-se a disponibilidade de apenas {n_quotes} cotação(ões) válida(s) apta(s) a compor a cesta de preços para o item especificado, em virtude da sazonalidade, especificidade técnica ou ausência de compras análogas recentes por outros entes.",
+        f"<b>II. Da Escassez de Registros Similares:</b> Constatou-se a disponibilidade de apenas {lbl_val_pdf} a compor a cesta de preços para o item especificado, em virtude da sazonalidade, especificidade técnica ou ausência de compras análogas recentes por outros entes.",
         f"<b>III. Da Vantajosidade e Razoabilidade:</b> Os valores apurados ({_format_brl(unit_price)} un.) foram submetidos à análise crítica de exequibilidade e compatibilidade mercadológica, inexistindo indícios de sobrepreço, resguardando a economicidade e vantajosidade (Art. 5º da Lei 14.133/2021).",
         "<b>IV. Da Necessidade Inadiável:</b> A paralisação do procedimento acarretaria prejuízo ou desabastecimento das atividades finalísticas e operacionais desta Organização Militar.",
     ]
@@ -1768,7 +1774,7 @@ def build_in65_justificativa_pdf_bytes(
     dec_txt = (
         f"Diante do exposto e com fundamento no Art. 6º, § 5º da Instrução Normativa SEGES/ME nº 65/2021, "
         f"<b>AUTORIZO e RATIFICO</b>, em caráter excepcional e devidamente circunstanciado, a adoção do preço estimado "
-        f"com base na(s) {n_quotes} cotação(ões) obtida(s), fixando o valor de referência em <b>{_format_brl(unit_price)}</b> "
+        f"com base {lbl_base_pdf}, fixando o valor de referência em <b>{_format_brl(unit_price)}</b> "
         f"por unidade (valor total: <b>{_format_brl(total_price)}</b>), determinando o prosseguimento regular da instrução processual."
     )
     story.append(Paragraph(dec_txt, st_body))
@@ -1854,6 +1860,12 @@ def build_consolidated_in65_excel_bytes(
     dir_al = Alignment(horizontal="right", vertical="center", wrap_text=True)
     hdr_font = Font(bold=True, size=9.5, color="FFFFFF")
     link_font = Font(color="1D4ED8", underline="single", size=9)
+
+    def _safe_cell_val(v):
+        """Blindagem contra CSV/Excel Formula Injection (OWASP) em strings externas."""
+        if isinstance(v, str) and v and v[0] in ("=", "+", "-", "@", "\t", "\r"):
+            return f"'{v}"
+        return v
 
     def _style_title(ws, row_idx, text, end_col, bold=True, align="center", height=22, size=11):
         ws.merge_cells(f"A{row_idx}:{end_col}{row_idx}")
@@ -1984,7 +1996,7 @@ def build_consolidated_in65_excel_bytes(
             cv_val, metodo, unit_est, item_total,
         ]
         for col_idx, val in enumerate(row_vals, 1):
-            c = ws_resumo.cell(r_num, col_idx, val)
+            c = ws_resumo.cell(r_num, col_idx, _safe_cell_val(val))
             c.border = B
             c.alignment = esq if col_idx in (3, 4) else (dir_al if col_idx in (9, 10, 13, 14) else ctr)
             if col_idx in (9, 10, 13, 14):
@@ -2066,7 +2078,7 @@ def build_consolidated_in65_excel_bytes(
                 id_cmp, dt_q, u_cap, q_price, uri or "—", compras_direct_q or "—",
             ]
             for ci, val in enumerate(row_all, 1):
-                c = ws_all.cell(all_row_idx, ci, val)
+                c = ws_all.cell(all_row_idx, ci, _safe_cell_val(val))
                 c.border = B
                 c.alignment = esq if ci in (3, 4, 7, 9, 13, 21, 22) else (dir_al if ci == 20 else ctr)
                 if ci == 20:

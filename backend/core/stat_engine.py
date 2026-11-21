@@ -439,11 +439,14 @@ class IN65StatisticalEngine:
                 f"ao art. 6º da IN SEGES/ME nº 65/2021."
             )
 
+        n_val = sanitized_metrics.sample_size
+        lbl_val = "1 cotação válida" if n_val == 1 else f"{n_val} cotações válidas"
+        verb_obt = "Obteve-se apenas 1 cotação válida" if n_val == 1 else f"Obtiveram-se apenas {lbl_val}"
         min_quotes_note = (
-            f"Atendido o requisito mínimo legal de 3 (três) preços válidos ({sanitized_metrics.sample_size} cotações validadas), "
+            f"Atendido o requisito mínimo legal de 3 (três) preços válidos ({n_val} cotações validadas), "
             f"conforme art. 6º, § 5º da IN SEGES/ME nº 65/2021."
             if has_min_three
-            else f"ATENÇÃO AUDITORIA: Obtiveram-se apenas {sanitized_metrics.sample_size} cotação(ões) válida(s), exigindo justificativa circunstanciada da autoridade competente (art. 6º, § 5º da IN 65/2021)."
+            else f"ATENÇÃO AUDITORIA: {verb_obt}, exigindo justificativa circunstanciada da autoridade competente (art. 6º, § 5º da IN 65/2021)."
         )
 
         justification = (
@@ -564,10 +567,12 @@ class IN65StatisticalEngine:
                 final_price = round_2(sanitized_metrics.median or 0.0)
                 param_reason = f"Amostra heterogênea (CV {cv_final:.2f}% > {self.cv_threshold_percent:.0f}%), adotando-se a MEDIANA (R$ {final_price:.2f})."
 
+        n_val_c = sanitized_metrics.sample_size
+        lbl_val_c = "1 cotação válida" if n_val_c == 1 else f"{n_val_c} cotações válidas"
         min_quotes_note = (
-            f"Atendido o requisito mínimo de 3 preços válidos ({sanitized_metrics.sample_size} cotações), conforme Art. 6º, § 5º da IN 65/2021."
+            f"Atendido o requisito mínimo de 3 preços válidos ({n_val_c} cotações), conforme Art. 6º, § 5º da IN 65/2021."
             if has_min_three
-            else f"ATENÇÃO AUDITORIA: Amostra com {sanitized_metrics.sample_size} cotação(ões) válida(s), exigindo despacho circunstanciado da autoridade (Art. 6º, § 5º da IN 65/2021)."
+            else f"ATENÇÃO AUDITORIA: Amostra com {lbl_val_c}, exigindo despacho circunstanciado da autoridade (Art. 6º, § 5º da IN 65/2021)."
         )
 
         curation_desc = "Cesta de preços processada com curadoria analítica (Art. 6º, § 2º da IN 65/2021). "
