@@ -73,6 +73,22 @@
     .font-mono, .tabular-nums, td, #batchGrandTotal, #resCV, #resRawCV, #resMean, #resMedian, #resTotalValue, #fracValorTotal {
       font-variant-numeric: tabular-nums;
     }
+    /* Sticky table headers + zebra striping suave para leitura de lotes extensos (50-150+ itens) */
+    table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background-color: #f8fafc;
+    }
+    table tbody tr:nth-child(even) {
+      background-color: rgba(248, 250, 252, 0.65);
+    }
+    .irp-uf-pill-active {
+      background-color: #1e2d3d !important;
+      color: #fcd34d !important;
+      border-color: #c5a365 !important;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.15);
+    }
     @media (max-width: 640px) {
       button { min-height: 36px; }
     }
@@ -176,31 +192,47 @@
   <!-- ===================================================================== -->
   <!-- BARRA SUPERIOR DO APLICATIVO (MENU UNIFICADO + LINK COMPARTILHÁVEL)    -->
   <!-- ===================================================================== -->
-  <header class="bg-[#1e2d3d] text-white px-6 py-3.5 shadow-md border-b border-[#27394d] sticky top-0 z-40 no-print">
-    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
-      <div class="flex items-center gap-4">
-        <!-- ÍCONE MAIOR À ESQUERDA DO TÍTULO DO APP (TRANSPARENTE E RESPONSIVO) -->
-        <img src="/app_logo_transparent.png" alt="Sistema GovTech" class="w-14 h-14 md:w-16 md:h-16 object-contain drop-shadow-lg shrink-0" />
+  <header class="bg-[#1e2d3d]/95 backdrop-blur-md text-white px-4 sm:px-6 py-2.5 shadow-md border-b border-[#27394d] sticky top-0 z-40 no-print">
+    <div class="max-w-[1720px] mx-auto flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <img src="/app_logo_transparent.png" alt="Sistema GovTech" class="w-11 h-11 md:w-12 md:h-12 object-contain drop-shadow-md shrink-0" />
         <div>
-          <span class="font-black tracking-tight text-base md:text-lg block text-white uppercase">SISTEMA GOVTECH • INTELIGÊNCIA EM LICITAÇÕES</span>
-          <div class="flex flex-wrap items-center gap-2 text-xs text-slate-300 mt-1">
-            <span class="text-[11px] text-[#c5a365] font-black uppercase tracking-wider">OM / Órgão:</span>
+          <span class="font-black tracking-tight text-sm md:text-base block text-white uppercase leading-tight">SISTEMA GOVTECH • INTELIGÊNCIA EM LICITAÇÕES</span>
+          <div class="flex flex-wrap items-center gap-1.5 text-xs text-slate-300 mt-0.5">
+            <span class="text-[10px] text-[#c5a365] font-black uppercase tracking-wider">OM / Órgão:</span>
             <input
               id="userGlobalOrgName"
               type="text"
-              placeholder="Digite o nome da sua Organização Militar ou Órgão..."
+              placeholder="Digite a sua OM ou Órgão..."
               oninput="updateGlobalOrgName(this.value)"
-              class="bg-[#27394d] border border-[#334960] hover:border-[#c5a365] focus:border-[#c5a365] rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-400 font-bold w-64 md:w-80 outline-none transition"
+              class="bg-[#27394d] border border-[#334960] hover:border-[#c5a365] focus:border-[#c5a365] rounded-lg px-2 py-0.5 text-[11px] text-white placeholder-slate-400 font-bold w-56 md:w-72 outline-none transition"
               title="Digite a sua OM para ser aplicada automaticamente em todos os relatórios em Word, PDF e Excel"
             />
           </div>
         </div>
       </div>
 
+      <!-- ABAS DO APP (SEGMENTED CONTROL LIMPO COM CONTADOR DO LOTE) -->
+      <div class="flex flex-wrap items-center gap-1 bg-[#27394d] p-1 rounded-xl border border-[#334960]/70 shadow-inner">
+        <button id="tabBtnPrices" onclick="openTab('PRICES')" class="px-3 py-1.5 rounded-lg text-xs font-black bg-[#c5a365] text-[#1e2d3d] shadow border border-[#c9962b] transition flex items-center gap-1.5">
+          <span>🔍 1. Pesquisa de Preços</span>
+          <span id="headerBatchBadge" class="hidden px-1.5 py-0.2 rounded-full text-[10px] font-black bg-[#1e2d3d] text-amber-300 tabular-nums">0</span>
+        </button>
+        <button id="tabBtnRAG" onclick="openTab('RAG')" class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-[#334960] transition">
+          ⚖️ 2. Minutas & Auditoria
+        </button>
+        <button id="tabBtnLinks" onclick="openTab('LINKS')" class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-[#334960] transition">
+          🏛️ 3. Consulta & Certidões
+        </button>
+        <button id="tabBtnIRP" onclick="openTab('IRP')" class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-[#334960] transition">
+          📡 4. Radar IRP & SRP
+        </button>
+      </div>
+
       <!-- BOTÕES DE ACESSIBILIDADE GOVERNAMENTAL E TRILHA DE AUDITORIA -->
-      <div class="flex items-center gap-2">
-        <button onclick="toggleHighContrast()" id="btnHighContrast" class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-[#27394d] hover:bg-[#334960] text-slate-200 border border-[#334960] transition flex items-center gap-1.5" title="Ativar/desativar modo de alto contraste (Acessibilidade eMAG / WCAG 2.1)" aria-label="Alternar modo de alto contraste">
-          <span>👁️</span> <span class="hidden sm:inline">Alto Contraste</span>
+      <div class="flex items-center gap-1.5">
+        <button onclick="toggleHighContrast()" id="btnHighContrast" class="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-[#27394d] hover:bg-[#334960] text-slate-200 border border-[#334960] transition flex items-center gap-1" title="Ativar/desativar modo de alto contraste (Acessibilidade eMAG / WCAG 2.1)" aria-label="Alternar modo de alto contraste">
+          <span>👁️</span> <span class="hidden xl:inline">Contraste</span>
         </button>
         <button onclick="adjustFontSize(1)" class="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-[#27394d] hover:bg-[#334960] text-slate-200 border border-[#334960] transition" title="Aumentar tamanho do texto" aria-label="Aumentar texto">
           A+
@@ -208,24 +240,8 @@
         <button onclick="adjustFontSize(-1)" class="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-[#27394d] hover:bg-[#334960] text-slate-200 border border-[#334960] transition" title="Diminuir tamanho do texto" aria-label="Diminuir texto">
           A-
         </button>
-        <button onclick="openAuditTrailModal()" class="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-[#c5a365]/20 hover:bg-[#c5a365]/35 text-amber-300 border border-[#c5a365]/50 transition flex items-center gap-1.5 shadow-2xs" title="Abrir Trilha de Auditoria Imutável com Hash SHA-256 (TCU/CGU)" aria-label="Abrir trilha de auditoria imutável">
-          <span>📜</span> <span class="hidden md:inline">Trilha de Auditoria (SHA-256)</span>
-        </button>
-      </div>
-
-      <!-- ABAS DO APP (HARMONIZADAS COM IDENTIDADE VISUAL SGCE) -->
-      <div class="flex flex-wrap items-center gap-1.5 bg-[#27394d] p-1.5 rounded-xl border border-[#334960]/60 shadow-inner">
-        <button id="tabBtnPrices" onclick="openTab('PRICES')" class="px-3.5 py-2 rounded-lg text-xs font-black bg-[#c5a365] text-[#1e2d3d] shadow border border-[#c9962b] transition">
-          🔍 1. Pesquisa de Preços (IN 65)
-        </button>
-        <button id="tabBtnRAG" onclick="openTab('RAG')" class="px-3.5 py-2 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-[#334960] transition">
-          ⚖️ 2. Minutas & Auditoria RAG (Editor Online)
-        </button>
-        <button id="tabBtnLinks" onclick="openTab('LINKS')" class="px-3.5 py-2 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-[#334960] transition">
-          🏛️ 3. Consulta Detalhada & Certidões (Gov.br)
-        </button>
-        <button id="tabBtnIRP" onclick="openTab('IRP')" class="px-3.5 py-2 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-[#334960] transition">
-          📡 4. Radar de IRP (Abertas & Em Andamento)
+        <button onclick="openAuditTrailModal()" class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-[#c5a365]/20 hover:bg-[#c5a365]/35 text-amber-300 border border-[#c5a365]/50 transition flex items-center gap-1 shadow-2xs" title="Abrir Trilha de Auditoria Imutável com Hash SHA-256 (TCU/CGU)" aria-label="Abrir trilha de auditoria imutável">
+          <span>📜</span> <span class="hidden lg:inline">Auditoria</span>
         </button>
       </div>
     </div>
@@ -1239,7 +1255,7 @@
         <button onclick="setIRPTermAndSearch('pneu')" class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-200 transition">🛞 Pneus</button>
         <button onclick="setIRPTermAndSearch('')" class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-500 font-semibold border border-slate-200 transition">✖️ Limpar Termo</button>
       </div>
-      <div class="flex flex-wrap items-center gap-1 pt-1 text-[10px] text-slate-500 border-t border-slate-100">
+      <div id="irpQuickUfBar" class="flex flex-wrap items-center gap-1 pt-1 text-[10px] text-slate-500 border-t border-slate-100">
         <span class="font-bold text-slate-400 mr-1">UFs Rápidas:</span>
         <button onclick="setIRPUfAndSearch('')" class="px-2 py-0.5 rounded bg-slate-100 hover:bg-[#1e2d3d] hover:text-white font-bold border border-slate-200 transition">Todas</button>
         <button onclick="setIRPUfAndSearch('RJ')" class="px-2 py-0.5 rounded bg-slate-100 hover:bg-[#1e2d3d] hover:text-white font-bold border border-slate-200 transition">RJ</button>
@@ -1296,6 +1312,9 @@
         <div class="text-sm font-bold text-slate-700">Nenhuma IRP encontrada com os filtros selecionados</div>
         <div class="text-xs text-slate-500">Tente buscar por um termo mais amplo ou selecionar "Todas as IRPs" no seletor de situação.</div>
       </div>
+
+      <!-- Resumo de Filtros Ativos -->
+      <div id="irpActiveFilterSummary" class="hidden flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-[11px] font-semibold text-slate-600"></div>
 
       <!-- Container de Cards -->
       <div id="irpCardsContainer" class="space-y-3"></div>
@@ -5393,6 +5412,14 @@
     }
 
     function renderBatchTray() {
+      try {
+        const hdrBadge = document.getElementById("headerBatchBadge");
+        if (hdrBadge) {
+          const n = Array.isArray(batchItems) ? batchItems.length : 0;
+          hdrBadge.textContent = String(n);
+          hdrBadge.classList.toggle("hidden", n === 0);
+        }
+      } catch (_) {}
       saveBatchToLocalCache();
       const countBadge = document.getElementById("batchCountBadge");
       const wfBadge = document.getElementById("wfBatchBadge");
@@ -6886,9 +6913,21 @@
       executeIRPSearch(1);
     }
 
+    function syncIrpQuickUfPills(activeUf) {
+      const bar = document.getElementById("irpQuickUfBar");
+      if (!bar) return;
+      const target = (activeUf || "").toUpperCase();
+      bar.querySelectorAll("button").forEach(btn => {
+        const label = (btn.textContent || "").trim().toUpperCase();
+        const isMatch = (target === "" && label === "TODAS") || (target !== "" && label === target);
+        btn.classList.toggle("irp-uf-pill-active", isMatch);
+      });
+    }
+
     function setIRPUfAndSearch(ufCode) {
       const sel = document.getElementById("irpUfSelect");
       if (sel) sel.value = ufCode || "";
+      syncIrpQuickUfPills(ufCode);
       executeIRPSearch(1);
     }
 
@@ -6936,6 +6975,15 @@
         }
 
         irpTotalRecords = data.total || data.items.length;
+        syncIrpQuickUfPills(uf);
+        const sumEl = document.getElementById("irpActiveFilterSummary");
+        if (sumEl) {
+          const ufLbl = uf ? `UF: ${uf}` : "UF: Todas (Brasil)";
+          const esfMap = { "": "Todas as Esferas", F: "Federal", E: "Estadual", M: "Municipal", D: "Distrital" };
+          const esfLbl = esfMap[esfera] || "Todas as Esferas";
+          sumEl.innerHTML = `<span>Exibindo <strong>${data.items.length}</strong> de <strong>${irpTotalRecords.toLocaleString("pt-BR")}</strong> oportunidades no PNCP</span><span class="flex items-center gap-1.5"><span class="px-2 py-0.5 rounded-md bg-white border border-slate-200 font-bold text-[#1e2d3d]">${ufLbl}</span><span class="px-2 py-0.5 rounded-md bg-white border border-slate-200 font-bold text-slate-700">${esfLbl}</span></span>`;
+          sumEl.classList.remove("hidden");
+        }
         renderIRPCards(data.items, irpTotalRecords);
         updateIRPMetricsFromItems(data.items, irpTotalRecords);
 
