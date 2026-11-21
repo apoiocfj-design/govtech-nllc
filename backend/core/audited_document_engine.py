@@ -419,9 +419,10 @@ class DocumentLayoutParser:
                 doc_structure["orgao"] = line
                 continue
 
-            # Título principal (ex: "Termo de Referência 37/2026" ou fonte >= 15pt)
+            # Título principal (ex: "Termo de Referência 37/2026" ou artefatos combinados no mesmo PDF)
             if re.match(r"^(Estudo Técnico Preliminar|Termo de Referência|Documento de Formalização da Demanda|Edital|Aviso de Contratação)\s*([\d/\-]+)?", line, re.I):
-                doc_structure["title"] = line
+                if not doc_structure.get("title") or doc_structure["title"] == "TERMO DE REFERÊNCIA (COMPRAS.GOV.BR)":
+                    doc_structure["title"] = line
                 low_l = line.lower()
                 if "estudo técnico" in low_l:
                     doc_structure["doc_type"] = "ETP"
@@ -431,6 +432,20 @@ class DocumentLayoutParser:
                     doc_structure["doc_type"] = "DFD"
                 elif "aviso" in low_l:
                     doc_structure["doc_type"] = "AVISO_DISPENSA"
+                if current_clause:
+                    elements.append(current_clause)
+                    current_clause = None
+                elements.append({
+                    "type": "PARAGRAPH",
+                    "text": line,
+                    "original_text": line,
+                    "section_num": current_section_num,
+                    "section_title": line,
+                    "page": pno,
+                    "style": {**style_meta, "is_bold": True},
+                    "modified": False,
+                    "diff_segments": [],
+                })
                 continue
 
             if "Número do processo:" in line:

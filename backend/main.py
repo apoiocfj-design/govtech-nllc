@@ -2069,6 +2069,45 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 self._send_json(500, {"error": f"Falha ao gerar Despacho de Saneamento: {exc}"})
             return
 
+        # 1C. Exportar Documento Original CORRIGIDO em Word (.DOCX) com Vermelho Tachado + Amarelo + Nota Explicativa Apensada
+        if parsed.path == "/api/v1/rag/export-corrected-docx-with-nota":
+            try:
+                data = json.loads(raw_body)
+                doc_session_id = str(data.get("doc_session_id") or "").strip()
+                session_data = document_session_store.get(doc_session_id) if doc_session_id else None
+                deep_audit = data.get("deep_audit") or {}
+                om_name = str(data.get("om_name") or "MARINHA DO BRASIL • CAPITANIA FLUVIAL DE JUAZEIRO (UASG 782340)").strip()
+
+                if session_data:
+                    base_structure = session_data["doc_structure"]
+                    original_bytes = session_data.get("original_bytes")
+                    base_title = session_data.get("filename") or base_structure.get("title") or "Minuta"
+                else:
+                    base_structure = data.get("doc_structure") or {"title": data.get("title", "Minuta_Auditada"), "elements": []}
+                    original_bytes = None
+                    base_title = base_structure.get("title") or "Minuta_Auditada"
+
+                try:
+                    from core.gemini_legal_auditor import build_corrected_docx_with_nota_explicativa
+                except ImportError:
+                    from gemini_legal_auditor import build_corrected_docx_with_nota_explicativa
+
+                out_bytes = build_corrected_docx_with_nota_explicativa(
+                    doc_structure=base_structure,
+                    deep_audit=deep_audit,
+                    original_bytes=original_bytes,
+                    om_name=om_name,
+                )
+                safe_title = re.sub(r"[^a-zA-Z0-9_-]", "_", os.path.splitext(str(base_title))[0])[:70] or "Minuta"
+                self._send_binary(
+                    out_bytes,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    f"{safe_title}_CORRIGIDO_Com_Nota_Explicativa.docx",
+                )
+            except Exception as exc:
+                self._send_json(500, {"error": f"Falha ao gerar Documento Corrigido com Nota Explicativa: {exc}"})
+            return
+
         # 2. Exportar Documento Word (.DOCX) — Preservação 100% da Diagramação Original + Amarelo/Vermelho Tachado
         if parsed.path == "/api/v1/rag/export-docx":
             try:

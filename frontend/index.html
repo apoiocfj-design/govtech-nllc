@@ -914,14 +914,14 @@
     <!-- CABEÇALHO DA ABA 2 -->
     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
       <div>
-        <h2 id="ragViewDocTitle" class="text-lg font-extrabold text-[#1b365d]">Auditor Jurídico Preventivo &amp; Checklist de Saneamento (Lei nº 14.133/2021, AGU &amp; TCU)</h2>
+        <h2 id="ragViewDocTitle" class="text-lg font-extrabold text-[#1b365d]">Auditor Jurídico Preventivo &amp; Correção Cirúrgica de Minutas (Lei nº 14.133/2021, AGU &amp; TCU)</h2>
         <p class="text-xs text-slate-500 mt-0.5">
-          Anexe os autos do processo (.PDF ou .DOCX — aceita arquivo único ou múltiplos artefatos: DFD, ETP, TR e Aviso) para auditoria completa nos 5 Eixos Obrigatórios e download simultâneo do Relatório em <strong>PDF e Word (.DOCX)</strong>.
+          Anexe os autos (.PDF ou .DOCX). O sistema audita nos 5 Eixos Obrigatórios, corrige o arquivo original marcando o erro em <del class="text-rose-700 font-bold">vermelho tachado</del> e o texto correto em <mark class="bg-yellow-200 px-1 font-bold">amarelo</mark> com <strong>Nota Explicativa apensada no Word</strong>, e baixa simultaneamente o <strong>Documento Corrigido (.DOCX)</strong> e o <strong>Relatório (.PDF)</strong>.
         </p>
       </div>
       <div id="ragTopActions" class="hidden flex flex-wrap items-center gap-2.5">
-        <button id="btnDownloadRelatorioTop" onclick="downloadDespachoSaneamentoBoth()" class="bg-[#1b365d] hover:bg-[#152840] text-white font-black px-4 py-2.5 rounded-xl text-xs shadow-md transition flex items-center gap-2 border border-[#c5a365]/40">
-          <span>📥</span> Baixar Relatório Completo (PDF + Word .DOCX)
+        <button id="btnDownloadRelatorioTop" onclick="downloadDespachoSaneamentoBoth()" class="bg-[#1b365d] hover:bg-[#152840] text-white font-black px-4 py-2.5 rounded-xl text-xs shadow-md transition flex items-center gap-2 border border-[#c5a365]/50">
+          <span>✨</span> Baixar Documento Corrigido (.DOCX c/ Nota Explicativa) + Relatório (.PDF)
         </button>
         <button onclick="resetRAGUpload()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3.5 py-2.5 rounded-xl text-xs border border-slate-300 transition flex items-center gap-1.5">
           <span>🔄</span> Novo Arquivo
@@ -4859,11 +4859,13 @@
         return;
       }
       const btn = document.getElementById("btnDownloadRelatorioTop");
-      if (btn) { btn.disabled = true; btn.innerHTML = "<span>⏳</span> Baixando Relatório (PDF + Word .DOCX)..."; }
+      if (btn) { btn.disabled = true; btn.innerHTML = "<span>⏳</span> Corrigindo Documento (.DOCX) e Gerando Relatório (.PDF)..."; }
       try {
         const omName = (document.getElementById("userGlobalOrgName")?.value || "MARINHA DO BRASIL  •  CAPITANIA FLUVIAL DE JUAZEIRO (UASG 782340)").trim();
         const procNum = String((deep.metadados_processo || {}).numero_processo || window.lastDeepAuditFilename || "Processo").replace(/[^a-zA-Z0-9_-]/g, "_");
-        const payload = {
+        const baseFile = String(window.lastDeepAuditFilename || procNum).replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_").substring(0, 60) || "Minuta";
+
+        const checklistPayload = {
           om_name: omName,
           processo_ref: window.lastDeepAuditFilename || "Processo Administrativo",
           metadados_processo: deep.metadados_processo || {},
@@ -4872,31 +4874,54 @@
           divergencias_catmat: deep.divergencias_catmat || [],
           roteiro_saneamento: deep.roteiro_saneamento || []
         };
-        for (const fmt of [
-          { path: "/api/v1/rag/despacho-saneamento/docx", fname: `Checklist_Saneamento_${procNum}.docx` },
-          { path: "/api/v1/rag/despacho-saneamento/pdf", fname: `Checklist_Saneamento_${procNum}.pdf` }
-        ]) {
-          const resp = await fetch(fmt.path, {
+
+        const correctedDocxPayload = {
+          doc_session_id: state.doc_session_id || null,
+          doc_structure: state.doc_structure || {
+            title: state.docTitle || "Minuta_Auditada",
+            original_format: state.original_format || "pdf",
+            elements: state.elements || [],
+            clauses: state.clauses || []
+          },
+          deep_audit: deep,
+          om_name: omName
+        };
+
+        const downloads = [
+          {
+            path: "/api/v1/rag/export-corrected-docx-with-nota",
+            body: correctedDocxPayload,
+            fname: `${baseFile}_CORRIGIDO_Com_Nota_Explicativa.docx`
+          },
+          {
+            path: "/api/v1/rag/despacho-saneamento/pdf",
+            body: checklistPayload,
+            fname: `Checklist_Saneamento_${procNum}.pdf`
+          }
+        ];
+
+        for (const item of downloads) {
+          const resp = await fetch(item.path, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(item.body)
           });
           if (!resp.ok) throw new Error("HTTP " + resp.status);
           const blob = await resp.blob();
           const url = URL.createObjectURL(blob);
           const a = document.createElement("a");
           a.href = url;
-          a.download = fmt.fname;
+          a.download = item.fname;
           document.body.appendChild(a);
           a.click();
           a.remove();
           setTimeout(() => URL.revokeObjectURL(url), 10000);
         }
-        showAppNotification("Relatório de Auditoria baixado simultaneamente em Word (.DOCX) e PDF (.PDF)!", "success");
+        showAppNotification("Documento Corrigido (.DOCX com Vermelho Tachado, Amarelo e Nota Explicativa) + Relatório (.PDF) baixados simultaneamente!", "success");
       } catch (err) {
-        showAppNotification("Erro ao baixar Relatório: " + (err.message || err), "error");
+        showAppNotification("Erro ao gerar arquivos: " + (err.message || err), "error");
       } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = "<span>📥</span> Baixar Relatório Completo (PDF + Word .DOCX)"; }
+        if (btn) { btn.disabled = false; btn.innerHTML = "<span>✨</span> Baixar Documento Corrigido (.DOCX c/ Nota Explicativa) + Relatório (.PDF)"; }
       }
     }
 

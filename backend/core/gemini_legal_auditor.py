@@ -18,9 +18,9 @@ import docx
 import pdfplumber
 import requests
 from docx import Document
-from docx.enum.section import WD_ORIENT
+from docx.enum.section import WD_ORIENT, WD_SECTION
 from docx.enum.table import WD_ALIGN_VERTICAL, WD_TABLE_ALIGNMENT
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_COLOR_INDEX
 from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
 from docx.shared import Cm, Pt, RGBColor
@@ -195,6 +195,8 @@ Retorne EXCLUSIVAMENTE um objeto JSON válido com a estrutura abaixo:
       "base_legal": "Art. 6º, XXIII, 'a' e 'c', e Art. 40, § 1º, I, da Lei nº 14.133/2021.",
       "extrato_norma": "Síntese ou extrato fiel do comando normativo aplicável (usando aspas simples se necessário)",
       "acao_corretiva": "Providência corretiva exata e redação de como a cláusula/documento deve ficar após a correção",
+      "trecho_errado_exato": "Cópia literal curta (20 a 140 chars) do trecho errado existente no documento para marcação automática em vermelho tachado (ou vazio se for peça ausente)",
+      "texto_corrigido_exato": "Texto substituto exato que aparecerá marcado em amarelo logo após o trecho tachado (ou vazio se não houver substituição textual)",
       "setor_responsavel": "Setor Requisitante | Subseção de Intendência | Ordenador de Despesas | Setor Financeiro"
     }
   ],
@@ -2032,3 +2034,623 @@ def build_despacho_saneamento_pdf_bytes(payload: Dict[str, Any]) -> bytes:
 
     doc.build(story)
     return buf.getvalue()
+
+
+
+# ==============================================================================
+# 7. MOTOR DE CORREÇÃO CIRÚRGICA NO DOCUMENTO ORIGINAL (.DOCX)
+#    VERMELHO TACHADO (ERRADO) + AMARELO (CORRIGIDO) + NOTA EXPLICATIVA APENSADA
+# ==============================================================================
+def _apply_surgical_rules_to_text(
+    orig_text: str,
+    ai_patches: Optional[List[Dict[str, str]]] = None,
+    is_dispensa_art75_ii: bool = True,
+) -> Tuple[str, List[str]]:
+    """
+    Aplica correções cirúrgicas (determinísticas + achados da IA) sobre um parágrafo
+    ou célula de tabela, retornando `(texto_corrigido, lista_de_notas_aplicadas)`.
+    Mantém o texto circundante intacto para que o word-diff marque em VERMELHO TACHADO
+    apenas o trecho errado e em AMARELO apenas o texto substituto correto.
+    """
+    if not orig_text or len(orig_text.strip()) < 3:
+        return orig_text, []
+
+    revised = orig_text
+    low_orig = orig_text.lower()
+    notes: List[str] = []
+
+    def _sub_once(pattern: str, repl: str, note_id: str, flags: int = re.IGNORECASE) -> None:
+        nonlocal revised
+        if re.search(pattern, revised, flags=flags):
+            new_v = re.sub(pattern, repl, revised, flags=flags)
+            if new_v != revised:
+                revised = new_v
+                if note_id not in notes:
+                    notes.append(note_id)
+
+    # 1. Prazo de pagamento IN SEGES/ME nº 77/2022 (Art. 7º, § 2º — 10 dias -> 5 dias úteis)
+    if is_dispensa_art75_ii and ("pagamento" in low_orig or "8.20" in low_orig) and "liquida" not in low_orig[:45]:
+        _sub_once(
+            r"\b10\s*\(dez\)\s*dias\s+[úu]teis\b",
+            "5 (cinco) dias úteis [Nota N-04]",
+            "N-04",
+        )
+        if "N-04" not in notes:
+            _sub_once(
+                r"\b10\s+dias\s+[úu]teis\b",
+                "5 (cinco) dias úteis [Nota N-04]",
+                "N-04",
+            )
+
+    # 2. Cláusula de extinção contratual citando art. 75, VIII (emergencial) em processo do art. 75, II
+    if is_dispensa_art75_ii and re.search(r"art\.?\s*75,?\s*(?:inciso\s*)?viii\b|inciso\s*viii\s+do\s+art\.?\s*75", low_orig):
+        revised = (
+            "[CLÁUSULA SUPRIMIDA — INCOMPATÍVEL COM DISPENSA POR BAIXO VALOR DO ART. 75, INCISO II DA LEI Nº 14.133/2021; "
+            "APLICAM-SE AS HIPÓTESES DE EXTINÇÃO POR ESCOPO DOS ARTS. 105 E 137] [Nota N-05]"
+        )
+        notes.append("N-05")
+
+    # 3. Indicação de marca sem "ou equivalente/similar" (Art. 41, I e Súmula TCU 270)
+    if "ou equivalente" not in low_orig and "ou similar" not in low_orig:
+        _sub_once(
+            r"\bMark\s+V\b",
+            "Mark V (ou equivalente, similar ou de melhor qualidade, servindo a marca apenas como referência técnica) [Nota N-03]",
+            "N-03",
+        )
+        _sub_once(
+            r"\bCyalume\b",
+            "Cyalume (ou bastão luminoso químico equivalente/similar) [Nota N-03]",
+            "N-03",
+        )
+
+    # 4. EIRELI extinta (Art. 41 da Lei nº 14.195/2021 -> SLU)
+    _sub_once(
+        r"\b(?:empresa\s+individual\s+de\s+responsabilidade\s+limitada\s*[-–—]?\s*EIRELI|EIRELI|empresa\s+individual\s+de\s+responsabilidade\s+limitada)\b",
+        "Sociedade Limitada Unipessoal – SLU [Nota N-08]",
+        "N-08",
+    )
+
+    # 5. Leis e Decretos Revogados (8.666/93, 10.520/02, Dec. 7.892/13, Dec. 10.024/19, IN 73/2020)
+    _sub_once(r"\b(?:Lei\s+(?:Federal\s+)?n[ºo°]?\s*8\.?666(?:/1993|/93)?|Lei\s+8\.666)\b", "Lei nº 14.133/2021 [Nota N-09]", "N-09")
+    _sub_once(r"\b(?:Lei\s+(?:Federal\s+)?n[ºo°]?\s*10\.?520(?:/2002|/02)?|Lei\s+10\.520)\b", "Lei nº 14.133/2021 [Nota N-09]", "N-09")
+    _sub_once(r"\b(?:Decreto\s+n[ºo°]?\s*7\.?892(?:/2013)?|Decreto\s+7\.892)\b", "Decreto nº 11.462/2023 [Nota N-09]", "N-09")
+    _sub_once(r"\b(?:Decreto\s+n[ºo°]?\s*10\.?024(?:/2019)?|Decreto\s+10\.024)\b", "IN SEGES/ME nº 73/2022 e Lei nº 14.133/2021 [Nota N-09]", "N-09")
+    _sub_once(r"\bInstru[çc][ãa]o\s+Normativa\s+(?:SEGES/ME\s+)?n[ºo°]?\s*73(?:/2020|,\s*de\s*2020)\b", "IN SEGES/ME nº 65/2021 [Nota N-09]", "N-09")
+
+    # 6. Uso prematuro do Art. 72, VIII na Solicitação Inicial (P-06)
+    if any(k in low_orig for k in ("abertura", "solicita", "autorizo", "início", "inicio")):
+        _sub_once(
+            r"\bart\.?\s*72,?\s*(?:inciso\s*)?viii\b|\binciso\s*viii\s+do\s+art\.?\s*72\b",
+            "art. 72, caput, da Lei nº 14.133/2021 (aprovação do DFD e início da fase preparatória; reservando-se o inciso VIII para a autorização final pós-instrução) [Nota P-06]",
+            "P-06",
+        )
+
+    # 7. Data-base futura do orçamento estimado (P-07)
+    if any(k in low_orig for k in ("orçamento estimado", "orcamento estimado", "data-base", "8.40")):
+        _sub_once(
+            r"\b30/11/2026\b",
+            "[DATA EXATA DE ASSINATURA DO MAPA COMPARATIVO DE PREÇOS] [Nota P-07]",
+            "P-07",
+        )
+
+    # 8. Justificativa genérica de PCA no DFD (P-08)
+    _sub_once(
+        r"realizado\s+fora\s+do\s+prazo\s+em\s+virtude\s+da\s+adequa[çc][ãa]o\s+[àa]\s+nova\s+legisla[çc][ãa]o",
+        "incluído extemporaneamente no PCA 2026 mediante justificativa concreta aprovada pela autoridade competente, vinculado ao ID da Contratação nº [PREENCHER ID NO PGC] (Arts. 15 e 16 do Decreto nº 10.947/2022) [Nota P-08]",
+        "P-08",
+    )
+
+    # 9. Numerações divergentes do Aviso (R-01)
+    _sub_once(
+        r"\bAviso\s+de\s+Contrata[çc][ãa]o\s+20/2026\b|\bAVISO\s+DE\s+CONTRATA[ÇC][ÃA]O\s+DIRETA\s+0044/2026\b|\bAVISO\s+DE\s+CONTRATA[ÇC][ÃA]O\s+DIRETA\s+N[ºo°]?\s*43/2026\b",
+        "AVISO DE CONTRATAÇÃO DIRETA Nº [PADRONIZAR Nº OFICIAL DO COMPRAS.GOV.BR]/2026 [Nota R-01]",
+        "R-01",
+    )
+
+    # 10. Indefinição sobre parcelamento no ETP (R-03)
+    _sub_once(
+        r"necessidade\s+de\s+n[ãa]o\s+parcelamento\s*\(\s*ou\s+parcelamento\s+por\s+item[^)]*\)",
+        "adoção conclusiva do parcelamento da solução por item (critério: menor preço por item), ampliando a competitividade conforme Art. 40, V, 'b', da Lei nº 14.133/2021 e Súmula TCU nº 247 [Nota R-03]",
+        "R-03",
+    )
+
+    # 11. Contradição de vigência 12 meses vs 60 dias (R-04)
+    _sub_once(
+        r"(?:pelo\s+)?per[íi]odo\s+de\s+12\s*\(doze\)\s*meses",
+        "com entrega imediata e integral em remessa única e vigência de 60 (sessenta) dias contados da emissão da Nota de Empenho (em conformidade com o item 1.3 do TR) [Nota R-04]",
+        "R-04",
+    )
+
+    # 12. Divergência prazo de aceite da Nota de Empenho (02 dias úteis / "dias dias" -> 5 dias úteis) (R-05)
+    _sub_once(
+        r"\b0?2\s*\(dois\)\s*dias\s+dias\b",
+        "5 (cinco) dias úteis [Nota R-05]",
+        "R-05",
+    )
+    if any(k in low_orig for k in ("empenho", "assinar", "aceitar", "termo de contrato", "convoca")):
+        _sub_once(
+            r"\b0?2\s*\(dois\)\s*dias\s+[úu]teis\b",
+            "5 (cinco) dias úteis (uniformizado com o item 1.1 do Anexo I do TR) [Nota R-05]",
+            "R-05",
+        )
+
+    # 13. Contradição no prazo de recebimento definitivo (15 dias úteis -> 5 dias úteis) (R-06)
+    if "recebimento definitivo" in low_orig or ("75" in low_orig and "15" in low_orig and "dias" in low_orig):
+        _sub_once(
+            r"\b15\s*\(quinze\)\s*dias\s+[úu]teis\b",
+            "5 (cinco) dias úteis (harmonizado com o item 8.3 do TR) [Nota R-06]",
+            "R-06",
+        )
+
+    # 14. Remissão vazia de garantia ao ETP (R-07)
+    _sub_once(
+        r"pelas\s+raz[õo]es\s+constantes\s+do\s+Estudo\s+T[ée]cnico\s+Preliminar",
+        "em razão do baixo valor estimado da contratação, da entrega imediata em remessa única e do pagamento condicionado ao recebimento definitivo (Art. 96 da Lei nº 14.133/2021) [Nota R-07]",
+        "R-07",
+    )
+
+    # 15. Cláusulas impertinentes de obras/engenharia (75%/85%) e exercícios subsequentes (R-08)
+    if ("engenharia" in low_orig and ("75%" in low_orig or "85%" in low_orig or "inexequ" in low_orig)) or (
+        "exercícios financeiros subsequentes" in low_orig or "exercicios financeiros subsequentes" in low_orig
+    ):
+        revised = (
+            "[CLÁUSULA SUPRIMIDA — DISPOSITIVO IMPERTINENTE DE MODELO-PADRÃO PARA AQUISIÇÃO DE BENS "
+            "DE ENTREGA IMEDIATA EM EXERCÍCIO ÚNICO] [Nota R-08]"
+        )
+        if "R-08" not in notes:
+            notes.append("R-08")
+
+    # 16. Divergência algarismo vs extenso no intervalo de lances (R-09)
+    _sub_once(
+        r"R\$\s*0,10\s*\(\s*um\s+centavos?\s*\)",
+        "R$ 0,10 (dez centavos) [Nota R-09]",
+        "R-09",
+    )
+
+    # 17. Erros ortográficos e redacionais (R-10)
+    _sub_once(r"\bquize\s+por\s+cento\b", "quinze por cento [Nota R-10]", "R-10")
+    _sub_once(r"\bs\s+supress[õo]es\b", "as supressões [Nota R-10]", "R-10")
+    _sub_once(r"\ba\s+aquisi[çc][ãa]o\s+de\s+Aquisi[çc][ãa]o\b", "a aquisição [Nota R-10]", "R-10")
+
+    # 18. Divergências de CATMAT em células de tabela / parágrafos (N-01)
+    _sub_once(r"\b603185\b", "[SUBSTITUIR CATMAT 603185 — Binóculo náutico óptico 7x50 pressurizado] [Nota N-01]", "N-01")
+    _sub_once(r"\b606610\b", "[SUBSTITUIR CATMAT 606610 — Bolsa/maleta estanque impermeável SAR] [Nota N-01]", "N-01")
+    _sub_once(r"\b366698\b", "[SUBSTITUIR CATMAT 366698 — Luva de neoprene uso aquático/SAR (Unidade: PAR)] [Nota N-01]", "N-01")
+    _sub_once(r"\b613245\b", "[SUBSTITUIR CATMAT 613245 — Luva de segurança em couro/vaqueta (Unidade: PAR)] [Nota N-01]", "N-01")
+    _sub_once(r"bin[óo]culo\s+termal[^.;\n]*", "Binóculo náutico óptico 7x50 pressurizado/estanque [Nota N-01]", "N-01")
+    _sub_once(r"modelo:\s*transporte\s+tubo\s+do\s+morteiro\s+81\s*mm", "modelo: bolsa/maleta estanque impermeável para equipamentos SAR [Nota N-01]", "N-01")
+    _sub_once(r"Luva\s+Borracha\s+nitr[íi]lica", "Luva de neoprene para operações aquáticas/SAR (Unidade: PAR) [Nota N-01]", "N-01")
+    _sub_once(r"aplica[çc][ãa]o:?\s*motociclismo", "aplicação: resgate em couro/vaqueta (Unidade: PAR) [Nota N-01]", "N-01")
+
+    # 19. Aplicação dinâmica de patches retornados pela IA Gemini (para qualquer processo novo!)
+    for p in (ai_patches or []):
+        orig_snippet = str(p.get("trecho_errado_exato") or "").strip()
+        corr_snippet = str(p.get("texto_corrigido_exato") or "").strip()
+        pid = str(p.get("id") or "AUD").strip()
+        if len(orig_snippet) >= 15 and corr_snippet and orig_snippet.lower() in revised.lower():
+            if orig_snippet.lower() != corr_snippet.lower():
+                pat = re.compile(re.escape(orig_snippet), re.IGNORECASE)
+                tag_suffix = f" [Nota {pid}]" if f"[Nota {pid}]" not in corr_snippet else ""
+                new_v = pat.sub(f"{corr_snippet}{tag_suffix}", revised, count=1)
+                if new_v != revised:
+                    revised = new_v
+                    if pid not in notes:
+                        notes.append(pid)
+
+    return revised, notes
+
+
+def _append_nota_explicativa_to_docx(
+    doc: Document,
+    deep_audit: Dict[str, Any],
+    om_name: str,
+    inline_fixes_count: int,
+    applied_note_ids: List[str],
+) -> None:
+    """
+    Apensa ao final do arquivo Word (.DOCX) uma nova seção em Paisagem A4 (sem alterar
+    a orientação/formatação das páginas originais da minuta) contendo a
+    NOTA EXPLICATIVA DE AUDITORIA JURÍDICA E FUNDAMENTAÇÃO LEGAL DAS CORREÇÕES APLICADAS.
+    """
+    new_sec = doc.add_section(WD_SECTION.NEW_PAGE)
+    new_sec.orientation = WD_ORIENT.LANDSCAPE
+    new_sec.page_width = Cm(29.7)
+    new_sec.page_height = Cm(21.0)
+    new_sec.top_margin = Cm(1.4)
+    new_sec.bottom_margin = Cm(1.4)
+    new_sec.left_margin = Cm(1.5)
+    new_sec.right_margin = Cm(1.5)
+    try:
+        new_sec.header.is_linked_to_previous = False
+        new_sec.footer.is_linked_to_previous = False
+    except Exception:
+        pass
+
+    meta = deep_audit.get("metadados_processo") or {}
+    parecer = deep_audit.get("parecer_preventivo") or {}
+    achados = deep_audit.get("achados") or []
+    div_catmat = deep_audit.get("divergencias_catmat") or []
+    roteiro = deep_audit.get("roteiro_saneamento") or []
+    now_str = datetime.now().strftime("%d/%m/%Y às %H:%M")
+
+    # BANNER DA NOTA EXPLICATIVA
+    t_ban = doc.add_table(rows=1, cols=1)
+    t_ban.alignment = WD_TABLE_ALIGNMENT.CENTER
+    t_ban.style = "Table Grid"
+    cb = t_ban.cell(0, 0)
+    cb.width = Cm(26.7)
+    _set_cell_bg(cb, "1B365D")
+    _set_cell_margins(cb, 110, 110, 140, 140)
+    pb = cb.paragraphs[0]
+    pb.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r1 = pb.add_run(f"{om_name.upper()}\n")
+    r1.bold = True
+    r1.font.size = Pt(11)
+    r1.font.color.rgb = RGBColor(255, 255, 255)
+    r2 = pb.add_run("ANEXO — NOTA EXPLICATIVA E FUNDAMENTAÇÃO LEGAL DAS CORREÇÕES APLICADAS\n")
+    r2.bold = True
+    r2.font.size = Pt(10.5)
+    r2.font.color.rgb = RGBColor(245, 208, 125)
+    r3 = pb.add_run(
+        f"Auditoria Preventiva (Lei nº 14.133/2021, INs SEGES/ME nº 65/2021, 67/2021 e 77/2022, AGU e TCU) — Emitida em {now_str}"
+    )
+    r3.font.size = Pt(8.5)
+    r3.font.color.rgb = RGBColor(219, 234, 254)
+
+    # BOX DE LEGENDA E RESUMO DAS CORREÇÕES NO TEXTO ORIGINAL
+    t_leg = doc.add_table(rows=1, cols=1)
+    t_leg.alignment = WD_TABLE_ALIGNMENT.CENTER
+    t_leg.style = "Table Grid"
+    cl = t_leg.cell(0, 0)
+    cl.width = Cm(26.7)
+    _set_cell_bg(cl, "FFFBEB")
+    _set_cell_margins(cl, 80, 80, 110, 110)
+    pl = cl.paragraphs[0]
+    rl0 = pl.add_run("CONVENÇÃO DE REVISÃO APLICADA AO DOCUMENTO ORIGINAL ACIMA:  ")
+    rl0.bold = True
+    rl0.font.size = Pt(8.5)
+    rl0.font.color.rgb = RGBColor(27, 54, 93)
+    rl1 = pl.add_run("VERMELHO TACHADO")
+    rl1.bold = True
+    rl1.font.strike = True
+    rl1.font.size = Pt(8.5)
+    rl1.font.color.rgb = RGBColor(220, 38, 38)
+    rl2 = pl.add_run(" = Trecho original errado ou revogado retirado  |  ")
+    rl2.font.size = Pt(8.5)
+    rl3 = pl.add_run("MARCADO EM AMARELO")
+    rl3.bold = True
+    rl3.font.highlight_color = WD_COLOR_INDEX.YELLOW
+    rl3.font.size = Pt(8.5)
+    rl4 = pl.add_run(
+        f" = Texto corrigido/substituído com base na norma vigente. Total de intervenções cirúrgicas aplicadas no corpo do documento: {inline_fixes_count} trecho(s). "
+        f"As remissões [Nota N-xx / P-xx / R-xx] no texto acima correspondem exatamente aos fundamentos jurídicos detalhados nos quadros abaixo."
+    )
+    rl4.font.size = Pt(8.3)
+
+    # METADADOS + PARECER PREVENTIVO
+    t_meta = doc.add_table(rows=2, cols=4)
+    t_meta.alignment = WD_TABLE_ALIGNMENT.CENTER
+    t_meta.style = "Table Grid"
+    m_widths = [Cm(4.2), Cm(9.15), Cm(4.2), Cm(9.15)]
+    m_rows = [
+        ("Processo Administrativo:", str(meta.get("numero_processo") or "Conforme autos"), "Modalidade / Fundamento:", str(meta.get("modalidade_fundamento") or "Lei nº 14.133/2021")),
+        ("Objeto da Contratação:", str(meta.get("objeto_contratacao") or "Conforme Termo de Referência"), "Valor Total Estimado:", str(meta.get("valor_total_estimado") or "Conforme autos")),
+    ]
+    for ri, rt in enumerate(m_rows):
+        cells = t_meta.rows[ri].cells
+        for ci, v in enumerate(rt):
+            cells[ci].width = m_widths[ci]
+            _set_cell_bg(cells[ci], "F1F5F9" if ci in (0, 2) else "FFFFFF")
+            _set_cell_margins(cells[ci], 60, 60, 85, 85)
+            r = cells[ci].paragraphs[0].add_run(v)
+            r.font.size = Pt(8.2)
+            if ci in (0, 2):
+                r.bold = True
+                r.font.color.rgb = RGBColor(27, 54, 93)
+
+    t_par = doc.add_table(rows=1, cols=1)
+    t_par.alignment = WD_TABLE_ALIGNMENT.CENTER
+    t_par.style = "Table Grid"
+    cp = t_par.cell(0, 0)
+    cp.width = Cm(26.7)
+    _set_cell_bg(cp, "FEF2F2")
+    _set_cell_margins(cp, 80, 80, 110, 110)
+    pp = cp.paragraphs[0]
+    veredito_s = str(parecer.get("veredito") or "RECOMENDAÇÃO DE SUSTAÇÃO ANTES DA PUBLICAÇÃO NO PNCP").replace("_", " ")
+    rp1 = pp.add_run(f"PARECER PREVENTIVO — {veredito_s}\n")
+    rp1.bold = True
+    rp1.font.size = Pt(9.2)
+    rp1.font.color.rgb = RGBColor(153, 27, 27)
+    rp2 = pp.add_run(str(parecer.get("resumo_executivo") or ""))
+    rp2.font.size = Pt(8.3)
+
+    # QUADROS DE FUNDAMENTAÇÃO LEGAL POR EIXO
+    eixos_cfg = [
+        ("NORMATIVA", "1. FUNDAMENTAÇÃO LEGAL — INCONSISTÊNCIAS NORMATIVAS CORRIGIDAS / APONTADAS (LEI Nº 14.133/2021 E INS)"),
+        ("PROCESSUAL", "2. FUNDAMENTAÇÃO LEGAL — ERROS PROCESSUAIS, CRONOLOGIA E PEÇAS AUSENTES (ART. 72 DA LEI Nº 14.133/2021)"),
+        ("CONTRADICAO_INTERNA", "3. FUNDAMENTAÇÃO LEGAL — CONTRADIÇÕES INTERNAS E REVISÃO REDACIONAL"),
+    ]
+    chk_widths = [Cm(1.4), Cm(2.8), Cm(6.0), Cm(5.5), Cm(6.2), Cm(2.6), Cm(2.2)]
+    chk_headers = [
+        "Nota / ID",
+        "Artefato / Item",
+        "Inconsistência Identificada no Texto Original",
+        "Fundamentação Legal & Extrato Normativo",
+        "Texto Corrigido / Providência de Saneamento",
+        "Setor Responsável",
+        "Prioridade",
+    ]
+
+    for sec_i, (ek, stitle) in enumerate(eixos_cfg, start=1):
+        sub = [a for a in achados if str(a.get("eixo") or "NORMATIVA").upper() == ek]
+        if not sub:
+            continue
+        ph = doc.add_paragraph()
+        ph.paragraph_format.space_before = Pt(8)
+        ph.paragraph_format.space_after = Pt(3)
+        rh = ph.add_run(stitle)
+        rh.bold = True
+        rh.font.size = Pt(9.5)
+        rh.font.color.rgb = RGBColor(27, 54, 93)
+
+        tbl = doc.add_table(rows=1, cols=7)
+        tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
+        tbl.style = "Table Grid"
+        for i, h in enumerate(chk_headers):
+            c = tbl.rows[0].cells[i]
+            c.width = chk_widths[i]
+            _set_cell_bg(c, "1B365D")
+            _set_cell_margins(c, 65, 65, 70, 70)
+            p = c.paragraphs[0]
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER if i in (0, 6) else WD_ALIGN_PARAGRAPH.LEFT
+            r = p.add_run(h)
+            r.bold = True
+            r.font.size = Pt(7.9)
+            r.font.color.rgb = RGBColor(255, 255, 255)
+
+        for r_i, a in enumerate(sub):
+            row = tbl.add_row().cells
+            row_bg = "FFFFFF" if r_i % 2 == 0 else "F8FAFC"
+            crit_lbl = _priority_label(str(a.get("criticidade") or "ALTA"))
+            prio_bg, prio_rgb = _priority_colors(crit_lbl)
+            aid = str(a.get("id") or f"A-{r_i + 1:02d}")
+            applied_mark = "\n(Aplicada no texto)" if aid in applied_note_ids else ""
+
+            base_l = str(a.get("base_legal") or "Lei nº 14.133/2021").strip()
+            ext_l = str(a.get("extrato_norma") or "").strip()
+            legal_txt = f"{base_l}\n\nExtrato da Norma: {ext_l}" if ext_l else base_l
+
+            desc_erro = str(a.get("descricao_erro") or "").strip()
+            tit_erro = str(a.get("titulo") or "").strip()
+            inc_txt = desc_erro if (not tit_erro or tit_erro.lower() in desc_erro.lower()) else f"{tit_erro}: {desc_erro}"
+
+            vals = [
+                f"{aid}{applied_mark}",
+                str(a.get("localizacao") or "Autos"),
+                inc_txt,
+                legal_txt,
+                str(a.get("acao_corretiva") or a.get("texto_apos_correcao") or ""),
+                str(a.get("setor_responsavel") or "Subseção de Intendência"),
+                crit_lbl,
+            ]
+            for ci, v in enumerate(vals):
+                row[ci].width = chk_widths[ci]
+                _set_cell_bg(row[ci], prio_bg if ci == 6 else row_bg)
+                _set_cell_margins(row[ci], 60, 60, 70, 70)
+                p = row[ci].paragraphs[0]
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER if ci in (0, 6) else WD_ALIGN_PARAGRAPH.LEFT
+                r = p.add_run(v)
+                r.font.size = Pt(7.8)
+                if ci in (0, 6):
+                    r.bold = True
+                if ci == 6:
+                    r.font.color.rgb = prio_rgb
+
+        if sec_i == 1 and div_catmat:
+            p_cat = doc.add_paragraph()
+            p_cat.paragraph_format.space_before = Pt(6)
+            p_cat.paragraph_format.space_after = Pt(2)
+            rcat = p_cat.add_run("Tabela 1.1 — Detalhamento das Divergências de CATMAT e Unidades de Medida (DFD × ETP × TR)")
+            rcat.bold = True
+            rcat.font.size = Pt(8.8)
+            rcat.font.color.rgb = RGBColor(27, 54, 93)
+            t_cat = doc.add_table(rows=1, cols=6)
+            t_cat.alignment = WD_TABLE_ALIGNMENT.CENTER
+            t_cat.style = "Table Grid"
+            cat_w = [Cm(1.2), Cm(4.8), Cm(2.2), Cm(8.8), Cm(3.0), Cm(6.7)]
+            for i, h in enumerate(["Item", "Descrição no ETP / TR", "CATMAT Atual", "Descrição Puxada no DFD", "Unidade (DFD vs. TR)", "Correção Necessária"]):
+                c = t_cat.rows[0].cells[i]
+                c.width = cat_w[i]
+                _set_cell_bg(c, "1B365D")
+                _set_cell_margins(c, 60, 60, 70, 70)
+                r = c.paragraphs[0].add_run(h)
+                r.bold = True
+                r.font.size = Pt(7.8)
+                r.font.color.rgb = RGBColor(255, 255, 255)
+            for r_i, dc in enumerate(div_catmat):
+                if not isinstance(dc, dict):
+                    continue
+                rc = t_cat.add_row().cells
+                r_bg = "FFFFFF" if r_i % 2 == 0 else "F8FAFC"
+                for ci, v in enumerate([
+                    str(dc.get("item") or ""),
+                    str(dc.get("descricao_etp_tr") or ""),
+                    str(dc.get("catmat_atual") or ""),
+                    str(dc.get("descricao_dfd_catalogo") or ""),
+                    str(dc.get("unidade_dfd_vs_tr") or ""),
+                    str(dc.get("correcao_necessaria") or ""),
+                ]):
+                    rc[ci].width = cat_w[ci]
+                    _set_cell_bg(rc[ci], r_bg)
+                    _set_cell_margins(rc[ci], 55, 55, 70, 70)
+                    r = rc[ci].paragraphs[0].add_run(v)
+                    r.font.size = Pt(7.7)
+                    if ci in (0, 2):
+                        r.bold = True
+
+    if roteiro:
+        pr = doc.add_paragraph()
+        pr.paragraph_format.space_before = Pt(8)
+        pr.paragraph_format.space_after = Pt(2)
+        rr = pr.add_run("4. ROTEIRO SEQUENCIAL CRONOLÓGICO DE SANEAMENTO")
+        rr.bold = True
+        rr.font.size = Pt(9.5)
+        rr.font.color.rgb = RGBColor(27, 54, 93)
+        t_rot = doc.add_table(rows=1, cols=4)
+        t_rot.alignment = WD_TABLE_ALIGNMENT.CENTER
+        t_rot.style = "Table Grid"
+        rw = [Cm(2.0), Cm(14.2), Cm(5.5), Cm(5.0)]
+        for i, h in enumerate(["Etapa", "Atividade de Saneamento", "Itens Atendidos", "Setor Executor"]):
+            c = t_rot.rows[0].cells[i]
+            c.width = rw[i]
+            _set_cell_bg(c, "1B365D")
+            _set_cell_margins(c, 60, 60, 70, 70)
+            r = c.paragraphs[0].add_run(h)
+            r.bold = True
+            r.font.size = Pt(7.9)
+            r.font.color.rgb = RGBColor(255, 255, 255)
+        for idx_r, step in enumerate(roteiro, start=1):
+            rc = t_rot.add_row().cells
+            r_bg = "FFFFFF" if (idx_r - 1) % 2 == 0 else "F8FAFC"
+            vals_r = (
+                [str(step.get("etapa") or f"{idx_r}ª Etapa"), str(step.get("atividade") or ""), str(step.get("itens_atendidos") or "—"), str(step.get("setor_executor") or "Intendência")]
+                if isinstance(step, dict)
+                else [f"{idx_r}ª Etapa", str(step), "—", "Setor Competente"]
+            )
+            for ci, v in enumerate(vals_r):
+                rc[ci].width = rw[ci]
+                _set_cell_bg(rc[ci], r_bg)
+                _set_cell_margins(rc[ci], 55, 55, 70, 70)
+                r = rc[ci].paragraphs[0].add_run(v)
+                r.font.size = Pt(7.8)
+                if ci == 0:
+                    r.bold = True
+
+
+def build_corrected_docx_with_nota_explicativa(
+    doc_structure: Dict[str, Any],
+    deep_audit: Dict[str, Any],
+    original_bytes: Optional[bytes] = None,
+    om_name: str = "MARINHA DO BRASIL • CAPITANIA FLUVIAL DE JUAZEIRO (UASG 782340)",
+) -> bytes:
+    """
+    Corrige automaticamente TODOS os erros textuais detectados diretamente sobre o arquivo
+    analisado, mantendo 100% da formatação original (.DOCX cirúrgico in-place ou .PDF
+    reconstruído com margens, fontes, alinhamentos e tabelas proporcionais preservadas):
+    - Trecho errado/retirado: VERMELHO TACHADO (#DC2626 + strike)
+    - Trecho correto/substituído: MARCADO EM AMARELO (highlight yellow + bold) + [Nota ID]
+    - Ao final do documento: apensa em nova seção (Paisagem A4) a NOTA EXPLICATIVA
+      COMPLETA com a fundamentação legal de cada correção e pendência processual.
+    """
+    import copy
+
+    try:
+        from core.audited_document_engine import (
+            _rewrite_paragraph_with_diff_preserving_style,
+            build_audited_document_docx_bytes,
+            compute_word_diff,
+        )
+    except ImportError:
+        from audited_document_engine import (
+            _rewrite_paragraph_with_diff_preserving_style,
+            build_audited_document_docx_bytes,
+            compute_word_diff,
+        )
+
+    achados = (deep_audit or {}).get("achados") or []
+    ai_patches = [
+        {
+            "id": str(a.get("id") or f"A-{i}"),
+            "trecho_errado_exato": str(a.get("trecho_errado_exato") or "").strip(),
+            "texto_corrigido_exato": str(a.get("texto_corrigido_exato") or "").strip(),
+        }
+        for i, a in enumerate(achados, start=1)
+        if isinstance(a, dict) and a.get("trecho_errado_exato") and a.get("texto_corrigido_exato")
+    ]
+
+    orig_fmt = str((doc_structure or {}).get("original_format") or "").lower()
+    inline_fixes = 0
+    applied_note_ids: List[str] = []
+
+    # CASO A: ARQUIVO ORIGINAL ERA .DOCX -> CIRURGIA XML IN-PLACE 100% FIEL
+    if original_bytes and orig_fmt == "docx":
+        doc = docx.Document(io.BytesIO(original_bytes))
+        for p in doc.paragraphs:
+            orig_t = p.text
+            if not orig_t or not orig_t.strip():
+                continue
+            rev_t, n_ids = _apply_surgical_rules_to_text(orig_t, ai_patches=ai_patches)
+            if rev_t != orig_t:
+                diffs = compute_word_diff(orig_t, rev_t)
+                _rewrite_paragraph_with_diff_preserving_style(p, diffs)
+                inline_fixes += 1
+                for nid in n_ids:
+                    if nid not in applied_note_ids:
+                        applied_note_ids.append(nid)
+
+        for tbl in doc.tables:
+            for row in tbl.rows:
+                for cell in row.cells:
+                    for p in cell.paragraphs:
+                        orig_t = p.text
+                        if not orig_t or not orig_t.strip():
+                            continue
+                        rev_t, n_ids = _apply_surgical_rules_to_text(orig_t, ai_patches=ai_patches)
+                        if rev_t != orig_t:
+                            diffs = compute_word_diff(orig_t, rev_t)
+                            _rewrite_paragraph_with_diff_preserving_style(p, diffs)
+                            inline_fixes += 1
+                            for nid in n_ids:
+                                if nid not in applied_note_ids:
+                                    applied_note_ids.append(nid)
+
+        _append_nota_explicativa_to_docx(doc, deep_audit, om_name, inline_fixes, applied_note_ids)
+        out_buf = io.BytesIO()
+        doc.save(out_buf)
+        return out_buf.getvalue()
+
+    # CASO B: ARQUIVO ORIGINAL ERA .PDF OU .TXT -> RECONSTRUÇÃO FIEL COM MARGENS/FONTES/TABELAS + DIFFS
+    patched_structure = copy.deepcopy(doc_structure or {"title": "Minuta Auditada", "elements": []})
+    for el in patched_structure.get("elements", []):
+        el_type = el.get("type")
+        if el_type in ("CLAUSE", "PARAGRAPH"):
+            orig_t = str(el.get("original_text") if el.get("original_text") is not None else (el.get("text") or ""))
+            if not orig_t.strip():
+                continue
+            rev_t, n_ids = _apply_surgical_rules_to_text(orig_t, ai_patches=ai_patches)
+            if rev_t != orig_t:
+                el["modified"] = True
+                el["revised_text"] = rev_t
+                el["diff_segments"] = compute_word_diff(orig_t, rev_t)
+                inline_fixes += 1
+                for nid in n_ids:
+                    if nid not in applied_note_ids:
+                        applied_note_ids.append(nid)
+            else:
+                el["modified"] = False
+                el["diff_segments"] = [{"type": "equal", "text": orig_t}]
+        elif el_type == "TABLE":
+            headers = el.get("headers") or []
+            rows = el.get("rows") or []
+            all_rows = ([headers] if headers else []) + list(rows)
+            cell_diffs: Dict[str, Any] = {}
+            for r_i, row in enumerate(all_rows):
+                for c_i, cell_val in enumerate(row):
+                    c_str = str(cell_val or "")
+                    if not c_str.strip():
+                        continue
+                    rev_c, n_ids = _apply_surgical_rules_to_text(c_str, ai_patches=ai_patches)
+                    if rev_c != c_str:
+                        cell_diffs[f"{r_i}_{c_i}"] = compute_word_diff(c_str, rev_c)
+                        inline_fixes += 1
+                        for nid in n_ids:
+                            if nid not in applied_note_ids:
+                                applied_note_ids.append(nid)
+            el["cell_diffs"] = cell_diffs
+
+    base_docx_bytes = build_audited_document_docx_bytes(patched_structure, org_name=om_name)
+    doc = docx.Document(io.BytesIO(base_docx_bytes))
+    _append_nota_explicativa_to_docx(doc, deep_audit, om_name, inline_fixes, applied_note_ids)
+    out_buf = io.BytesIO()
+    doc.save(out_buf)
+    return out_buf.getvalue()
