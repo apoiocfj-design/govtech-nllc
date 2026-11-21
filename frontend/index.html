@@ -5415,7 +5415,7 @@
       try {
         const hdrBadge = document.getElementById("headerBatchBadge");
         if (hdrBadge) {
-          const n = Array.isArray(batchItems) ? batchItems.length : 0;
+          const n = Array.isArray(batchTrayItems) ? batchTrayItems.length : 0;
           hdrBadge.textContent = String(n);
           hdrBadge.classList.toggle("hidden", n === 0);
         }
