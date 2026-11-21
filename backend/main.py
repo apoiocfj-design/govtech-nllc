@@ -1947,6 +1947,56 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 # Auditoria Jurídica SEM mutação automática: aguarda permissão expressa do usuário!
                 audited_doc = DocumentLegalAuditor.audit_and_diff(doc_structure, require_permission=True)
 
+                # Auditoria Semântica Profunda (Multi-Artefato + Prompt de Engenharia Jurídica via Gemini API)
+                context_note = str(data.get("context_note") or "").strip()
+                gemini_api_key = str(data.get("gemini_api_key") or "").strip()
+                gemini_model = str(data.get("gemini_model") or "gemini-2.5-flash").strip()
+                extra_files = data.get("extra_files") or []
+
+                combined_chunks = [f"=== DOCUMENTO PRINCIPAL: {filename or 'Minuta'} ==="]
+                for idx_el, el in enumerate(audited_doc.get("elements", []), start=1):
+                    t_el = (el.get("text") or "").strip()
+                    if t_el:
+                        combined_chunks.append(f"[El {idx_el}] {t_el}")
+
+                for ef in extra_files:
+                    if not isinstance(ef, dict):
+                        continue
+                    ef_name = str(ef.get("filename") or "Anexo").strip()
+                    ef_b64 = ef.get("file_base64") or ""
+                    if not ef_b64:
+                        continue
+                    try:
+                        ef_bytes = base64.b64decode(ef_b64)
+                        if ef_name.lower().endswith(".pdf"):
+                            ef_struct = DocumentLayoutParser.parse_pdf(ef_bytes, filename=ef_name)
+                        elif ef_name.lower().endswith(".docx"):
+                            ef_struct = DocumentLayoutParser.parse_docx(ef_bytes, filename=ef_name)
+                        else:
+                            ef_struct = DocumentLayoutParser.parse_text(ef_bytes.decode("utf-8", errors="ignore"), filename=ef_name)
+                        combined_chunks.append(f"\n=== ANEXO DOS AUTOS: {ef_name} ===")
+                        for ef_el in ef_struct.get("elements", []):
+                            ef_t = (ef_el.get("text") or "").strip()
+                            if ef_t:
+                                combined_chunks.append(ef_t)
+                    except Exception:
+                        pass
+
+                deep_audit_result = {"status": "SKIPPED", "achados": [], "roteiro_saneamento": []}
+                try:
+                    try:
+                        from core.gemini_legal_auditor import run_gemini_deep_audit
+                    except ImportError:
+                        from gemini_legal_auditor import run_gemini_deep_audit
+                    deep_audit_result = run_gemini_deep_audit(
+                        combined_text="\n".join(combined_chunks),
+                        context_note=context_note,
+                        api_key_override=gemini_api_key,
+                        model_name=gemini_model,
+                    )
+                except Exception as deep_exc:
+                    deep_audit_result = {"status": "ERROR", "reason": str(deep_exc), "achados": [], "roteiro_saneamento": []}
+
                 # Salva arquivo original em sessão para cirurgia fiel no .DOCX original durante a exportação
                 doc_session_id = document_session_store.save(
                     original_bytes=file_bytes,
@@ -1979,10 +2029,43 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                     "compliance_score": audited_doc.get("audit_summary", {}).get("compliance_score", 100.0),
                     "audit_summary": audited_doc.get("audit_summary", {}),
                     "signatures": audited_doc.get("signatures", []),
+                    "deep_audit": deep_audit_result,
                 }
                 self._send_json(200, response_payload)
             except Exception as exc:
                 self._send_json(400, {"error": str(exc)})
+            return
+
+        # 1B. Exportar Despacho de Saneamento Preventivo (Word .DOCX ou PDF) gerado pela Auditoria Profunda
+        if parsed.path in ("/api/v1/rag/despacho-saneamento/docx", "/api/v1/rag/despacho-saneamento/pdf"):
+            try:
+                data = json.loads(raw_body)
+                try:
+                    from core.gemini_legal_auditor import (
+                        build_despacho_saneamento_docx_bytes,
+                        build_despacho_saneamento_pdf_bytes,
+                    )
+                except ImportError:
+                    from gemini_legal_auditor import (
+                        build_despacho_saneamento_docx_bytes,
+                        build_despacho_saneamento_pdf_bytes,
+                    )
+                if parsed.path.endswith("/docx"):
+                    content = build_despacho_saneamento_docx_bytes(data)
+                    self._send_binary(
+                        content,
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        "Despacho_Saneamento_Auditoria_NLLC.docx",
+                    )
+                else:
+                    content = build_despacho_saneamento_pdf_bytes(data)
+                    self._send_binary(
+                        content,
+                        "application/pdf",
+                        "Despacho_Saneamento_Auditoria_NLLC.pdf",
+                    )
+            except Exception as exc:
+                self._send_json(500, {"error": f"Falha ao gerar Despacho de Saneamento: {exc}"})
             return
 
         # 2. Exportar Documento Word (.DOCX) — Preservação 100% da Diagramação Original + Amarelo/Vermelho Tachado

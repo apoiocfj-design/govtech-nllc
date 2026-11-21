@@ -955,13 +955,25 @@
           Suporta arquivos <strong>.DOCX (Word)</strong>, <strong>.PDF</strong> ou <strong>.TXT</strong> de Termos de Referência (TR), ETP, DFD ou Editais da Nova Lei de Licitações (Lei 14.133/2021).
         </p>
       </div>
-      <div class="flex justify-center">
+      <!-- Contexto + Chave Gemini Opcional para Auditoria Profunda (DFD x ETP x TR x Aviso) -->
+      <div class="max-w-2xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-2.5 text-left pt-2">
+        <div>
+          <label class="block text-[10px] font-black uppercase text-slate-500 mb-1">Contexto do Processo (opcional)</label>
+          <input id="ragContextNoteInput" type="text" placeholder="Ex: Dispensa Eletrônica Art. 75, II — Marinha do Brasil" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-slate-50 focus:bg-white" />
+        </div>
+        <div>
+          <label class="block text-[10px] font-black uppercase text-slate-500 mb-1">Chave Gemini API (opcional — se não houver no servidor)</label>
+          <input id="ragGeminiApiKeyInput" type="password" placeholder="AIza... (fica apenas no seu navegador)" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-slate-50 focus:bg-white font-mono" />
+        </div>
+      </div>
+
+      <div class="flex justify-center pt-1">
         <label class="cursor-pointer bg-[#27394d] hover:bg-[#334960] text-white font-black px-6 py-3 rounded-xl text-xs shadow-md transition flex items-center gap-2">
-          <span>📤</span> Selecionar Arquivo do Computador (.docx / .pdf)
-          <input id="fileInputRAG" type="file" accept=".pdf,.docx,.txt" onchange="handleUploadFile()" class="hidden" />
+          <span>📤</span> Selecionar Minuta ou Autos Completos (.pdf / .docx — aceita múltiplos arquivos)
+          <input id="fileInputRAG" type="file" accept=".pdf,.docx,.txt" multiple onchange="handleUploadFile()" class="hidden" />
         </label>
       </div>
-      <p class="text-[11px] text-slate-400">Ao carregar, o sistema processa o documento e exibe a tela de conferência e réplica cláusula a cláusula.</p>
+      <p class="text-[11px] text-slate-400">Anexe 1 PDF unificado dos autos ou selecione vários arquivos juntos (DFD + ETP + TR + Aviso) para cruzamento interdocumental completo.</p>
     </div>
 
     <!-- CARD DE PROGRESSO ASSÍNCRONO EM TEMPO REAL (EVENT-DRIVEN WORKER / CLOUD FUNCTIONS & STORAGE) -->
@@ -1036,6 +1048,28 @@
     </div>
 
     <!-- ESTADO ATIVO: AUDITORIA RAG E RÉPLICA JURÍDICA (SÓ APARECE APÓS ANEXAR O ARQUIVO) -->
+    <!-- PAINEL DE AUDITORIA JURÍDICA PROFUNDA (GEMINI — 3 EIXOS + DESPACHO DE SANEAMENTO) -->
+    <div id="ragDeepAuditPanel" class="hidden bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-[#1e2d3d] text-amber-300 uppercase">Auditoria Jurídica Profunda (IA NLLC/AGU/TCU)</span>
+            <span id="ragDeepVereditoBadge" class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300">—</span>
+          </div>
+          <p id="ragDeepResumo" class="text-xs text-slate-600 mt-1.5 leading-relaxed"></p>
+        </div>
+        <button id="btnDownloadDespachoSaneamento" onclick="downloadDespachoSaneamentoBoth()" class="px-4 py-2 rounded-xl text-xs font-black bg-[#c5a365] hover:bg-[#d6b476] text-[#1e2d3d] shadow-xs transition flex items-center gap-1.5">
+          <span>⚖️</span> Emitir Despacho de Saneamento (Word + PDF)
+        </button>
+      </div>
+      <div id="ragDeepCountsBar" class="grid grid-cols-2 md:grid-cols-4 gap-2.5 text-xs"></div>
+      <div id="ragDeepFindingsList" class="space-y-2.5 max-h-[520px] overflow-y-auto pr-1"></div>
+      <div id="ragDeepRoteiroBox" class="hidden bg-slate-50 rounded-xl p-3.5 border border-slate-200 space-y-1.5">
+        <div class="text-xs font-black text-[#1e2d3d]">📋 Roteiro Cronológico de Saneamento</div>
+        <ol id="ragDeepRoteiroList" class="list-decimal list-inside text-xs text-slate-700 space-y-1"></ol>
+      </div>
+    </div>
+
     <div id="ragEditorSection" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-6">
       <section class="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <div class="bg-slate-100 px-5 py-3 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-700">
@@ -4452,39 +4486,182 @@
       renderRAG();
     }
 
+    function _readFileAsBase64(f) {
+      return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result || "").split(",")[1] || "");
+        r.onerror = () => reject(new Error("Falha ao ler " + f.name));
+        r.readAsDataURL(f);
+      });
+    }
+
     async function handleUploadFile() {
       const fileInput = document.getElementById("fileInputRAG");
       if (!fileInput || !fileInput.files.length) return;
-      const file = fileInput.files[0];
+      const files = Array.from(fileInput.files);
+      const primaryFile = files[0];
+      const extraFiles = files.slice(1);
 
       const jobId = "doc_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
-      showRAGProgressUI(jobId, file.name, file.size);
-      await fallbackSyncUpload(file, jobId);
+      const displayLabel = extraFiles.length ? `${primaryFile.name} (+${extraFiles.length} anexo(s))` : primaryFile.name;
+      showRAGProgressUI(jobId, displayLabel, primaryFile.size);
+      await fallbackSyncUpload(primaryFile, jobId, extraFiles);
     }
 
-    async function fallbackSyncUpload(file, jobId) {
-      updateRAGProgress(25, "Lendo Arquivo", "Extraindo estrutura, tabelas, fontes e diagramação original...");
-      const reader = new FileReader();
-      reader.onload = async function() {
-        try {
-          const b64 = reader.result.split(",")[1];
-          updateRAGProgress(60, "Auditando Cláusulas", "Executando auditoria jurídica Lei nº 14.133/2021, AGU e TCU...");
-          const resp = await fetch("/api/v1/rag/audit-upload", {
+    async function fallbackSyncUpload(file, jobId, extraFiles = []) {
+      try {
+        updateRAGProgress(25, "Lendo Autos", "Extraindo estrutura, tabelas, fontes e diagramação original...");
+        const b64 = await _readFileAsBase64(file);
+        const extraPayload = [];
+        for (const ef of extraFiles) {
+          const efB64 = await _readFileAsBase64(ef);
+          extraPayload.push({ filename: ef.name, file_base64: efB64 });
+        }
+        const contextNote = (document.getElementById("ragContextNoteInput")?.value || "").trim();
+        const geminiKey = (document.getElementById("ragGeminiApiKeyInput")?.value || "").trim();
+
+        updateRAGProgress(55, "Auditoria Jurídica Profunda", "Cruzando DFD, ETP, TR, Aviso e legislação (Lei 14.133/2021, INs SEGES, AGU e TCU)...");
+        const resp = await fetch("/api/v1/rag/audit-upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: file.name,
+            file_base64: b64,
+            artifact_type: "TR",
+            context_note: contextNote,
+            gemini_api_key: geminiKey,
+            extra_files: extraPayload
+          })
+        });
+        const data = await resp.json();
+        if (resp.ok && (data.elements || data.clauses)) {
+          window.lastDeepAuditData = data.deep_audit || null;
+          window.lastDeepAuditFilename = file.name;
+          renderDeepAuditPanel(data.deep_audit);
+          onRAGJobCompleted(data, file.name);
+        } else {
+          onRAGJobError(data.error || "Não foi possível extrair o conteúdo deste arquivo.");
+        }
+      } catch (e) {
+        onRAGJobError("Falha na comunicação com o servidor de auditoria: " + e.message);
+      }
+    }
+
+    function renderDeepAuditPanel(deep) {
+      const panel = document.getElementById("ragDeepAuditPanel");
+      if (!panel) return;
+      if (!deep || deep.status !== "SUCCESS" || !Array.isArray(deep.achados) || deep.achados.length === 0) {
+        panel.classList.add("hidden");
+        return;
+      }
+      panel.classList.remove("hidden");
+      const parecer = deep.parecer_preventivo || {};
+      const vereditoEl = document.getElementById("ragDeepVereditoBadge");
+      const resumoEl = document.getElementById("ragDeepResumo");
+      const countsEl = document.getElementById("ragDeepCountsBar");
+      const listEl = document.getElementById("ragDeepFindingsList");
+      const rotBox = document.getElementById("ragDeepRoteiroBox");
+      const rotList = document.getElementById("ragDeepRoteiroList");
+
+      const vereditoText = String(parecer.veredito || "SOBRESTAR_PARA_SANEAMENTO").replace(/_/g, " ");
+      if (vereditoEl) vereditoEl.textContent = vereditoText;
+      if (resumoEl) resumoEl.textContent = parecer.resumo_executivo || "";
+
+      const achados = deep.achados || [];
+      const nNorm = achados.filter(a => String(a.eixo || "").toUpperCase() === "NORMATIVA").length;
+      const nProc = achados.filter(a => String(a.eixo || "").toUpperCase() === "PROCESSUAL").length;
+      const nCont = achados.filter(a => String(a.eixo || "").toUpperCase() === "CONTRADICAO_INTERNA").length;
+      const nCrit = achados.filter(a => String(a.criticidade || "").toUpperCase() === "CRITICA").length;
+
+      if (countsEl) {
+        countsEl.innerHTML = `
+          <div class="p-2.5 rounded-xl bg-rose-50 border border-rose-200"><div class="text-[10px] font-bold text-rose-700 uppercase">Críticas</div><div class="text-lg font-black text-rose-800">${nCrit}</div></div>
+          <div class="p-2.5 rounded-xl bg-amber-50 border border-amber-200"><div class="text-[10px] font-bold text-amber-800 uppercase">Normativas</div><div class="text-lg font-black text-amber-900">${nNorm}</div></div>
+          <div class="p-2.5 rounded-xl bg-sky-50 border border-sky-200"><div class="text-[10px] font-bold text-sky-800 uppercase">Processuais (Art. 72)</div><div class="text-lg font-black text-sky-900">${nProc}</div></div>
+          <div class="p-2.5 rounded-xl bg-slate-100 border border-slate-200"><div class="text-[10px] font-bold text-slate-600 uppercase">Contradições Internas</div><div class="text-lg font-black text-slate-800">${nCont}</div></div>
+        `;
+      }
+
+      if (listEl) {
+        listEl.innerHTML = achados.map(a => {
+          const crit = String(a.criticidade || "ALTA").toUpperCase();
+          const critCls = crit === "CRITICA" ? "bg-rose-600 text-white" : (crit === "ALTA" ? "bg-amber-500 text-white" : "bg-slate-600 text-white");
+          return `
+            <div class="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 space-y-1.5 text-xs">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="px-2 py-0.5 rounded text-[10px] font-black ${critCls}">${escapeHtml(crit)}</span>
+                  <span class="px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-[10px] font-bold">${escapeHtml(a.id || "AUD")}</span>
+                  <strong class="text-[#1e2d3d]">${escapeHtml(a.titulo || "Apontamento")}</strong>
+                </div>
+                <span class="text-[10px] font-bold text-slate-500">${escapeHtml(a.localizacao || "")}</span>
+              </div>
+              <p class="text-slate-700 leading-relaxed">${escapeHtml(a.descricao_erro || "")}</p>
+              <div class="text-[11px] bg-white p-2 rounded-lg border border-slate-200">
+                <div><strong class="text-[#1e2d3d]">Base Legal:</strong> ${escapeHtml(a.base_legal || "")}</div>
+                ${a.extrato_norma ? `<div class="text-slate-500 mt-0.5 italic">${escapeHtml(a.extrato_norma)}</div>` : ""}
+              </div>
+              <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] pt-0.5">
+                <span class="text-emerald-800"><strong>Ação Corretiva:</strong> ${escapeHtml(a.acao_corretiva || "")}</span>
+                <span class="px-2 py-0.5 rounded bg-indigo-50 text-indigo-800 font-bold text-[10px]">${escapeHtml(a.setor_responsavel || "Licitações")}</span>
+              </div>
+            </div>
+          `;
+        }).join("");
+      }
+
+      const roteiro = deep.roteiro_saneamento || [];
+      if (rotBox && rotList && roteiro.length > 0) {
+        rotBox.classList.remove("hidden");
+        rotList.innerHTML = roteiro.map(s => `<li>${escapeHtml(s)}</li>`).join("");
+      } else if (rotBox) {
+        rotBox.classList.add("hidden");
+      }
+    }
+
+    async function downloadDespachoSaneamentoBoth() {
+      const deep = window.lastDeepAuditData;
+      if (!deep || !deep.achados || deep.achados.length === 0) {
+        showAppNotification("Nenhum resultado de auditoria profunda disponível para o despacho.", "warn");
+        return;
+      }
+      const btn = document.getElementById("btnDownloadDespachoSaneamento");
+      if (btn) { btn.disabled = true; btn.textContent = "⏳ Emitindo Despacho (Word + PDF)..."; }
+      try {
+        const omName = (document.getElementById("userGlobalOrgName")?.value || "MARINHA DO BRASIL").trim();
+        const payload = {
+          om_name: omName,
+          processo_ref: window.lastDeepAuditFilename || "Processo Administrativo",
+          parecer_preventivo: deep.parecer_preventivo || {},
+          achados: deep.achados || [],
+          roteiro_saneamento: deep.roteiro_saneamento || []
+        };
+        for (const fmt of [
+          { path: "/api/v1/rag/despacho-saneamento/docx", fname: "Despacho_Saneamento_Auditoria_NLLC.docx" },
+          { path: "/api/v1/rag/despacho-saneamento/pdf", fname: "Despacho_Saneamento_Auditoria_NLLC.pdf" }
+        ]) {
+          const resp = await fetch(fmt.path, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ filename: file.name, file_base64: b64, artifact_type: "TR" })
+            body: JSON.stringify(payload)
           });
-          const data = await resp.json();
-          if (resp.ok && (data.elements || data.clauses)) {
-            onRAGJobCompleted(data, file.name);
-          } else {
-            onRAGJobError(data.error || "Não foi possível extrair o conteúdo deste arquivo.");
-          }
-        } catch (e) {
-          onRAGJobError("Falha na comunicação com o servidor de auditoria: " + e.message);
+          if (!resp.ok) throw new Error("HTTP " + resp.status);
+          const blob = await resp.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = fmt.fname;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 10000);
         }
-      };
-      reader.readAsDataURL(file);
+        showAppNotification("Despacho de Saneamento emitido em Word (.docx) e PDF!", "success");
+      } catch (err) {
+        showAppNotification("Erro ao emitir Despacho: " + (err.message || err), "error");
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "⚖️ Emitir Despacho de Saneamento (Word + PDF)"; }
+      }
     }
 
     async function downloadAuditedDocx() {
