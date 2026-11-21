@@ -1,11 +1,11 @@
 {
   "name": "govtech-nllc",
-  "version": "2.2.0",
-  "description": "Sistema GovTech NLLC - Plataforma de Inteligência em Licitações Públicas (Lei nº 14.133/2021 & IN SEGES/ME nº 65/2021)",
+  "version": "2.3.0",
+  "description": "Plataforma de Inteligência em Licitações Públicas (Lei nº 14.133/2021 & IN SEGES/ME nº 65/2021)",
   "scripts": {
     "typecheck": "node scripts/verify_codebase.js --typecheck",
     "lint": "node scripts/verify_codebase.js --lint",
-    "test:unit": "node --test tests/in65_math_engine.test.js src/tests/unit/pncpLinksAndQrCode.test.ts src/tests/unit/in65DomainAndStatistics.test.ts",
+    "test:unit": "node --test tests/in65_math_engine.test.js src/tests/unit/pncpLinksAndQrCode.test.ts src/tests/unit/documentBranding.test.ts src/tests/unit/in65DomainAndStatistics.test.ts",
     "build": "node scripts/verify_codebase.js --build",
     "test": "npm run test:unit",
     "test:python": "python -m unittest discover -s backend/tests",
@@ -22,7 +22,7 @@
     "in65-2021",
     "lei-14133"
   ],
-  "author": "Equipe GovTech / Marinha do Brasil",
+  "author": "Equipe de Engenharia / Marinha do Brasil",
   "license": "UNLICENSED",
   "private": true
 }

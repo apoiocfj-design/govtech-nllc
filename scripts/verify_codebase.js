@@ -16,6 +16,8 @@ async function runTypecheck() {
     "src/shared/i18n/ptBR.ts",
     "src/domain/statistics/in65Statistics.ts",
     "src/shared/validation/govApiZod.ts",
+    "src/infrastructure/documents/documentHeaderTemplate.ts",
+    "src/infrastructure/observability/auditLogger.ts",
   ];
   for (const rel of tsFiles) {
     const abs = path.join(rootDir, rel);

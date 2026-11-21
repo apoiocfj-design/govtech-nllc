@@ -88,7 +88,7 @@ def build_pncp_procurement_payload(
         "objetoCompra": objeto_descricao,
         "informacaoComplementar": (
             "Pesquisa de Preços realizada estritamente sob as regras da Lei nº 14.133/2021 "
-            "e da Instrução Normativa SEGES/ME nº 65/2021, processada e auditada no Sistema GovTech NLLC."
+            "e da Instrução Normativa SEGES/ME nº 65/2021."
         ),
         "srp": False,
         "valorTotalEstimado": round(total_homologavel, 2),
@@ -101,7 +101,7 @@ def build_pncp_procurement_payload(
         },
         "itens": pncp_itens,
         "metadadosAuditoria": {
-            "sistemaOrigem": "Sistema GovTech NLLC (Lei 14.133/2021)",
+            "sistemaOrigem": "Módulo Oficial de Pesquisa de Preços (Lei 14.133/2021 & IN 65/2021)",
             "versaoModulo": "2.4.0-Enterprise",
             "hashIntegridade": hash_auditoria or "N/A",
             "dataGeracaoUtc": now_iso,

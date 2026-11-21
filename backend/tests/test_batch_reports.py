@@ -230,6 +230,14 @@ class TestBatchReports(unittest.TestCase):
             self.assertIn("04_Comprovantes_PNCP_Contratacoes_QRCode.pdf", names)
             self.assertIn("00_MANUAL_DIDATICO_DO_PROCESSO_LEIA_ME.pdf", names)
             self.assertIn("00_LEIA_ME_MANUAL_DIDATICO.txt", names)
+            self.assertIn("00_Indice_do_Processo.txt", names)
+            self.assertIn("01_Consolidacao_Geral/00_Mapa_Comparativo_Geral_Completo.xlsx", names)
+            self.assertIn("03_Analise_Estatistica_e_Justificativas/01_Nota_Tecnica_AGU_IN65_Pesquisa_Precos.docx", names)
+            self.assertIn("04_Planilhas_e_Auditoria/04_Comprovantes_PNCP_Contratacoes_QRCode.pdf", names)
+            self.assertTrue(any(n.startswith("02_Pesquisa_por_Item/Item_001_") for n in names))
+
+            idx_txt = zf.read("00_Indice_do_Processo.txt").decode("utf-8")
+            self.assertNotIn("GOVTECH NLLC", idx_txt.upper())
 
             self.assertTrue(zf.read("04_Comprovantes_PNCP_Contratacoes_QRCode.pdf").startswith(b"%PDF"))
             self.assertTrue(zf.read("00_MANUAL_DIDATICO_DO_PROCESSO_LEIA_ME.pdf").startswith(b"%PDF"))

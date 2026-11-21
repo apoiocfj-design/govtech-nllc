@@ -2315,8 +2315,9 @@ def build_consolidated_in65_pdf_bytes(
             header_content.append(Spacer(1, 0.1 * cm))
         except Exception:
             pass
+    header_content.append(Paragraph("REPÚBLICA FEDERATIVA DO BRASIL", st_head_sub))
     header_content.append(Paragraph(om_name.upper(), st_head_title))
-    header_content.append(Paragraph("SISTEMA DE GESTÃO DE PREÇOS E CONTRATAÇÕES PÚBLICAS — GOVTECH NLLC", st_head_sub))
+    header_content.append(Paragraph("SETOR DE OBTENÇÃO E CONTRATAÇÕES PÚBLICAS", st_head_sub))
     header_content.append(Spacer(1, 0.15 * cm))
     header_content.append(Paragraph("CADERNO CONSOLIDADO DE PREÇOS E MAPA COMPARATIVO DE COTAÇÕES", st_title))
     header_content.append(Paragraph(
@@ -2513,10 +2514,10 @@ def build_consolidated_in65_docx_bytes(
         s.page_width = Inches(11.69)
         s.page_height = Inches(8.27)
 
-    # 1. Cabeçalho
+    # 1. Cabeçalho Institucional Unificado
     p_om = doc.add_paragraph()
     p_om.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r_om = p_om.add_run(f"{om_name.upper()}\nSISTEMA DE GESTÃO DE PREÇOS E CONTRATAÇÕES PÚBLICAS — GOVTECH NLLC\n")
+    r_om = p_om.add_run(f"REPÚBLICA FEDERATIVA DO BRASIL\n{om_name.upper()}\nSETOR DE OBTENÇÃO E CONTRATAÇÕES PÚBLICAS\n")
     r_om.bold = True
     r_om.font.size = Pt(11)
     r_om.font.color.rgb = RGBColor(15, 23, 42)
@@ -2891,11 +2892,19 @@ def build_batch_zip_to_file(
     )
     done_steps = 0
 
+    def _clean_short_slug(raw_desc: str, max_len: int = 28) -> str:
+        import unicodedata
+        norm = unicodedata.normalize("NFKD", str(raw_desc or "Item")).encode("ascii", "ignore").decode("ascii")
+        s = re.sub(r"[^A-Za-z0-9]+", "_", norm).strip("_")
+        return (s[:max_len].strip("_") or "Item")
+
     with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED, compresslevel=1) as zf:
         # 1. Mapa Comparativo Geral Completo (XLSX com TODAS as empresas/cotações de todos os itens)
         _report(done_steps, total_steps, f"Gerando Mapa Comparativo Geral Excel ({total_items} itens + todas as empresas)...")
         xlsx_consolidada = build_consolidated_in65_excel_bytes(items_results, uasg_name=uasg_label)
         zf.writestr("00_Mapa_Comparativo_Geral_Completo.xlsx", xlsx_consolidada)
+        zf.writestr("01_Consolidacao_Geral/00_Mapa_Comparativo_Geral_Completo.xlsx", xlsx_consolidada)
+        zf.writestr("04_Planilhas_e_Auditoria/00_Mapa_Comparativo_Geral_Completo.xlsx", xlsx_consolidada)
         del xlsx_consolidada
         done_steps += 1
 
@@ -2908,6 +2917,7 @@ def build_batch_zip_to_file(
             elaborador_nome=elaborador_nome,
         )
         zf.writestr("01_Nota_Tecnica_AGU_IN65_Pesquisa_Precos.docx", nt_docx)
+        zf.writestr("03_Analise_Estatistica_e_Justificativas/01_Nota_Tecnica_AGU_IN65_Pesquisa_Precos.docx", nt_docx)
         del nt_docx
         done_steps += 1
 
@@ -2920,6 +2930,7 @@ def build_batch_zip_to_file(
             elaborador_nome=elaborador_nome,
         )
         zf.writestr("01_Nota_Tecnica_AGU_IN65_Pesquisa_Precos.pdf", nt_pdf)
+        zf.writestr("03_Analise_Estatistica_e_Justificativas/01_Nota_Tecnica_AGU_IN65_Pesquisa_Precos.pdf", nt_pdf)
         del nt_pdf
         done_steps += 1
 
@@ -2933,6 +2944,7 @@ def build_batch_zip_to_file(
                 ordenador_nome=ordenador_nome,
             )
             zf.writestr("02_RaioX_Certidoes_Empresas_Consolidado.pdf", sup_pdf)
+            zf.writestr("03_Analise_Estatistica_e_Justificativas/02_RaioX_Certidoes_Empresas_Consolidado.pdf", sup_pdf)
             del sup_pdf
         except Exception:
             pass
@@ -2944,6 +2956,7 @@ def build_batch_zip_to_file(
                 ordenador_nome=ordenador_nome,
             )
             zf.writestr("02_RaioX_Certidoes_Empresas_Consolidado.docx", sup_docx)
+            zf.writestr("03_Analise_Estatistica_e_Justificativas/02_RaioX_Certidoes_Empresas_Consolidado.docx", sup_docx)
             del sup_docx
         except Exception:
             pass
@@ -2957,11 +2970,13 @@ def build_batch_zip_to_file(
                     items_results, om_name=om_name, ordenador_nome=ordenador_nome, elaborador_nome=elaborador_nome
                 )
                 zf.writestr("03_Justificativa_Consolidada_Art6_Par5.docx", j_docx)
+                zf.writestr("03_Analise_Estatistica_e_Justificativas/03_Justificativa_Consolidada_Art6_Par5.docx", j_docx)
                 del j_docx
                 j_pdf = build_consolidated_justificativa_pdf_bytes(
                     items_results, om_name=om_name, ordenador_nome=ordenador_nome, elaborador_nome=elaborador_nome
                 )
                 zf.writestr("03_Justificativa_Consolidada_Art6_Par5.pdf", j_pdf)
+                zf.writestr("03_Analise_Estatistica_e_Justificativas/03_Justificativa_Consolidada_Art6_Par5.pdf", j_pdf)
                 del j_pdf
             except Exception:
                 pass
@@ -2993,6 +3008,7 @@ def build_batch_zip_to_file(
             n_unique_suppliers=len(unique_cnpjs),
         )
         zf.writestr("00_LEIA_ME_MANUAL_DIDATICO.txt", manual_txt)
+        zf.writestr("00_Indice_do_Processo.txt", manual_txt)
         done_steps += 1
 
         # 6. Caderno de Comprovantes Oficiais PNCP (1 página estilo portal PNCP com QR Code por contratação única)
@@ -3004,6 +3020,7 @@ def build_batch_zip_to_file(
                 from core.pncp_extractor import build_pncp_comprovantes_caderno_pdf_bytes
             pncp_pdf = build_pncp_comprovantes_caderno_pdf_bytes(items_results, om_name=om_name, max_purchases=60)
             zf.writestr("04_Comprovantes_PNCP_Contratacoes_QRCode.pdf", pncp_pdf)
+            zf.writestr("04_Planilhas_e_Auditoria/04_Comprovantes_PNCP_Contratacoes_QRCode.pdf", pncp_pdf)
             del pncp_pdf
         except Exception:
             pass
@@ -3028,12 +3045,14 @@ def build_batch_zip_to_file(
                 raw_subset, om_name=om_name, elaborador_nome=elaborador_nome, ordenador_nome=ordenador_nome
             )
             zf.writestr(f"{folder_name}/Caderno_Resumo_Executivo_{suffix_tag}.pdf", cad_pdf)
+            zf.writestr(f"01_Consolidacao_Geral/Caderno_Resumo_Executivo_{suffix_tag}.pdf", cad_pdf)
             del cad_pdf
 
             cad_docx = build_consolidated_in65_docx_bytes(
                 raw_subset, om_name=om_name, elaborador_nome=elaborador_nome, ordenador_nome=ordenador_nome
             )
             zf.writestr(f"{folder_name}/Caderno_Resumo_Executivo_{suffix_tag}.docx", cad_docx)
+            zf.writestr(f"01_Consolidacao_Geral/Caderno_Resumo_Executivo_{suffix_tag}.docx", cad_docx)
             del cad_docx
             done_steps += 1
 
@@ -3084,8 +3103,13 @@ def build_batch_zip_to_file(
                         elaborador_nome=elaborador_nome,
                         ordenador_nome=ordenador_nome,
                     )
+                    short_slug = _clean_short_slug(rep_i.get("item_description") or it_obj.get("desc") or prefix_i, 26)
                     zf.writestr(
                         f"{folder_name}/Relatorios_CATMAT_CATSER/Item_{orig_idx:03d}_{prefix_i}_{code_i}.pdf",
+                        item_pdf,
+                    )
+                    zf.writestr(
+                        f"02_Pesquisa_por_Item/Item_{orig_idx:03d}_{code_i}_{short_slug}.pdf",
                         item_pdf,
                     )
                     del item_pdf
@@ -3229,9 +3253,10 @@ def build_audit_certificate_pdf_bytes(
         except Exception:
             pass
 
-    # 2. Cabeçalho Oficial
+    # 2. Cabeçalho Oficial Unificado
+    elements.append(Paragraph("REPÚBLICA FEDERATIVA DO BRASIL", subtitle_style))
     elements.append(Paragraph(om_name.upper(), title_style))
-    elements.append(Paragraph("SISTEMA GOVTECH NLLC • MÓDULO DE COMPRAS PÚBLICAS & AUDITORIA", subtitle_style))
+    elements.append(Paragraph("SETOR DE OBTENÇÃO E CONTRATAÇÕES PÚBLICAS • AUDITORIA IN 65/2021", subtitle_style))
     elements.append(Spacer(1, 4))
     elements.append(Paragraph("CERTIFICADO DE TRILHA DE AUDITORIA E INTEGRIDADE CRIPTOGRÁFICA", title_style))
     elements.append(Paragraph("Conformidade com a Instrução Normativa SEGES/ME nº 65/2021 e Lei nº 14.133/2021", subtitle_style))

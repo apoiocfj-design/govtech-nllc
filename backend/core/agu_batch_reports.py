@@ -1595,7 +1595,7 @@ def build_process_manual_txt(
     total_extenso = brl_por_extenso(stats["total_geral"])
     lines = [
         "╔══════════════════════════════════════════════════════════════════════════════╗",
-        "║       MANUAL DIDÁTICO DO PROCESSO DE PESQUISA DE PREÇOS — GOVTECH NLLC      ║",
+        "║         MANUAL DIDÁTICO DO PROCESSO DE PESQUISA DE PREÇOS (IN 65/2021)       ║",
         "║      Lei Federal nº 14.133/2021 • IN SEGES/ME nº 65/2021 • Modelo AGU       ║",
         "╚══════════════════════════════════════════════════════════════════════════════╝",
         "",

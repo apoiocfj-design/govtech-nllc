@@ -466,7 +466,7 @@ def build_official_pncp_html(compra: dict, itens: list, arquivos: list, pncp_web
 
     <div class="footer-audit">
         <div>
-            Documento emitido eletronicamente via Sistema GovTech NLLC integrado às APIs Oficiais do PNCP e Compras.gov.br.<br>
+            Documento emitido eletronicamente em integração com as APIs Oficiais do PNCP e Compras.gov.br.<br>
             Autenticidade passível de confirmação mediante consulta ao Controle PNCP nº {num_controle}.
         </div>
         <div style="text-align:right;">
