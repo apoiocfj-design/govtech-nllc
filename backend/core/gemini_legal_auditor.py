@@ -986,10 +986,33 @@ def _merge_and_normalize_audit_results(
 
     merged_achados: List[Dict[str, Any]] = list(ai_result.get("achados") or [])
     existing_titles = {str(a.get("titulo") or "").strip().lower()[:45] for a in merged_achados}
+    existing_Corpus = " ".join(
+        f"{a.get('titulo') or ''} {a.get('descricao_erro') or ''} {a.get('base_legal') or ''}".lower()
+        for a in merged_achados
+    )
+
+    topic_markers = [
+        ("77/2022", ["77/2022", "cinco) dias úteis", "5 (cinco) dias úteis"]),
+        ("eireli", ["eireli", "14.195/2021", "unipessoal"]),
+        ("pesquisa_precos", ["mapa comparativo", "65/2021", "pesquisa de preço"]),
+        ("orcamento", ["disponibilidade orçamentária", "72, iv", "72, inciso iv"]),
+        ("fracionamento", ["fracionamento", "75, § 1º", "ramo de atividade"]),
+        ("juridico", ["69/2021", "parecer jurídico", "análise jurídica", "53, § 5º"]),
+        ("inciso_viii", ["inciso viii", "75, viii", "emergência ou de calamidade"]),
+        ("marca", ["art. 41", "súmula tcu nº 270", "súmula 270", "marca"]),
+        ("engenharia", ["engenharia", "75%", "85%"]),
+    ]
 
     for da in (det_result.get("achados") or []):
         dt = str(da.get("titulo") or "").strip().lower()[:45]
-        if dt and dt not in existing_titles:
+        da_blob = f"{da.get('titulo') or ''} {da.get('descricao_erro') or ''} {da.get('base_legal') or ''}".lower()
+        already_covered = dt in existing_titles
+        if not already_covered:
+            for _, kws in topic_markers:
+                if any(k in da_blob for k in kws) and any(k in existing_Corpus for k in kws):
+                    already_covered = True
+                    break
+        if dt and not already_covered:
             merged_achados.append(da)
             existing_titles.add(dt)
 
