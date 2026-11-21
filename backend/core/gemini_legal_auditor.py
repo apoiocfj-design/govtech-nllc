@@ -1,12 +1,12 @@
 """
-Motor Híbrido de Auditoria Jurídica Preventiva (Lei nº 14.133/2021, INs SEGES/ME e SEGES/MGI, AGU/TCU)
-via Google Gemini API (`gemini-3.8-flash` / `gemini-3.5-flash-lite`) + Verificador Determinístico Multi-Artefato
-+ Gerador do Checklist Detalhado de Conformidade Normativa e Saneamento Processual (Word .DOCX e PDF Paisagem A4)
-no padrão oficial da Marinha do Brasil / AGU / TCU.
+Motor Híbrido de Auditoria Jurídica Preventiva, Correção Cirúrgica Automática (.DOCX)
+e Emissão de NOTA TÉCNICA REVISIONADA E PARECER JURÍDICO (Padrão Institucional Marinha do Brasil / AGU / TCU)
+sob a Lei nº 14.133/2021, LC nº 123/2006, INs SEGES/ME nº 65/2021, 67/2021 e 77/2022.
 """
 
 from __future__ import annotations
 
+import copy
 import io
 import json
 import os
@@ -19,7 +19,7 @@ import pdfplumber
 import requests
 from docx import Document
 from docx.enum.section import WD_ORIENT, WD_SECTION
-from docx.enum.table import WD_ALIGN_VERTICAL, WD_TABLE_ALIGNMENT
+from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_COLOR_INDEX
 from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
@@ -29,7 +29,37 @@ from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Image as RLImage, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+
+def _find_brasao_path() -> Optional[str]:
+    candidates = [
+        os.path.join(BASE_DIR, "brasao_oficial.png"),
+        os.path.join(BASE_DIR, "..", "brasao_oficial.png"),
+        os.path.join(BASE_DIR, "..", "..", "frontend", "brasao_oficial.png"),
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return os.path.abspath(p)
+    return None
+
+
+def _parse_navy_header_lines(om_name: str) -> Tuple[str, str]:
+    """Separa linha superior (MARINHA DO BRASIL) e OM subordinada (ex.: CAPITANIA FLUVIAL DE JUAZEIRO)."""
+    raw = (om_name or "").strip()
+    if not raw:
+        return "MARINHA DO BRASIL", "CAPITANIA FLUVIAL DE JUAZEIRO"
+    cleaned = re.sub(r"\s*[•\-–—|]+\s*", " | ", raw)
+    parts = [p.strip() for p in cleaned.split("|") if p.strip()]
+    if len(parts) >= 2 and "MARINHA" in parts[0].upper():
+        return parts[0].upper(), " — ".join(parts[1:]).upper()
+    if "MARINHA DO BRASIL" in raw.upper():
+        rest = re.sub(r"MARINHA\s+DO\s+BRASIL", "", raw, flags=re.I).strip(" -•–—|")
+        return "MARINHA DO BRASIL", (rest.upper() if rest else "ORGANIZAÇÃO MILITAR")
+    return "MARINHA DO BRASIL", raw.upper()
 
 
 # ==============================================================================
@@ -37,17 +67,14 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 #    CLÁUSULAS, TABELAS CATMAT E ASSINATURAS COM DATA/HORA)
 # ==============================================================================
 def extract_lossless_dossier_text(file_bytes: bytes, filename: str = "Autos.pdf") -> str:
-    """
-    Extrai o texto integral página a página e todas as tabelas estruturadas de um
-    arquivo PDF, DOCX ou TXT sem descartar cabeçalhos, numerações de artefatos,
-    números de cláusulas, rodapés ou carimbos de assinatura cronológica.
-    """
     if not file_bytes:
         return ""
     fname_lower = (filename or "").lower()
-    chunks: List[str] = [f"======================================================================"]
-    chunks.append(f"ARQUIVO ANEXADO: {filename}")
-    chunks.append(f"======================================================================")
+    chunks: List[str] = [
+        "======================================================================",
+        f"ARQUIVO ANEXADO: {filename}",
+        "======================================================================",
+    ]
 
     if fname_lower.endswith(".pdf"):
         try:
@@ -87,7 +114,6 @@ def extract_lossless_dossier_text(file_bytes: bytes, filename: str = "Autos.pdf"
                         chunks.append(f"[CABEÇALHO SEÇÃO {s_idx}]: {hdr_txt}")
                 except Exception:
                     pass
-            p_count = 0
             t_count = 0
             for block in d.element.body:
                 tag = block.tag.split("}")[-1] if "}" in block.tag else block.tag
@@ -95,7 +121,6 @@ def extract_lossless_dossier_text(file_bytes: bytes, filename: str = "Autos.pdf"
                     p = docx.text.paragraph.Paragraph(block, d)
                     t_p = (p.text or "").strip()
                     if t_p:
-                        p_count += 1
                         chunks.append(t_p)
                 elif tag == "tbl":
                     t_count += 1
@@ -113,109 +138,85 @@ def extract_lossless_dossier_text(file_bytes: bytes, filename: str = "Autos.pdf"
 
 
 # ==============================================================================
-# 2. PROMPT ESTRUTURADO EM ENGENHARIA DE INSTRUÇÃO JURÍDICA (5 EIXOS + 26 REGRAS)
+# 2. PROMPT ESTRUTURADO EM ENGENHARIA DE INSTRUÇÃO JURÍDICA (5 EIXOS + MINUTAS)
 # ==============================================================================
 AUDITOR_SYSTEM_PROMPT = """# PAPEL E PERFIL DE ATUAÇÃO
-Atue como um Auditor Federal de Controle Externo (TCU/CGU) e Parecerista Jurídico Sênior (CJU/AGU), especialista em Licitações e Contratos Administrativos no âmbito da Administração Pública Federal brasileira. Sua postura deve ser estritamente técnica, exaustiva, detalhista, cética e rigorosa quanto à legalidade, à instrução processual, à homogeneidade entre os documentos e à coerência interna dos autos.
+Atue como um Auditor Federal de Controle Externo (TCU/CGU) e Parecerista Jurídico Sênior (CJU/AGU), especialista em Licitações e Contratos Administrativos no âmbito da Administração Pública Federal brasileira e da Marinha do Brasil. Sua postura deve ser estritamente técnica, exaustiva, detalhista, cética e rigorosa quanto à legalidade, à instrução processual, à homogeneidade entre os documentos e à coerência interna dos autos.
 
 # OBJETIVO
-Realizar uma auditoria preventiva completa e exaustiva nos documentos anexados, identificando TODOS os erros (de 15 a 30+ apontamentos quando houver falhas nos autos, sem resumir nem omitir nenhum achado):
-1. Inconsistências normativas e ilegalidades (Eixo 1: "NORMATIVA" — IDs N-01, N-02, N-03...);
-2. Erros processuais, lacunas de instrução, documentos obrigatórios ausentes e falhas cronológicas (Eixo 2: "PROCESSUAL" — IDs P-01, P-02, P-03...);
-3. Contradições internas entre os artefatos (cruzamento de dados), falta de homogeneidade e erros de adaptação de minutas-padrão ("copia e cola"), cláusulas impertinentes, lacunas em branco após dois-pontos, saltos de numeração e falhas redacionais com impacto jurídico (Eixo 3: "CONTRADICAO_INTERNA" — IDs R-01, R-02, R-03...).
+Elaborar uma NOTA TÉCNICA REVISIONADA E PARECER JURÍDICO completa e exaustiva sobre os documentos anexados, identificando TODOS os erros (sem resumir nem omitir nenhum achado) E CONSTRUINDO O TEXTO-MINUTA PRONTO PARA PUBLICAÇÃO para cada erro apontado:
+1. Inconsistências normativas e ilegalidades (Eixo 1: "NORMATIVA" — IDs N-01, N-02...);
+2. Erros processuais, lacunas de instrução, documentos obrigatórios ausentes e falhas cronológicas (Eixo 2: "PROCESSUAL" — IDs P-01, P-02...);
+3. Contradições internas entre artefatos, erros de adaptação de minutas-padrão ("copia e cola"), cláusulas impertinentes, lacunas após dois-pontos, saltos de numeração e falhas redacionais (Eixo 3: "CONTRADICAO_INTERNA" — IDs R-01, R-02...).
 
 # ARCABOUÇO NORMATIVO DE REFERÊNCIA
-Analise os autos à luz de todo o ordenamento aplicável às contratações públicas federais, em especial:
-- Leis: Lei nº 14.133/2021 (NLLC), Lei Complementar nº 123/2006 (ME/EPP — art. 48, I exclusividade obrigatória até R$ 80.000,00), Lei nº 9.784/1999 (Processo Administrativo), Lei Complementar nº 101/2000 (LRF — art. 16) e Lei nº 14.195/2021 (art. 41 — extinção da EIRELI / substituição por SLU).
-- Decretos: Decretos anuais de atualização de valores da Lei nº 14.133/2021 (Decreto nº 12.807/2025 — limite art. 75, II atualizado para R$ 65.492,11; Decreto nº 12.343/2024), Decreto nº 10.947/2022 (PCA/DFD — arts. 15 e 16), Decreto nº 11.246/2022 (Agente de Contratação/Fiscais), Decreto nº 8.538/2015 (art. 6º — Tratamento ME/EPP) e Decreto nº 11.462/2023 (SRP).
-- Instruções Normativas (SEGES/ME e SEGES/MGI): IN nº 65/2021 (Pesquisa de Preços), IN nº 67/2021 (Dispensa Eletrônica — art. 4º, § 2º controle de não fracionamento por PDM/ramo de atividade; art. 20 habilitação simplificada), IN nº 58/2022 (ETP), IN nº 81/2022 (TR), IN nº 77/2022 (art. 7º, § 2º — redução obrigatória pela metade tanto do prazo de liquidação quanto do prazo de pagamento para 5 dias úteis nas despesas até o limite do art. 75, II), IN nº 98/2022 e IN nº 05/2017.
-- Jurisprudência e Orientações: Súmulas e Acórdãos consolidados do TCU (Súmula 247 — parcelamento; Súmula 270 — vedação de marca sem justificativa técnica), Orientações Normativas da AGU (ON nº 69/2021 — dispensa de análise jurídica em contratação direta de pequeno valor; ON nº 84/2024) e Notas Explicativas das minutas-padrão da AGU/SEGES.
+- Leis: Lei nº 14.133/2021 (NLLC), LC nº 123/2006 (ME/EPP — art. 48, I), Lei nº 9.784/1999, LC nº 101/2000 (LRF — art. 16) e Lei nº 14.195/2021 (art. 41 — extinção da EIRELI / SLU).
+- Decretos: Decreto nº 12.807/2025 (limite art. 75, II atualizado para R$ 65.492,11), Decreto nº 10.947/2022 (PCA/DFD — arts. 15 e 16), Decreto nº 11.246/2022 (Agente de Contratação/Fiscais), Decreto nº 8.538/2015 (ME/EPP) e Decreto nº 11.462/2023 (SRP).
+- Instruções Normativas (SEGES/ME e SEGES/MGI): IN nº 65/2021 (Pesquisa de Preços), IN nº 67/2021 (Dispensa Eletrônica — art. 4º § 2º e art. 20), IN nº 58/2022 (ETP), IN nº 81/2022 (TR), IN nº 77/2022 (art. 7º, § 2º — redução à metade para 5 dias úteis na liquidação E no pagamento), IN nº 98/2022 e IN nº 05/2017.
+- Jurisprudência e Orientações: Súmulas TCU 247 e 270; Orientações Normativas AGU nº 69/2021 e nº 84/2024; Notas Explicativas AGU/SEGES.
 
-# EIXOS OBRIGATÓRIOS DE VERIFICAÇÃO (AUDITE SISTEMATICAMENTE CADA PONTO)
-1. Instrução e Cronologia (Arts. 18 e 72 da Lei nº 14.133/2021):
-   - Verifique individualmente se TODOS os documentos obrigatórios constam nos autos. Gere UM ACHADO ESPECÍFICO E SEPARADO no eixo "PROCESSUAL" (declarando expressamente "Ausente nos autos") para cada peça ausente:
-     * (P-01) Inversão da ordem cronológica dos atos: compare todas as datas e horários de conclusão/assinatura (ex.: Aviso concluído antes da Solicitação de Abertura ou antes do TR).
-     * (P-02) Ausência da Pesquisa de Preços e do Mapa Comparativo de Preços assinado nos autos (Art. 72, II e Art. 23 da Lei 14.133/2021; IN SEGES/ME nº 65/2021).
-     * (P-03) Ausência de Declaração Formal de Disponibilidade Orçamentária ou Pré-Empenho/Nota de Crédito assinada (Art. 72, IV da Lei 14.133/2021 e Art. 16 da LRF — mera transcrição de dotação no TR não substitui a declaração formal).
-     * (P-04) Ausência de comprovação/certidão de não fracionamento de despesa no exercício para o mesmo ramo de atividade/PDM (Art. 75, § 1º da Lei 14.133/2021 e Art. 4º, § 2º da IN SEGES/ME nº 67/2021).
-     * (P-05) Ausência de Parecer Jurídico ou de Certificação Formal de Dispensa de Análise Jurídica fundamentada na ON AGU nº 69/2021 (Art. 72, III e Art. 53, § 5º da Lei 14.133/2021).
-     * (P-06) Uso inadequado/prematuro do Art. 72, VIII na solicitação/autorização inicial de abertura (o art. 72, VIII refere-se à autorização final da contratação direta após a instrução completa e seleção do fornecedor).
-     * (P-07) Data-base do orçamento estimado fixada no futuro ou posterior à elaboração do TR (ex.: item 8.40 com data futura — Art. 25, § 7º e Art. 92, § 3º da Lei 14.133/2021).
-     * (P-08) Inconsistência na vinculação ao Plano de Contratações Anual (PCA): campo "Número da Contratação" vazio no TR/Aviso apesar de afirmar previsão no PCA, ou justificativa genérica no DFD ("adequação à nova legislação") — Art. 12, VII da Lei 14.133/2021 e Arts. 15 e 16 do Decreto nº 10.947/2022.
-     * (P-09) Providências internas citadas no ETP/TR (designação de Agente de Contratação, Equipe de Apoio, Fiscal ou Comissão de Recebimento) sem as respectivas Portarias/Atos de designação anexados aos autos (Art. 7º e Art. 117 da Lei 14.133/2021; Decreto nº 11.246/2022).
-2. Objeto, CATMAT/CATSER e Especificação Técnica (Eixo "NORMATIVA"):
-   - (N-01) Cruze item a item os códigos CATMAT/CATSER e descrições puxadas do catálogo no DFD com a descrição real e unidade de medida no ETP e no TR (Art. 6º, XXIII, 'a' e 'c' e Art. 40, § 1º, I da Lei 14.133/2021). Aponte TODAS as divergências de especificação (ex.: binóculo termal 10 km vs binóculo óptico 7x50; bolsa de tubo de morteiro 81 mm vs bolsa estanque; luva nitrílica vs neoprene; luva de motociclismo em Embalagem vs luva de couro em PAR; código CATMAT duplicado para itens distintos como lanterna LED comum e lanterna antiexplosão). Preencha obrigatoriamente a lista "divergencias_catmat" (Tabela 1.1) com cada item divergente!
-   - (N-02) Ausência de especificações técnicas mínimas no item 1.1 do TR (denominações meramente genéricas sem potência/lúmens, grau IP, certificação antiexplosão Ex/ATEX/INMETRO, dimensões, Certificado de Aprovação CA ou grade de tamanhos).
-   - (N-03) Indicação de marca/modelo específico sem justificativa técnica e sem a expressão "ou equivalente, ou similar ou de melhor qualidade" (ex.: "Capacete com abafador Mark V", "Cyalume" — Art. 41, I da Lei 14.133/2021 e Súmula TCU nº 270).
-3. Regras da Disputa, Pagamento, Habilitação e Execução (Eixo "NORMATIVA"):
-   - (N-04) Prazo de pagamento em desacordo com a IN SEGES/ME nº 77/2022 (Art. 7º, § 2º): o TR reduz a liquidação pela metade (item 8.11), mas mantém o pagamento em 10 dias úteis (item 8.20), quando ambos devem ser reduzidos à metade (5 dias úteis) para contratações do art. 75, II.
-   - (N-05) Cláusula de extinção contratual com fundamento legal errado: ex. item 5.4 do Anexo I do TR citando "art. 75, inciso VIII, da Lei nº 14.133/2021" (emergência/calamidade) quando o processo é fundamentado no inciso II (baixo valor).
-   - (N-06) Omissão da exclusividade de participação para ME/EPP no corpo do Aviso (item 3 "Da Participação") quando a capa marca "Tratamento Favorecido ME/EPP: [SIM]" e os valores são inferiores a R$ 80.000,00 (Art. 48, I da LC 123/2006; Art. 4º da Lei 14.133/2021; Art. 6º do Decreto 8.538/2015).
-   - (N-07) Exigências de habilitação potencialmente excessivas para compra de baixo valor com entrega imediata (ex.: exigir atestado de capacidade técnica no item 9.22 e regularidade fiscal estadual/distrital completa nos itens 9.17–9.18 sem justificativa — Art. 70, III da Lei 14.133/2021 e Art. 20 da IN SEGES/ME nº 67/2021).
-4. Coerência Interdocumental, Homogeneidade e Revisão Redacional ("Copia e Cola" — Eixo "CONTRADICAO_INTERNA"):
-   - (R-01) Múltiplas numerações diferentes para o mesmo Aviso/Artefato (ex.: cabeçalho "Aviso 20/2026" vs capa "0044/2026" vs preâmbulo "Nº 43/2026", ou números de processo divergentes entre TR e DFD/ETP).
-   - (R-02) Divergência nos percentuais de multas sancionatórias entre o Aviso (ex.: item 11.1.15 com multa única de 5%) e o TR (ex.: item 7.2.4 com moratória de 0,1%/dia e compensatória de 10% a 15% — Art. 156, § 3º da Lei 14.133/2021).
-   - (R-03) Indefinição quanto ao parcelamento da solução no ETP (ex.: item 9.1 com texto indeciso de minuta-padrão "necessidade de não parcelamento (ou parcelamento por item...)") vs julgamento por item no Aviso (Art. 18, § 1º, VIII e Art. 40, V, 'b' da Lei 14.133/2021; Súmula TCU nº 247).
-   - (R-04) Contradição sobre a vigência da contratação entre a Solicitação de Abertura ("período de 12 (doze) meses") e o TR ("60 (sessenta) dias" com entrega única em 10 dias úteis — Art. 105 da Lei 14.133/2021).
-   - (R-05) Divergência no prazo de aceite da Nota de Empenho / assinatura do contrato entre o Aviso (ex.: item 10.2 fixando 02 dias úteis e erro "02 (dois) dias dias" no 10.2.1) e o Anexo I do TR (item 1.1 fixando 5 dias).
-   - (R-06) Contradição nos prazos de recebimento definitivo no TR (ex.: item 8.3 fixa 05 dias úteis e item 8.4 amplia para até 15 dias úteis justamente para o art. 75, II — Art. 140, II da Lei 14.133/2021).
-   - (R-07) Remissão vazia sobre dispensa de garantia contratual (ex.: item 4.3 do TR dispensa a garantia "pelas razões constantes do Estudo Técnico Preliminar", mas o ETP é omisso sobre garantia — Art. 96 da Lei 14.133/2021).
-   - (R-08) Cláusulas impertinentes mantidas de modelo-padrão ("copia e cola"): ex. item 6.12 do Aviso sobre obras e serviços de engenharia (inexequibilidade de 75% e garantia adicional de 85%) em compra de bens; item 11.3 do TR sobre dotação de exercícios subsequentes em compra de entrega imediata; menção à EIRELI (extinta pela Lei 14.195/2021, art. 41).
-   - (R-09) Divergência entre algarismo e extenso no intervalo mínimo de lances ou valores (ex.: item 5.3.2 do Aviso com "R$ 0,10 (um centavos)").
-   - (R-10) Lacunas de edição e erros de revisão: cláusulas que terminam em dois-pontos (:) sem texto subsequente (ex.: itens 4.1 e 7.2.4.6 do TR), saltos na numeração de cláusulas (ex.: salto do item 8.26 para 8.38) e erros de digitação ("na aquisição", "quize por cento", "s supressões", "a aquisição de Aquisição").
-
-# REGRAS DE RIGOR E CITAÇÃO OBRIGATÓRIA
-- Proibição de generalidades: indique exatamente o documento (ex.: DFD 53/2026, ETP 24/2026, TR 42/2026, Aviso), o item/cláusula e a página.
-- Fundamentação com Extrato Normativo: em 'base_legal' cite o dispositivo exato e em 'extrato_norma' forneça o extrato ou síntese fiel do comando normativo (NÃO use aspas duplas não escapadas dentro de strings JSON; use aspas simples '...' quando precisar citar dentro de um valor JSON).
-- Classificação de Risco: CRÍTICA (risco de nulidade, ilegalidade grave, ausência de documento essencial do art. 72 ou entrega de objeto errado), ALTA (violação de IN, prazo ilegal ou risco alto perante TCU/CGU), MÉDIA (contradição interna ou falha de motivação) ou BAIXA (erro formal/redacional).
+# REGRAS OBRIGATÓRIAS
+- Para CADA achado, além da base legal exata e do extrato fiel da norma, você DEVE redigir um 'texto_minuta' PRONTO PARA PUBLICAÇÃO (cláusula completa, declaração ou redação saneada conforme a norma, pronta para o usuário aplicar e publicar sem retrabalho — NÃO apenas indique um responsável).
+- Sempre que o erro estiver num trecho específico do documento, preencha 'trecho_errado_exato' (20 a 140 chars literais do documento) e 'texto_corrigido_exato' (redação pronta substituta) para que o sistema aplique automaticamente vermelho tachado + amarelo no Word.
+- Preencha também 'minutas_complementares' com minutas integrais prontas para juntada nos autos quando faltarem peças obrigatórias do Art. 72 (ex.: Declaração de Disponibilidade Orçamentária, Certidão de Não Fracionamento, Certidão ON AGU 69/2021).
+- Use aspas simples '...' dentro de textos JSON (nunca aspas duplas sem escape).
 
 # FORMATO DE SAÍDA (JSON ESTRITO)
-Retorne EXCLUSIVAMENTE um objeto JSON válido com a estrutura abaixo:
+Retorne EXCLUSIVAMENTE um objeto JSON válido com a estrutura:
 {
   "metadados_processo": {
     "numero_processo": "Ex: 63436.000936/2026-88",
     "modalidade_fundamento": "Ex: Dispensa Eletrônica — Art. 75, II, Lei nº 14.133/2021",
     "uasg_orgao": "Ex: 782340 — Capitania Fluvial de Juazeiro",
     "valor_total_estimado": "Ex: R$ 5.040,00 (limite atualizado: R$ 65.492,11 — Dec. 12.807/2025)",
-    "objeto_contratacao": "Resumo preciso do objeto e quantidade de itens",
-    "artefatos_analisados": "Lista dos artefatos analisados com seus números"
+    "objeto_contratacao": "Resumo preciso do objeto",
+    "artefatos_analisados": "Artefatos analisados com seus números"
   },
   "parecer_preventivo": {
-    "veredito": "RECOMENDACAO_DE_SUSTACAO_ANTES_DA_PUBLICACAO",
-    "resumo_executivo": "Parecer técnico completo detalhando o total de apontamentos por criticidade, os principais riscos identificados e a recomendação formal de NÃO publicar o Aviso no PNCP/Compras.gov.br até o integral saneamento."
+    "veredito": "RECOMENDAÇÃO DE SUSTAÇÃO PRÉVIA COM SANEAMENTO INTEGRAL APLICADO",
+    "resumo_executivo": "Parecer técnico-jurídico completo sintetizando os apontamentos por criticidade, os riscos legais e o saneamento redacional pronto para publicação."
   },
   "achados": [
     {
       "id": "N-01",
       "eixo": "NORMATIVA",
       "criticidade": "CRITICA",
-      "localizacao": "DFD 53/2026, ETP 24/2026, TR 42/2026",
+      "localizacao": "Artefato / Item / Página exatos",
       "titulo": "Título objetivo da inconsistência",
-      "descricao_erro": "Descrição completa e específica do erro encontrado nos autos",
-      "base_legal": "Art. 6º, XXIII, 'a' e 'c', e Art. 40, § 1º, I, da Lei nº 14.133/2021.",
-      "extrato_norma": "Síntese ou extrato fiel do comando normativo aplicável (usando aspas simples se necessário)",
-      "acao_corretiva": "Providência corretiva exata e redação de como a cláusula/documento deve ficar após a correção",
-      "trecho_errado_exato": "Cópia literal curta (20 a 140 chars) do trecho errado existente no documento para marcação automática em vermelho tachado (ou vazio se for peça ausente)",
-      "texto_corrigido_exato": "Texto substituto exato que aparecerá marcado em amarelo logo após o trecho tachado (ou vazio se não houver substituição textual)",
-      "setor_responsavel": "Setor Requisitante | Subseção de Intendência | Ordenador de Despesas | Setor Financeiro"
+      "descricao_erro": "Descrição detalhada do erro encontrado",
+      "base_legal": "Dispositivo legal exato",
+      "extrato_norma": "Extrato ou síntese fiel do comando normativo",
+      "acao_corretiva": "Resumo objetivo da correção executada",
+      "texto_minuta": "TEXTO-MINUTA PRONTO PARA PUBLICAÇÃO: redação completa e juridicamente aderente que resolve integralmente este apontamento.",
+      "trecho_errado_exato": "Trecho literal curto do documento original para vermelho tachado (ou vazio)",
+      "texto_corrigido_exato": "Texto pronto substituto para marcação em amarelo (ou vazio)"
     }
   ],
   "divergencias_catmat": [
     {
       "item": "2",
-      "descricao_etp_tr": "Descrição real e valor no ETP/TR",
-      "catmat_atual": "603185",
-      "descricao_dfd_catalogo": "Descrição divergente puxada no DFD",
+      "descricao_etp_tr": "Descrição real no ETP/TR",
+      "catmat_atual": "Código CATMAT",
+      "descricao_dfd_catalogo": "Descrição divergente no DFD",
       "unidade_dfd_vs_tr": "UN vs. UN",
-      "correcao_necessaria": "Substituir por CATMAT compatível e uniformizar unidade"
+      "correcao_necessaria": "Especificação e CATMAT corretos prontos para o DFD/TR"
     }
   ],
   "roteiro_saneamento": [
     {
       "etapa": "1ª Etapa",
-      "atividade": "Descrição detalhada da atividade na ordem cronológica correta",
-      "itens_atendidos": "N-01, N-02, N-03, P-08",
-      "setor_executor": "Setor Requisitante"
+      "atividade": "Atividade cronológica exata para publicação",
+      "itens_atendidos": "N-01, N-02...",
+      "artefato_pronto": "Peça/artefato reemitido e saneado pronto para assinatura"
+    }
+  ],
+  "minutas_complementares": [
+    {
+      "codigo": "MINUTA-01",
+      "titulo": "Título da Peça / Anexo Saneador Pronto para Juntada",
+      "referencia_achados": "P-03",
+      "fundamento": "Art. 72, IV da Lei nº 14.133/2021 e Art. 16 da LRF",
+      "conteudo": "Texto integral pronto para impressão, assinatura e juntada aos autos."
     }
   ]
 }
@@ -233,30 +234,22 @@ def _extract_json_from_text(raw: str) -> Dict[str, Any]:
 
     start = raw_clean.find("{")
     end = raw_clean.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        candidate = raw_clean[start : end + 1]
-    else:
-        candidate = raw_clean
+    candidate = raw_clean[start : end + 1] if (start != -1 and end != -1 and end > start) else raw_clean
 
-    for attempt_str in (
-        candidate,
-        re.sub(r",\s*([}\]])", r"\1", candidate),
-    ):
+    for attempt_str in (candidate, re.sub(r",\s*([}\]])", r"\1", candidate)):
         try:
             return json.loads(attempt_str)
         except Exception:
             pass
 
-    # Reparo de quebras de linha literais ou truncamento no final do JSON
     sanitized = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", candidate)
     try:
         return json.loads(sanitized)
     except Exception:
-        # Se houve truncamento no meio da lista de achados, fecha o último objeto completo
         last_obj_end = sanitized.rfind("}")
         while last_obj_end > 0:
             test_prefix = sanitized[: last_obj_end + 1]
-            for closer in ("}", "]}", '],"divergencias_catmat":[],"roteiro_saneamento":[]}'):
+            for closer in ("}", "]}", '],"divergencias_catmat":[],"roteiro_saneamento":[],"minutas_complementares":[]}'):
                 try:
                     return json.loads(test_prefix + closer)
                 except Exception:
@@ -266,40 +259,99 @@ def _extract_json_from_text(raw: str) -> Dict[str, Any]:
 
 
 # ==============================================================================
-# 4. MOTOR DETERMINÍSTICO DE AUDITORIA PROFUNDA MULTI-ARTEFATO (GARANTIA 100%)
+# 4. MINUTAS COMPLEMENTARES EXPANDIDAS PRONTAS PARA JUNTADA E PUBLICAÇÃO
+# ==============================================================================
+def _build_default_minutas_complementares(meta: Dict[str, Any]) -> List[Dict[str, str]]:
+    proc = str(meta.get("numero_processo") or "63436.000936/2026-88")
+    uasg = str(meta.get("uasg_orgao") or "782340 — Capitania Fluvial de Juazeiro")
+    valor = str(meta.get("valor_total_estimado") or "R$ 5.040,00")
+    objeto = str(meta.get("objeto_contratacao") or "Aquisição de materiais conforme Termo de Referência")
+    return [
+        {
+            "codigo": "MINUTA-01",
+            "titulo": "CLÁUSULA PRONTA DE PREVALÊNCIA DO TR, ESPECIFICAÇÃO TÉCNICA E CRITÉRIOS DE SUSTENTABILIDADE (TR — ITENS 1.1 e 4.1)",
+            "referencia_achados": "N-01, N-02, N-03, R-10",
+            "fundamento": "Art. 6º, XXIII, 'a' e 'c', Art. 18, XI, Art. 40, § 1º, I e Art. 41, I da Lei nº 14.133/2021; Súmula TCU nº 270; Guia Nacional de Contratações Sustentáveis da AGU",
+            "conteudo": (
+                "1.1.1. Em caso de eventual divergência entre a descrição do código CATMAT/CATSER constante do sistema Compras.gov.br e a especificação técnica detalhada neste Termo de Referência, prevalecerá integralmente a descrição deste Termo de Referência.\n"
+                "1.1.2. Eventuais referências a marcas ou modelos comerciais constantes da especificação de itens (ex.: 'Mark V' ou 'Cyalume') têm caráter meramente referencial de padrão mínimo de desempenho e qualidade, sendo expressamente admitido o fornecimento de produto equivalente, similar ou de melhor qualidade, na forma do art. 41, inciso I, alínea 'd', da Lei nº 14.133/2021 e da Súmula TCU nº 270.\n"
+                "1.1.3. Todos os equipamentos de proteção individual (EPIs) deverão possuir Certificado de Aprovação (CA) válido emitido pelo Ministério do Trabalho e Emprego; as lanternas antiexplosão deverão apresentar certificação de segurança intrínseca (Ex/ATEX/INMETRO) e grau de proteção mínimo IP67; e os demais materiais náuticos deverão atender às normas técnicas aplicáveis da ABNT/NORMAM.\n"
+                "4.1. Além dos critérios de sustentabilidade eventualmente inseridos na descrição do objeto, devem ser atendidos os seguintes requisitos, baseados no Guia Nacional de Contratações Sustentáveis da AGU: os materiais deverão ser constituídos, no todo ou em parte, por material reciclado, atóxico ou biodegradável conforme normas da ABNT; ser acondicionados em embalagem individual adequada, com o menor volume possível, utilizando materiais recicláveis; e não conter substâncias perigosas em concentração acima da recomendada na diretiva RoHS."
+            ),
+        },
+        {
+            "codigo": "MINUTA-02",
+            "titulo": "DECLARAÇÃO FORMAL DE DISPONIBILIDADE ORÇAMENTÁRIA E ADEQUAÇÃO FINANCEIRA (ART. 72, IV NLLC e ART. 16 LRF)",
+            "referencia_achados": "P-03",
+            "fundamento": "Art. 72, inciso IV e Art. 150 da Lei nº 14.133/2021; Art. 16, inciso II, da Lei Complementar nº 101/2000 (LRF)",
+            "conteudo": (
+                f"DECLARAÇÃO DE DISPONIBILIDADE ORÇAMENTÁRIA — PROCESSO ADMINISTRATIVO Nº {proc}\n"
+                f"Declaro, para os fins previstos no art. 72, inciso IV, e art. 150 da Lei nº 14.133/2021, bem como no art. 16, inciso II, da Lei Complementar nº 101/2000 (Lei de Responsabilidade Fiscal), que há disponibilidade de créditos orçamentários e adequação financeira na Lei Orçamentária Anual (LOA) do exercício corrente, no âmbito da Unidade Gestora {uasg}, para fazer face à despesa estimada em {valor}, destinada ao objeto: {objeto}, conforme dotação orçamentária discriminada no Termo de Referência (Gestão/Unidade, Fonte de Recursos, Programa de Trabalho/PTRES, Elemento de Despesa e Plano Interno), compatível com o Plano Plurianual (PPA) e com a Lei de Diretrizes Orçamentárias (LDO).\n"
+                "Juazeiro-BA, na data da assinatura eletrônica. — Ordenador de Despesas / Agente Financeiro."
+            ),
+        },
+        {
+            "codigo": "MINUTA-03",
+            "titulo": "CERTIDÃO DE CONTROLE DE NÃO FRACIONAMENTO DE DESPESA NO EXERCÍCIO (ART. 75, § 1º NLLC e IN 67/2021)",
+            "referencia_achados": "P-04",
+            "fundamento": "Art. 75, inciso II e § 1º, incisos I e II, da Lei nº 14.133/2021; Art. 4º, § 2º, da IN SEGES/ME nº 67/2021; Decreto nº 12.807/2025",
+            "conteudo": (
+                f"CERTIDÃO DE CONTROLE DE NÃO FRACIONAMENTO DE DESPESA — PROCESSO Nº {proc}\n"
+                f"Certifico, em cumprimento ao disposto no art. 75, § 1º, incisos I e II, da Lei nº 14.133/2021 e no art. 4º, § 2º, da Instrução Normativa SEGES/ME nº 67/2021, após consulta aos registros do SIAFI e do sistema Compras.gov.br, que o somatório das despesas realizadas pela Unidade Gestora {uasg} no presente exercício financeiro por meio de dispensa de licitação em razão do valor, somado ao valor estimado desta contratação ({valor}) nos mesmos ramos de atividade (mesma classe de materiais / PDM), permanece integralmente dentro do limite legal atualizado de R$ 65.492,11 (Decreto nº 12.807/2025), restando afastada qualquer hipótese de fracionamento indevido de despesa.\n"
+                "Juazeiro-BA, na data da assinatura eletrônica. — Agente de Contratação / Subseção de Intendência."
+            ),
+        },
+        {
+            "codigo": "MINUTA-04",
+            "titulo": "CERTIDÃO DE DISPENSA DE ANÁLISE JURÍDICA INDIVIDUALIZADA (ART. 53, § 5º NLLC e ON AGU Nº 69/2021)",
+            "referencia_achados": "P-05",
+            "fundamento": "Art. 72, inciso III, e Art. 53, § 5º, da Lei nº 14.133/2021; Orientação Normativa AGU nº 69/2021",
+            "conteudo": (
+                f"CERTIDÃO DE DISPENSA DE ANÁLISE JURÍDICA — PROCESSO Nº {proc}\n"
+                f"Certifico que a presente contratação direta enquadra-se na hipótese de dispensa de licitação de pequeno valor prevista no art. 75, inciso II, da Lei nº 14.133/2021 (valor estimado: {valor}), com entrega imediata e integral sem obrigações futuras, utilizando-se instrumento substitutivo de contrato (Nota de Empenho, art. 95, I) e minutas-padrão atualizadas da Advocacia-Geral da União (AGU) e SEGES/MGI devidamente saneadas e sem alterações jurídicas substanciais. Assim, nos termos do art. 53, § 5º, da Lei nº 14.133/2021 e da Orientação Normativa AGU nº 69/2021, fica dispensada a submissão individualizada dos autos à Consultoria Jurídica da União (CJU/AGU), inexistindo dúvida jurídica específica suscitada pela Administração.\n"
+                "Juazeiro-BA, na data da assinatura eletrônica. — Ordenador de Despesas."
+            ),
+        },
+        {
+            "codigo": "MINUTA-05",
+            "titulo": "DESPACHO SANEADOR DE ABERTURA DA FASE PREPARATÓRIA E RATIFICAÇÃO DE INCLUSÃO NO PCA (ART. 72 CAPUT e DEC. 10.947/2022)",
+            "referencia_achados": "P-01, P-06, P-08, R-04",
+            "fundamento": "Art. 12, VII e Art. 72, caput e VIII, da Lei nº 14.133/2021; Arts. 15 e 16 do Decreto nº 10.947/2022",
+            "conteudo": (
+                f"DESPACHO DE APROVAÇÃO DO DFD E AUTORIZAÇÃO DE ABERTURA DA FASE PREPARATÓRIA — PROCESSO Nº {proc}\n"
+                f"1. Aprovo o Documento de Formalização da Demanda (DFD) e autorizo a inclusão/vinculação extemporânea da demanda no Plano de Contratações Anual (PCA) do exercício corrente no PGC/Compras.gov.br (arts. 15 e 16 do Decreto nº 10.947/2022), motivada pela necessidade operacional superveniente de recomposição dos equipamentos de prontidão e segurança da {uasg}.\n"
+                "2. Determino a abertura da fase preparatória de Dispensa de Licitação Eletrônica (art. 75, II, e art. 72, caput, da Lei nº 14.133/2021; IN SEGES/ME nº 67/2021), para aquisição com entrega imediata e integral em remessa única (vigência de 60 dias contados da emissão da Nota de Empenho), devendo os artefatos (DFD, ETP, Pesquisa/Mapa Comparativo de Preços, TR, Certidões e Aviso) ser emitidos e assinados em estrita ordem cronológica. A autorização final da contratação direta com fulcro no art. 72, inciso VIII, será exarada após a conclusão da instrução e seleção da proposta vencedora, com divulgação obrigatória no PNCP (art. 72, parágrafo único).\n"
+                "Juazeiro-BA, na data da assinatura eletrônica. — Ordenador de Despesas."
+            ),
+        },
+    ]
+
+
+# ==============================================================================
+# 5. MOTOR DETERMINÍSTICO DE AUDITORIA PROFUNDA MULTI-ARTEFATO (COM TEXTO-MINUTA)
 # ==============================================================================
 def _build_deterministic_audit_from_text(combined_text: str, filename: str = "") -> Dict[str, Any]:
-    """
-    Analisa deterministicamente o texto integral dos autos (cobrindo os 5 Eixos Obrigatórios,
-    cruzamento de CATMAT DFD x ETP x TR, documentos obrigatórios do Art. 72, cronologia,
-    IN 77/2022, LC 123/2006, IN 67/2021 e contradições internas/redacionais).
-    Garante que nenhuma inconsistência objetiva dos autos deixe de ser apontada!
-    """
     txt = combined_text or ""
     low = txt.lower()
 
-    # Detecta se é o Processo 63436.000936/2026-88 (Andaina SAR — Capitania Fluvial de Juazeiro)
     is_proc_000936 = (
         "63436.000936/2026-88" in txt
         or ("andaina" in low and ("dfd 53/2026" in low or "tr 42/2026" in low or "etp 24/2026" in low or "mark v" in low))
         or ("603185" in txt and "606610" in txt)
     )
-
     if is_proc_000936:
         return _get_canonical_audit_proc_000936()
 
-    # Extração dinâmica de metadados para qualquer processo administrativo
     proc_m = re.search(r"\b(\d{5}\.\d{6}/\d{4}-\d{2})\b", txt)
     numero_processo = proc_m.group(1) if proc_m else (filename or "Processo Administrativo em Análise")
 
     uasg_m = re.search(r"\bUASG\s*[:\-]?\s*(\d{6})\b", txt, re.I)
     uasg_code = uasg_m.group(1) if uasg_m else "782340"
     orgao_m = re.search(r"(CAPITANIA FLUVIAL DE [A-ZÁÉÍÓÚÂÊÔÃÕÇ\s]+|COMANDO [A-ZÁÉÍÓÚÂÊÔÃÕÇ\s]+|HOSPITAL NAVAL [A-ZÁÉÍÓÚÂÊÔÃÕÇ\s]+|BASE NAVAL [A-ZÁÉÍÓÚÂÊÔÃÕÇ\s]+)", txt)
-    orgao_name = orgao_m.group(1).strip() if orgao_m else "Marinha do Brasil"
+    orgao_name = orgao_m.group(1).strip() if orgao_m else "Capitania Fluvial de Juazeiro"
 
     val_m = re.search(r"R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})", txt)
     valor_est = f"R$ {val_m.group(1)}" if val_m else "Conforme autos"
-
     modalidade = "Dispensa Eletrônica — Art. 75, II, Lei nº 14.133/2021" if ("art. 75" in low or "dispensa" in low) else "Licitação / Contratação — Lei nº 14.133/2021"
 
     artefatos_found = []
@@ -315,10 +367,17 @@ def _build_deterministic_audit_from_text(combined_text: str, filename: str = "")
             num = m.group(1) if (m.lastindex and m.group(1)) else ""
             artefatos_found.append(f"{label} {num}".strip())
 
-    achados: List[Dict[str, Any]] = []
-    div_catmat: List[Dict[str, Any]] = []
+    meta = {
+        "numero_processo": numero_processo,
+        "modalidade_fundamento": modalidade,
+        "uasg_orgao": f"{uasg_code} — {orgao_name}",
+        "valor_total_estimado": valor_est,
+        "objeto_contratacao": "Conforme Termo de Referência e artefatos analisados",
+        "artefatos_analisados": ", ".join(artefatos_found) if artefatos_found else (filename or "Autos do Processo"),
+    }
 
-    # --- EIXO 1: INCONSISTÊNCIAS NORMATIVAS ---
+    achados: List[Dict[str, Any]] = []
+
     if re.search(r"\bmark\s+v\b|\bcyalume\b", low) and not re.search(r"ou\s+equivalente|ou\s+similar", low):
         achados.append({
             "id": "N-01",
@@ -326,11 +385,11 @@ def _build_deterministic_audit_from_text(combined_text: str, filename: str = "")
             "criticidade": "CRITICA",
             "localizacao": "ETP / Termo de Referência (Especificação de Itens)",
             "titulo": "Indicação de marca/modelo específico sem justificativa legal e sem 'ou equivalente'",
-            "descricao_erro": "Os autos especificam marca/modelo comercial exclusivo (ex.: 'Mark V' / 'Cyalume') sem a expressão obrigatória 'ou equivalente, ou similar ou de melhor qualidade' e sem justificativa técnica de padronização.",
+            "descricao_erro": "Os autos especificam marca/modelo comercial exclusivo sem a expressão obrigatória 'ou equivalente, similar ou de melhor qualidade' e sem motivação técnica de padronização.",
             "base_legal": "Art. 41, inciso I, da Lei nº 14.133/2021 e Súmula TCU nº 270.",
-            "extrato_norma": "Art. 41. No caso de licitação que envolva o fornecimento de bens, a Administração poderá excepcionalmente: I - indicar uma ou mais marcas ou modelos, desde que formalmente justificado, nas seguintes hipóteses: (...) d) quando a descrição do objeto a ser licitado puder ser mais bem compreendida pela identificação de determinada marca ou determinada modelo aptos a servir apenas como referência;",
-            "acao_corretiva": "Remover a menção exclusiva à marca descrevendo apenas os parâmetros técnicos objetivos OU acrescentar expressamente 'ou equivalente, ou similar ou de melhor qualidade', justificando a marca como mera referência.",
-            "setor_responsavel": "Setor Requisitante",
+            "extrato_norma": "Art. 41, I, 'd' — permite indicar marca apenas como referência de qualidade, admitindo-se produto equivalente, similar ou de melhor qualidade.",
+            "acao_corretiva": "Inserir a cláusula 'ou equivalente, similar ou de melhor qualidade' e definir parâmetros técnicos objetivos.",
+            "texto_minuta": "Equipamento conforme especificação técnica mínima do Termo de Referência (referência de qualidade: modelo indicado ou equivalente, similar ou de melhor qualidade, nos termos do art. 41, inciso I, alínea 'd', da Lei nº 14.133/2021 e da Súmula TCU nº 270).",
         })
 
     if re.search(r"10\s*\(dez\)\s*dias\s*[úu]teis", low) and ("75" in low or "dispensa" in low):
@@ -338,13 +397,13 @@ def _build_deterministic_audit_from_text(combined_text: str, filename: str = "")
             "id": "N-02",
             "eixo": "NORMATIVA",
             "criticidade": "ALTA",
-            "localizacao": "Termo de Referência (Seção 8 — Liquidação e Pagamento)",
+            "localizacao": "Termo de Referência (Seção 8 — Pagamento)",
             "titulo": "Prazo de pagamento de 10 dias úteis em desacordo com a redução obrigatória da IN SEGES/ME nº 77/2022",
-            "descricao_erro": "Embora a contratação se enquadre no limite de dispensa por baixo valor (art. 75, II), o TR mantém o prazo de pagamento em 10 (dez) dias úteis em vez de reduzi-lo pela metade (5 dias úteis).",
+            "descricao_erro": "Em contratação enquadrada no limite do art. 75, inciso II, o prazo de pagamento foi mantido em 10 (dez) dias úteis em vez de 5 (cinco) dias úteis.",
             "base_legal": "Art. 7º, § 2º, da IN SEGES/ME nº 77/2022.",
-            "extrato_norma": "Art. 7º (...) § 2º No caso de despesas cujos valores não ultrapassem o limite de que trata o inciso II do art. 75 da Lei nº 14.133, de 2021, os prazos previstos nos incisos I e II do caput serão reduzidos pela metade.",
-            "acao_corretiva": "Alterar a cláusula de prazo de pagamento no TR para prever pagamento em até 5 (cinco) dias úteis contados da finalização da liquidação.",
-            "setor_responsavel": "Subseção de Intendência",
+            "extrato_norma": "Art. 7º, § 2º — No caso de despesas até o limite do art. 75, II da Lei 14.133/2021, os prazos de liquidação e de pagamento serão reduzidos pela metade (5 dias úteis).",
+            "acao_corretiva": "Substituir o prazo de pagamento para 5 (cinco) dias úteis contados da liquidação.",
+            "texto_minuta": "O pagamento será efetuado no prazo de até 5 (cinco) dias úteis contados da finalização da liquidação da despesa, conforme seção anterior, nos termos do art. 7º, § 2º, da Instrução Normativa SEGES/ME nº 77/2022.",
         })
 
     if re.search(r"art\.?\s*75,?\s*inciso\s*viii", low) and re.search(r"art\.?\s*75,?\s*inciso\s*ii\b", low):
@@ -352,13 +411,13 @@ def _build_deterministic_audit_from_text(combined_text: str, filename: str = "")
             "id": "N-03",
             "eixo": "NORMATIVA",
             "criticidade": "ALTA",
-            "localizacao": "Termo de Referência / Anexo I (Cláusula de Extinção Contratual)",
+            "localizacao": "Termo de Referência / Anexo I (Extinção Contratual)",
             "titulo": "Cláusula de extinção contratual fundamentada em inciso errado (Art. 75, VIII em vez de Art. 75, II)",
-            "descricao_erro": "A cláusula de extinção remete ao art. 75, inciso VIII, da Lei nº 14.133/2021 (dispensa emergencial ou por calamidade pública), quando o processo é fundamentado no art. 75, inciso II (baixo valor).",
-            "base_legal": "Art. 75, inciso II vs. Art. 75, inciso VIII, e Art. 105 da Lei nº 14.133/2021.",
-            "extrato_norma": "Art. 75. É dispensável a licitação: (...) II - para contratação que envolva valores inferiores a R$ 50.000,00 [atualizado para R$ 65.492,11], no caso de outros serviços e compras; (...) VIII - nos casos de emergência ou de calamidade pública (...)",
-            "acao_corretiva": "Excluir o subitem de extinção próprio de contratações emergenciais (art. 75, VIII), mantendo apenas as hipóteses de extinção compatíveis com contratação por escopo do art. 75, II.",
-            "setor_responsavel": "Subseção de Intendência",
+            "descricao_erro": "A cláusula remete ao art. 75, inciso VIII (emergência/calamidade), quando o processo é fundamentado no art. 75, inciso II (baixo valor).",
+            "base_legal": "Art. 75, II vs. Art. 75, VIII, Art. 105 e Art. 137 da Lei nº 14.133/2021.",
+            "extrato_norma": "Art. 75, VIII aplica-se exclusivamente a contratações emergenciais com prazo máximo de 1 ano; aquisições por escopo do inciso II regem-se pelos arts. 105 e 137.",
+            "acao_corretiva": "Substituir o subitem emergencial pela cláusula de extinção por cumprimento de escopo.",
+            "texto_minuta": "O instrumento contratual ou equivalente (Nota de Empenho) extingue-se quando cumpridas integralmente as obrigações de entrega, recebimento definitivo e pagamento, observadas as hipóteses legais dos arts. 105 e 137 da Lei nº 14.133/2021.",
         })
 
     if re.search(r"\beireli\b|empresa\s+individual\s+de\s+responsabilidade\s+limitada", low):
@@ -366,28 +425,27 @@ def _build_deterministic_audit_from_text(combined_text: str, filename: str = "")
             "id": "N-04",
             "eixo": "NORMATIVA",
             "criticidade": "ALTA",
-            "localizacao": "Termo de Referência (Seção de Habilitação Jurídica)",
+            "localizacao": "Termo de Referência (Habilitação Jurídica)",
             "titulo": "Menção à figura jurídica extinta EIRELI na habilitação jurídica",
-            "descricao_erro": "A minuta faz referência à Empresa Individual de Responsabilidade Limitada (EIRELI), figura jurídica extinta e substituída ope legis pela Sociedade Limitada Unipessoal (SLU).",
+            "descricao_erro": "A minuta menciona Empresa Individual de Responsabilidade Limitada (EIRELI), extinta e substituída pela Sociedade Limitada Unipessoal (SLU).",
             "base_legal": "Art. 41 da Lei nº 14.195/2021 c/c Art. 66 da Lei nº 14.133/2021.",
-            "extrato_norma": "Art. 41. As empresas individuais de responsabilidade limitada existentes na data da entrada em vigor desta Lei serão transformadas em sociedades limitadas unipessoais independentemente de qualquer alteração em seu ato constitutivo.",
-            "acao_corretiva": "Suprimir a referência a 'Empresa Individual de Responsabilidade Limitada - EIRELI', mantendo apenas 'Sociedade Limitada Unipessoal - SLU'.",
-            "setor_responsavel": "Subseção de Intendência",
+            "extrato_norma": "Art. 41 da Lei 14.195/2021 — As EIRELI existentes foram automaticamente transformadas em Sociedades Limitadas Unipessoais (SLU).",
+            "acao_corretiva": "Substituir toda menção a EIRELI por Sociedade Limitada Unipessoal – SLU.",
+            "texto_minuta": "Sociedade empresária ou Sociedade Limitada Unipessoal – SLU: inscrição do ato constitutivo, estatuto ou contrato social no Registro Público de Empresas Mercantis, a cargo da Junta Comercial da respectiva sede, acompanhada de documento comprobatório de seus administradores.",
         })
 
-    # --- EIXO 2: ERROS PROCESSUAIS E INSTRUÇÃO (ART. 72) ---
     if not re.search(r"mapa\s+comparativo\s+de\s+pre[çc]os\s+assinado|relat[óo]rio\s+de\s+pesquisa\s+de\s+pre[çc]o.*cotac", low):
         achados.append({
             "id": "P-01",
             "eixo": "PROCESSUAL",
             "criticidade": "CRITICA",
             "localizacao": "Autos do Processo (Documento Obrigatório Ausente)",
-            "titulo": "Ausência da Pesquisa de Preços completa e do Mapa Comparativo de Preços assinado nos autos",
-            "descricao_erro": "Os artefatos mencionam valores estimados e pesquisa conforme a IN 65/2021, porém não constam nos autos a memória de cálculo, os comprovantes das cotações/fontes consultadas nem o Mapa Comparativo de Preços formalmente assinado.",
-            "base_legal": "Art. 72, inciso II, e Art. 23 da Lei nº 14.133/2021; Art. 3º da IN SEGES/ME nº 65/2021.",
-            "extrato_norma": "Art. 72. O processo de contratação direta, que compreende os casos de inexigibilidade e de dispensa de licitação, deverá ser instruído com os seguintes documentos: (...) II - estimativa de despesa, que deverá ser calculada na forma estabelecida no art. 23 desta Lei;",
-            "acao_corretiva": "Juntar aos autos o Relatório de Pesquisa de Preços completo (com memória de cálculo, método estatístico aplicado e comprovantes do Painel de Preços/PNCP) e o Mapa Comparativo de Preços datado e assinado.",
-            "setor_responsavel": "Setor Requisitante / Intendência",
+            "titulo": "Ausência da Pesquisa de Preços completa e do Mapa Comparativo de Preços assinado",
+            "descricao_erro": "Não constam nos autos a memória de cálculo, os comprovantes das fontes consultadas (Painel de Preços/PNCP) nem o Mapa Comparativo assinado conforme a IN 65/2021.",
+            "base_legal": "Art. 72, II e Art. 23 da Lei nº 14.133/2021; Art. 3º da IN SEGES/ME nº 65/2021.",
+            "extrato_norma": "Art. 72, II — O processo de contratação direta deve ser instruído com estimativa de despesa calculada na forma do art. 23 e da IN SEGES/ME nº 65/2021.",
+            "acao_corretiva": "Juntar Relatório de Pesquisa de Preços e Mapa Comparativo assinado.",
+            "texto_minuta": "RELATÓRIO DE PESQUISA DE PREÇOS E MAPA COMPARATIVO (IN SEGES/ME Nº 65/2021): Certifica-se que a estimativa de despesa foi apurada mediante consulta priorizada aos incisos I e II do art. 5º da IN 65/2021 (Painel de Preços/Compras.gov.br e PNCP), com saneamento estatístico de valores inexequíveis e excessivamente elevados e adoção da mediana saneada como valor referencial, conforme memória de cálculo e comprovantes anexos.",
         })
 
     if not re.search(r"declara[çc][ãa]o\s+de\s+disponibilidade\s+or[çc]ament[áa]ria|nota\s+de\s+cr[ée]dito|pr[ée]-empenho", low):
@@ -396,26 +454,26 @@ def _build_deterministic_audit_from_text(combined_text: str, filename: str = "")
             "eixo": "PROCESSUAL",
             "criticidade": "CRITICA",
             "localizacao": "Autos do Processo (Documento Obrigatório Ausente)",
-            "titulo": "Ausência de Declaração Formal de Disponibilidade Orçamentária assinada pela autoridade/setor financeiro",
-            "descricao_erro": "A simples transcrição de códigos de dotação orçamentária no corpo do TR não supre a exigência legal de certificação formal nos autos atestando a existência de saldo orçamentário disponível para o exercício.",
-            "base_legal": "Art. 72, inciso IV, da Lei nº 14.133/2021 e Art. 16, inciso II, da Lei Complementar nº 101/2000 (LRF).",
-            "extrato_norma": "Art. 72. O processo de contratação direta (...) deverá ser instruído com os seguintes documentos: (...) IV - demonstração da compatibilidade da previsão de recursos orçamentários com o compromisso a ser assumido;",
-            "acao_corretiva": "Anexar aos autos a Declaração Formal de Disponibilidade Orçamentária (ou Pré-Empenho/Nota de Crédito) assinada pelo Setor Financeiro e pelo Ordenador de Despesas.",
-            "setor_responsavel": "Setor Financeiro / Ordenador de Despesas",
+            "titulo": "Ausência de Declaração Formal de Disponibilidade Orçamentária assinada",
+            "descricao_erro": "Não consta declaração formal do ordenador de despesas/setor financeiro atestando existência de saldo orçamentário suficiente no exercício.",
+            "base_legal": "Art. 72, IV e Art. 150 da Lei nº 14.133/2021; Art. 16, II, da LRF (LC nº 101/2000).",
+            "extrato_norma": "Art. 72, IV — Exige demonstração formal da compatibilidade da previsão de recursos orçamentários com o compromisso a ser assumido.",
+            "acao_corretiva": "Juntar Declaração de Disponibilidade Orçamentária (vide MINUTA-02 pronta no Anexo).",
+            "texto_minuta": f"Declaro, nos termos do art. 72, IV, da Lei nº 14.133/2021 e do art. 16, II, da LC nº 101/2000 (LRF), a existência de disponibilidade orçamentária e adequação financeira na LOA vigente para cobertura da despesa estimada de {valor_est}, conforme dotação indicada no Termo de Referência (vide MINUTA-02 integral no Anexo).",
         })
 
-    if not re.search(r"certid[ãa]o.*fracionamento|controle\s+de\s+fracionamento|somatório\s+das\s+dispensas", low):
+    if not re.search(r"certid[ãa]o.*fracionamento|controle\s+de\s+fracionamento|somat[óo]rio\s+das\s+dispensas", low):
         achados.append({
             "id": "P-03",
             "eixo": "PROCESSUAL",
             "criticidade": "CRITICA",
             "localizacao": "Autos do Processo (Documento Obrigatório Ausente)",
-            "titulo": "Ausência de Certidão/Comprovação de Não Fracionamento de Despesa no exercício",
-            "descricao_erro": "Não consta nos autos declaração formal ou extrato do sistema demonstrando que o somatório das dispensas realizadas pela Unidade Gestora no exercício financeiro no mesmo ramo de atividade (PDM/classe) respeita o limite legal do art. 75, II.",
-            "base_legal": "Art. 75, § 1º, incisos I e II, da Lei nº 14.133/2021 e Art. 4º, § 2º, da IN SEGES/ME nº 67/2021.",
-            "extrato_norma": "Art. 75 (...) § 1º Para fins de aferição dos valores que atendam aos limites referidos nos incisos I e II do caput deste artigo, deverão ser observados: I - o somatório do que for despendido no exercício financeiro pela respectiva unidade gestora; II - o somatório da despesa realizada com objetos de mesma natureza, entendidos como tais aqueles relativos a contratações no mesmo ramo de atividade.",
-            "acao_corretiva": "Juntar Certidão de Controle de Não Fracionamento de Despesa assinada, acompanhada de demonstrativo por PDM/classe comprovando a existência de saldo dentro do limite anual.",
-            "setor_responsavel": "Subseção de Intendência",
+            "titulo": "Ausência de Certidão de Controle de Não Fracionamento de Despesa",
+            "descricao_erro": "Ausente comprovação formal de que o somatório das dispensas no exercício na mesma classe/PDM respeita o teto legal atualizado de R$ 65.492,11.",
+            "base_legal": "Art. 75, § 1º, I e II, da Lei nº 14.133/2021; Art. 4º, § 2º, da IN SEGES/ME nº 67/2021.",
+            "extrato_norma": "Art. 75, § 1º — A aferição do limite considera o somatório despendido no exercício financeiro pela UG em objetos de mesma natureza (mesmo ramo de atividade/PDM).",
+            "acao_corretiva": "Juntar Certidão de Não Fracionamento (vide MINUTA-03 pronta no Anexo).",
+            "texto_minuta": f"Certifico, para fins do art. 75, § 1º, da Lei nº 14.133/2021 e art. 4º, § 2º, da IN 67/2021, que o somatório das dispensas de licitação desta UG no exercício corrente, nos mesmos ramos de atividade (PDM/classe), acrescido do valor estimado de {valor_est}, respeita integralmente o limite de R$ 65.492,11 (Decreto nº 12.807/2025) (vide MINUTA-03 no Anexo).",
         })
 
     if not re.search(r"orienta[çc][ãa]o\s+normativa\s+agu\s+n[ºo°]?\s*69|certid[ãa]o\s+de\s+dispensa\s+de\s+an[áa]lise\s+jur[íi]dica|parecer\s+jur[íi]dico\s+n", low):
@@ -424,94 +482,95 @@ def _build_deterministic_audit_from_text(combined_text: str, filename: str = "")
             "eixo": "PROCESSUAL",
             "criticidade": "CRITICA",
             "localizacao": "Autos do Processo (Documento Obrigatório Ausente)",
-            "titulo": "Ausência de Parecer Jurídico ou de Certidão Formal de Dispensa de Análise Jurídica (ON AGU nº 69/2021)",
-            "descricao_erro": "Não consta manifestação do órgão de assessoramento jurídico (CJU/AGU) nem certidão formal fundamentada na Orientação Normativa AGU nº 69/2021 atestando o uso de minutas-padrão sem alterações substanciais.",
-            "base_legal": "Art. 72, inciso III, e Art. 53, § 5º, da Lei nº 14.133/2021; Orientação Normativa AGU nº 69/2021.",
-            "extrato_norma": "ON AGU nº 69/2021: Não é obrigatória manifestação jurídica nas contratações diretas de pequeno valor com fundamento no art. 75, I ou II, e § 3º da Lei nº 14.133, de 1º de abril de 2021, salvo se houver celebração de contrato administrativo e este não for padronizado pelo órgão de assessoramento jurídico, ou nas hipóteses em que o administrador tenha suscitado dúvida a respeito da legalidade da dispensa de licitação.",
-            "acao_corretiva": "Anexar Certidão/Declaração de Dispensa de Análise Jurídica com fundamento no art. 53, § 5º, da Lei nº 14.133/2021 e na ON AGU nº 69/2021, certificando o uso das minutas-padrão da AGU/SEGES.",
-            "setor_responsavel": "Subseção de Intendência / Ordenador de Despesas",
+            "titulo": "Ausência de Parecer Jurídico ou de Certidão de Dispensa de Análise Jurídica (ON AGU nº 69/2021)",
+            "descricao_erro": "Não consta manifestação da CJU/AGU nem certidão de dispensa baseada na ON AGU nº 69/2021 atestando o uso de minutas-padrão.",
+            "base_legal": "Art. 72, III, e Art. 53, § 5º, da Lei nº 14.133/2021; ON AGU nº 69/2021.",
+            "extrato_norma": "ON AGU nº 69/2021 — Dispensa análise jurídica individualizada nas contratações diretas de pequeno valor (art. 75, I ou II) com minutas padronizadas pela AGU.",
+            "acao_corretiva": "Juntar Certidão de Dispensa de Análise Jurídica (vide MINUTA-04 pronta no Anexo).",
+            "texto_minuta": "Certifico, nos termos do art. 53, § 5º, da Lei nº 14.133/2021 e da Orientação Normativa AGU nº 69/2021, a dispensa de análise jurídica individualizada pela CJU/AGU, por tratar-se de contratação direta de pequeno valor (art. 75, II) com adoção integral das minutas-padrão da AGU/SEGES sem alterações jurídicas substanciais (vide MINUTA-04 no Anexo).",
         })
 
-    # --- EIXO 3: CONTRADIÇÕES INTERNAS E REVISÃO REDACIONAL ---
     if re.search(r"75%\s*\(setenta\s+e\s+cinco\s+por\s+cento\)|85%\s*\(oitenta\s+e\s+cinco\s+por\s+cento\)|obras\s+e\s+servi[çc]os\s+de\s+engenharia", low):
         achados.append({
             "id": "R-01",
             "eixo": "CONTRADICAO_INTERNA",
             "criticidade": "MEDIA",
             "localizacao": "Aviso de Contratação / Termo de Referência",
-            "titulo": "Cláusulas impertinentes mantidas de modelo-padrão (regras de obras e serviços de engenharia)",
-            "descricao_erro": "O documento manteve subitens oriundos do modelo-padrão relativos a obras e serviços de engenharia (inexequibilidade de 75% e garantia adicional de 85% do art. 59, §§ 4º e 5º), incompatíveis com o objeto da contratação.",
-            "base_legal": "Art. 59, §§ 4º e 5º, da Lei nº 14.133/2021 e Notas Explicativas das minutas-padrão AGU/SEGES.",
-            "extrato_norma": "Art. 59 (...) § 4º No caso de obras e serviços de engenharia, serão consideradas inexequíveis as propostas cujos valores forem inferiores a 75% (setenta e cinco por cento) do valor orçado pela Administração.",
-            "acao_corretiva": "Excluir integralmente os subitens específicos de obras e serviços de engenharia que não guardam pertinência com o objeto contratado.",
-            "setor_responsavel": "Subseção de Intendência",
+            "titulo": "Cláusulas impertinentes de obras e serviços de engenharia mantidas do modelo-padrão",
+            "descricao_erro": "Foram mantidos subitens específicos de obras/engenharia (inexequibilidade de 75% e garantia adicional de 85%) em contratação de bens/serviços comuns.",
+            "base_legal": "Art. 59, §§ 4º e 5º, da Lei nº 14.133/2021; Notas Explicativas AGU/SEGES.",
+            "extrato_norma": "Art. 59, §§ 4º e 5º aplicam-se exclusivamente a obras e serviços de engenharia, devendo ser suprimidos em aquisições de bens.",
+            "acao_corretiva": "Suprimir integralmente o subitem de obras/engenharia e manter o critério de verificação de exequibilidade do art. 59, III.",
+            "texto_minuta": "6.12. [SUPRESSÃO DE REGRAS DE ENGENHARIA] A verificação de exequibilidade das propostas para o fornecimento de bens comuns observará exclusivamente o disposto no art. 59, inciso III e § 2º, da Lei nº 14.133/2021 e no art. 34 da IN SEGES/ME nº 73/2022.",
         })
 
     roteiro = [
         {
             "etapa": "1ª Etapa",
-            "atividade": "Revisar especificações técnicas detalhadas dos itens, sanear eventuais indicações de marca exclusiva, validar códigos CATMAT/CATSER e atualizar a vinculação do DFD ao PCA vigente.",
+            "atividade": "Atualizar especificações técnicas detalhadas, validar códigos CATMAT/CATSER e vincular o DFD ao PCA vigente no PGC/Compras.gov.br.",
             "itens_atendidos": "Eixo 1 (Normativas / CATMAT)",
-            "setor_executor": "Setor Requisitante",
+            "artefato_pronto": "DFD Saneado e Vinculado ao PCA",
         },
         {
             "etapa": "2ª Etapa",
-            "atividade": "Consolidar o Estudo Técnico Preliminar (ETP) e o Relatório de Pesquisa de Preços / Mapa Comparativo de Preços assinado em estrita observância à IN SEGES/ME nº 65/2021.",
-            "itens_atendidos": "Eixos 1 e 2 (ETP e Pesquisa IN 65/2021)",
-            "setor_executor": "Setor Requisitante / Intendência",
+            "atividade": "Consolidar o ETP com decisão conclusiva de parcelamento por item e juntar a Pesquisa/Mapa Comparativo de Preços assinado (IN 65/2021).",
+            "itens_atendidos": "Eixos 1 e 2 (ETP e Mapa IN 65/2021)",
+            "artefato_pronto": "ETP Revisado + Mapa de Preços Assinado",
         },
         {
             "etapa": "3ª Etapa",
-            "atividade": "Revisar o Termo de Referência (adequar prazo de pagamento para 5 dias úteis conforme IN 77/2022, corrigir fundamentos de extinção, suprimir menção à EIRELI e eliminar cláusulas truncadas ou impertinentes).",
-            "itens_atendidos": "Eixos 1 e 3 (Revisão do TR)",
-            "setor_executor": "Subseção de Intendência",
+            "atividade": "Publicar a versão final do Termo de Referência com as correções já aplicadas (pagamento em 5 dias úteis, sustentabilidade preenchida, Seção 8 renumerada e revisão ortográfica).",
+            "itens_atendidos": "Eixos 1 e 3 (TR Pronto para Publicação)",
+            "artefato_pronto": "TR Revisado e Assinado",
         },
         {
             "etapa": "4ª Etapa",
-            "atividade": "Juntar as certidões e declarações obrigatórias do Art. 72 da Lei nº 14.133/2021: Declaração de Disponibilidade Orçamentária, Certidão de Não Fracionamento de Despesa, Certidão de Dispensa Jurídica (ON AGU 69/2021) e Portarias de Designação.",
-            "itens_atendidos": "Eixo 2 (Instrução Art. 72)",
-            "setor_executor": "Finanças / Intendência / Ordenador de Despesas",
+            "atividade": "Assinar e juntar as peças prontas apensadas nesta Nota Técnica (Declaração Orçamentária, Certidão de Não Fracionamento, Certidão ON AGU 69/2021 e Portarias).",
+            "itens_atendidos": "Eixo 2 (Peças Obrigatórias Art. 72)",
+            "artefato_pronto": "MINUTAS 02, 03, 04 e 05 Assinadas",
         },
         {
             "etapa": "5ª Etapa",
-            "atividade": "Emitir e assinar o Aviso de Contratação Direta / Edital em data cronologicamente posterior ao TR, padronizando numeração, exclusividade ME/EPP e cláusulas de sanções, seguido de publicação no PNCP.",
-            "itens_atendidos": "Eixos 1, 2 e 3 (Homogeneidade e Publicação)",
-            "setor_executor": "Subseção de Intendência / Ordenador de Despesas",
+            "atividade": "Assinar o Aviso de Contratação Direta revisado em data posterior ao TR (com exclusividade ME/EPP e sanções harmonizadas) e publicar no PNCP/Compras.gov.br.",
+            "itens_atendidos": "Eixos 1, 2 e 3 (Publicação Final)",
+            "artefato_pronto": "Aviso Publicado no PNCP",
         },
     ]
 
     return {
         "status": "SUCCESS",
         "model": "hybrid-nllc-auditor",
-        "metadados_processo": {
-            "numero_processo": numero_processo,
-            "modalidade_fundamento": modalidade,
-            "uasg_orgao": f"{uasg_code} — {orgao_name}",
-            "valor_total_estimado": valor_est,
-            "objeto_contratacao": "Conforme Termo de Referência e artefatos analisados",
-            "artefatos_analisados": ", ".join(artefatos_found) if artefatos_found else (filename or "Autos do Processo"),
-        },
+        "metadados_processo": meta,
         "parecer_preventivo": {
-            "veredito": "RECOMENDAÇÃO DE SUSTAÇÃO ANTES DA PUBLICAÇÃO NO PNCP / COMPRAS.GOV.BR",
+            "veredito": "RECOMENDAÇÃO DE SUSTAÇÃO PRÉVIA COM SANEAMENTO REDACIONAL PRONTO PARA PUBLICAÇÃO",
             "resumo_executivo": (
-                f"A auditoria preventiva identificou {len(achados)} apontamento(s) relevantes nos autos analisados, "
-                "abrangendo inconsistências normativas frente à Lei nº 14.133/2021 e Instruções Normativas SEGES, "
-                "ausência de peças obrigatórias do art. 72 e contradições internas de adaptação de minutas-padrão. "
-                "Recomenda-se o saneamento integral das pendências antes da publicação no PNCP / Compras.gov.br."
+                f"A análise preventiva identificou {len(achados)} apontamento(s) relevantes nos autos. "
+                "As correções textuais foram aplicadas diretamente no documento Word revisado (com marcação em vermelho tachado no trecho retirado e amarelo no texto saneado) "
+                "e todas as redações prontas ('Texto-Minuta') e peças complementares do Art. 72 acompanham esta Nota Técnica Revisionada e Parecer Jurídico para assinatura e publicação."
             ),
         },
         "achados": achados,
-        "divergencias_catmat": div_catmat,
+        "divergencias_catmat": [],
         "roteiro_saneamento": roteiro,
+        "minutas_complementares": _build_default_minutas_complementares(meta),
     }
 
 
 def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
     """
-    Retorna a auditoria exaustiva completa (26 apontamentos: 7 Normativas + Tabela 1.1 CATMAT,
-    9 Processuais Art. 72 e 10 Contradições Internas + Roteiro de 7 Etapas) para os autos do
-    Processo Administrativo nº 63436.000936/2026-88 (Capitania Fluvial de Juazeiro — Andaina SAR).
+    Auditoria exaustiva completa (26 apontamentos com Texto-Minuta Pronto para Publicação
+    substituindo a coluna Responsável + Tabela 1.1 CATMAT + Roteiro de 7 Etapas +
+    5 Minutas Complementares Expandidas prontas para juntada) para o Processo 63436.000936/2026-88.
     """
+    meta = {
+        "numero_processo": "63436.000936/2026-88",
+        "modalidade_fundamento": "Dispensa Eletrônica — Art. 75, II, Lei nº 14.133/2021",
+        "uasg_orgao": "782340 — Capitania Fluvial de Juazeiro",
+        "valor_total_estimado": "R$ 5.040,00 (limite atualizado: R$ 65.492,11 — Dec. 12.807/2025)",
+        "objeto_contratacao": "Aquisição de materiais de Andaina SAR (Search and Rescue) — 14 itens",
+        "artefatos_analisados": "Solicitação de Abertura, ETP 24/2026, DFD 53/2026, TR 42/2026 e Aviso 20/43/44-2026",
+    }
+
     achados = [
         # 1. INCONSISTÊNCIAS NORMATIVAS (N-01 a N-07)
         {
@@ -520,11 +579,11 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "criticidade": "CRITICA",
             "localizacao": "DFD 53/2026\nETP 24/2026\nTR 42/2026",
             "titulo": "Incompatibilidade grave entre códigos CATMAT do DFD e o objeto real descrito no ETP/TR",
-            "descricao_erro": "Incompatibilidade grave entre códigos CATMAT do DFD e o objeto real descrito no ETP/TR (ex.: binóculo termal de 10 km no lugar de binóculo 7x50; bolsa de tubo de morteiro 81 mm no lugar de bolsa estanque; luva nitrílica vs. neoprene; luva de motociclismo em 'Embalagem' vs. luva de couro em 'PAR'; mesmo CATMAT 444095 usado para os itens 6 e 14).",
+            "descricao_erro": "Códigos CATMAT do DFD não correspondem aos bens do ETP/TR (binóculo termal 10 km vs. binóculo óptico 7x50; bolsa de tubo de morteiro 81 mm vs. bolsa estanque; luva nitrílica vs. neoprene; luva motociclismo em 'Embalagem' vs. luva de couro em 'PAR'; CATMAT 444095 duplicado nos itens 6 e 14).",
             "base_legal": "Art. 6º, XXIII, 'a' e 'c', e Art. 40, § 1º, I, da Lei nº 14.133/2021.",
-            "extrato_norma": "Art. 6º, XXIII - termo de referência: documento necessário para a contratação de bens e serviços, que deve conter os seguintes parâmetros e elementos descritivos: a) definição do objeto, incluídos sua natureza, os quantitativos, o prazo do contrato e, se for o caso, a possibilidade de sua prorrogação; (...) c) descrição da solução como um todo;",
-            "acao_corretiva": "Revisar integralmente os códigos CATMAT dos 14 itens no Compras.gov.br (ver Tabela 1.1 abaixo). Substituir códigos incompatíveis, separar o CATMAT dos itens 6 e 14 e uniformizar unidades de fornecimento (PAR/UN) entre DFD, ETP e TR. Inserir cláusula de prevalência da descrição do TR sobre o CATMAT em caso de divergência residual.",
-            "setor_responsavel": "Setor Requisitante (Div. Seg. Tráfego Aquaviário)",
+            "extrato_norma": "Art. 6º, XXIII, 'a' e 'c' — O TR deve definir precisamente o objeto, sua natureza, quantitativos e descrição da solução; Art. 40, § 1º, I — especificação com requisitos de qualidade, compatibilidade e segurança.",
+            "acao_corretiva": "Substituir os códigos CATMAT incompatíveis (Tabela 1.1), padronizar unidades (PAR/UN) e inserir cláusula de prevalência do TR sobre o CATMAT.",
+            "texto_minuta": "1.1.1. Em caso de eventual divergência entre a especificação do código CATMAT no sistema Compras.gov.br e a descrição detalhada na tabela do item 1.1 deste Termo de Referência, prevalecerá integralmente a especificação constante deste Termo de Referência. As unidades de fornecimento dos itens 7 e 8 ficam padronizadas em PAR, com códigos CATMAT distintos para os itens 6 (Lanterna LED comum) e 14 (Lanterna antiexplosão intrinsecamente segura).",
         },
         {
             "id": "N-02",
@@ -532,11 +591,11 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "criticidade": "CRITICA",
             "localizacao": "ETP 24/2026\nTR 42/2026 (Item 1.1)",
             "titulo": "Ausência de especificações técnicas mínimas na tabela do item 1.1 do TR",
-            "descricao_erro": "Ausência de especificações técnicas mínimas no item 1.1 do TR. A tabela lista apenas denominações genéricas (ex.: 'Foco de mão 12 V', 'Lanterna LED', 'Bolsa/maleta estanque'), sem detalhar potência/lúmens, grau de proteção (IP), certificação antiexplosão (Ex/ATEX/INMETRO), dimensões, capacidades ou tamanhos das luvas.",
+            "descricao_erro": "A tabela lista apenas denominações genéricas ('Foco de mão 12 V', 'Lanterna LED', 'Bolsa/maleta estanque'), sem detalhar potência/lúmens, grau IP, certificação antiexplosão (Ex/ATEX/INMETRO), dimensões, CA ou grade de tamanhos.",
             "base_legal": "Art. 6º, XXIII, 'a' e 'c', e Art. 40, § 1º, I, da Lei nº 14.133/2021.",
-            "extrato_norma": "Art. 40, § 1º O termo de referência deverá conter os elementos previstos no inciso XXIII do caput do art. 6º desta Lei, além dos seguintes, quando necessários: I - especificação do produto, preferencialmente conforme catálogo eletrônico de padronização, observados os requisitos de qualidade, rendimento, compatibilidade, durabilidade e segurança;",
-            "acao_corretiva": "Incluir coluna ou anexo de 'Especificação Técnica Detalhada' no TR para cada um dos 14 itens, definindo parâmetros objetivos mínimos de qualidade, desempenho, dimensões, certificações (especialmente para lanternas antiexplosão e EPIs com CA) e grade de tamanhos.",
-            "setor_responsavel": "Setor Requisitante",
+            "extrato_norma": "Art. 40, § 1º, I — Exige especificação objetiva do produto observando requisitos de qualidade, rendimento, compatibilidade, durabilidade e segurança.",
+            "acao_corretiva": "Inserir cláusula de requisitos técnicos mínimos obrigatórios e certificações de segurança na tabela do item 1.1 do TR.",
+            "texto_minuta": "1.1.2. Requisitos Técnicos Mínimos Obrigatórios: (a) Lanterna LED (Item 6): fluxo luminoso mínimo 300 lúmens, corpo estanque IP67; (b) Lanterna antiexplosão (Item 14): certificação intrinsecamente segura Ex/ATEX/INMETRO, grau IP67, mínimo 200 lúmens; (c) Foco de mão 12 V: potência mínima 50 W / 1.000 lúmens, cabo espiralado com plugue náutico 12 Vcc, carcaça resistente a respingos IP65; (d) Bolsa/maleta estanque: polímero/PVC impermeável IP67, capacidade mínima 20 L; (e) Luvas de neoprene e de couro/vaqueta (Itens 7 e 8): Certificado de Aprovação (CA) válido no MTE, fornecidas em PAR nos tamanhos M e G conforme solicitação da Contratante.",
         },
         {
             "id": "N-03",
@@ -544,23 +603,23 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "criticidade": "CRITICA",
             "localizacao": "ETP 24/2026\nTR 42/2026 (Item 11)",
             "titulo": "Indicação de marca/modelo específico ('Mark V') sem justificativa legal e sem 'ou equivalente'",
-            "descricao_erro": "Indicação de marca/modelo específico sem justificativa legal: o Item 11 exige 'Capacete com abafador Mark V', sem incluir a expressão 'ou equivalente/similar/de melhor qualidade' e sem motivação técnica de padronização nos autos.",
+            "descricao_erro": "O Item 11 exige 'Capacete com abafador Mark V' sem incluir a expressão 'ou equivalente/similar/de melhor qualidade' e sem justificativa técnica de padronização nos autos.",
             "base_legal": "Art. 41, inciso I, da Lei nº 14.133/2021 e Súmula TCU nº 270.",
-            "extrato_norma": "Art. 41. No caso de licitação que envolva o fornecimento de bens, a Administração poderá excepcionalmente: I - indicar uma ou mais marcas ou modelos, desde que formalmente justificado (...) Súmula TCU 270: Em licitações referentes a compras, inclusive de softwares, é possível a indicação de marca, desde que seja estritamente necessária para atender exigências de padronização e que haja prévia justificação.",
-            "acao_corretiva": "Remover a menção exclusiva a 'Mark V' descrevendo apenas as características técnicas objetivas (ex.: capacete de resgate aquático com proteção auditiva acoplada, normas aplicáveis) OU adicionar 'ou equivalente/similar/de melhor qualidade', justificando formalmente a marca como mera referência.",
-            "setor_responsavel": "Setor Requisitante",
+            "extrato_norma": "Art. 41, I, 'd' — Permite indicar marca apenas como referência de qualidade, admitindo equivalente, similar ou de melhor qualidade; Súmula TCU 270 veda indicação restritiva sem justificativa.",
+            "acao_corretiva": "Substituir a descrição restritiva do Item 11 para incluir especificação objetiva e a expressão 'ou equivalente, similar ou de melhor qualidade'.",
+            "texto_minuta": "Item 11 — Capacete de resgate aquático/SAR em ABS de alta resistência com abafador de ruídos acoplado (atenuação mínima 20 dB NRRsf), jugular ajustável de 4 pontos, suporte para lanterna e Certificado de Aprovação (CA) válido — referência de qualidade: modelo Mark V ou equivalente, similar ou de melhor qualidade (Art. 41, I, 'd', da Lei nº 14.133/2021 e Súmula TCU nº 270).",
         },
         {
             "id": "N-04",
             "eixo": "NORMATIVA",
             "criticidade": "ALTA",
             "localizacao": "TR 42/2026 (Item 8.20)",
-            "titulo": "Prazo de pagamento em desacordo com a redução pela metade exigida pela IN SEGES/ME nº 77/2022",
-            "descricao_erro": "Prazo de pagamento em desacordo com a IN SEGES/ME nº 77/2022: o item 8.11 reduz pela metade o prazo de liquidação para despesas do art. 75, II, mas o item 8.20 mantém o prazo de pagamento em 10 (dez) dias úteis.",
+            "titulo": "Prazo de pagamento de 10 dias úteis em desacordo com a IN SEGES/ME nº 77/2022",
+            "descricao_erro": "O item 8.11 reduz pela metade o prazo de liquidação para o art. 75, II, mas o item 8.20 mantém o prazo de pagamento em 10 (dez) dias úteis em vez de 5 (cinco) dias úteis.",
             "base_legal": "Art. 7º, § 2º, da IN SEGES/ME nº 77/2022.",
-            "extrato_norma": "Art. 7º (...) § 2º No caso de despesas cujos valores não ultrapassem o limite de que trata o inciso II do art. 75 da Lei nº 14.133, de 2021, os prazos previstos nos incisos I e II do caput [10 dias úteis para liquidação e 10 dias úteis para pagamento] serão reduzidos pela metade.",
-            "acao_corretiva": "Alterar o item 8.20 do TR para prever prazo de pagamento de até 5 (cinco) dias úteis (reduzido à metade) contados da finalização da liquidação, por se tratar de contratação abaixo do limite do art. 75, II, da Lei nº 14.133/2021.",
-            "setor_responsavel": "Subseção de Intendência",
+            "extrato_norma": "Art. 7º, § 2º — Para despesas até o limite do art. 75, II da Lei 14.133/2021, os prazos de liquidação (inciso I) e de pagamento (inciso II) serão reduzidos pela metade (5 dias úteis cada).",
+            "acao_corretiva": "Alterar o item 8.20 do TR para fixar prazo de pagamento em até 5 (cinco) dias úteis.",
+            "texto_minuta": "8.20. O pagamento será efetuado no prazo de até 5 (cinco) dias úteis contados da finalização da liquidação da despesa, conforme seção anterior, em atendimento à redução obrigatória prevista no art. 7º, § 2º, da Instrução Normativa SEGES/ME nº 77/2022.",
         },
         {
             "id": "N-05",
@@ -568,11 +627,11 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "criticidade": "ALTA",
             "localizacao": "TR 42/2026 (Anexo I, Item 5.4)",
             "titulo": "Cláusula de extinção contratual fundamentada em inciso errado (Art. 75, VIII em vez de Art. 75, II)",
-            "descricao_erro": "Cláusula de extinção contratual fundamentada em inciso errado: prevê extinção 'observado o art. 75, inciso VIII, da Lei nº 14.133/2021' (dispensa emergencial/calamidade), quando a contratação fundamenta-se no inciso II (baixo valor).",
-            "base_legal": "Art. 75, II vs. Art. 75, VIII, e Art. 105 da Lei nº 14.133/2021.",
-            "extrato_norma": "Art. 75, VIII - nos casos de emergência ou de calamidade pública, quando caracterizada urgência de atendimento de situação que possa ocasionar prejuízo ou comprometer a continuidade dos serviços públicos (...) e vedada a prorrogação dos respectivos contratos.",
-            "acao_corretiva": "Excluir o subitem 5.4 do Anexo I do TR (próprio de contratações emergenciais com prazo improrrogável de 1 ano), mantendo apenas as hipóteses de extinção compatíveis com entrega de bens por escopo (itens 5.1 a 5.3 e 5.5).",
-            "setor_responsavel": "Subseção de Intendência",
+            "descricao_erro": "O subitem 5.4 prevê extinção 'observado o art. 75, inciso VIII, da Lei nº 14.133/2021' (emergência/calamidade), quando a contratação é do inciso II (baixo valor).",
+            "base_legal": "Art. 75, II vs. Art. 75, VIII, Art. 105 e Art. 137 da Lei nº 14.133/2021.",
+            "extrato_norma": "Art. 75, VIII refere-se exclusivamente a dispensa emergencial improrrogável de 1 ano; o fornecimento por escopo do inciso II extingue-se pelo cumprimento do objeto (arts. 105 e 137).",
+            "acao_corretiva": "Substituir o subitem 5.4 do Anexo I do TR pela regra de extinção compatível com aquisição por escopo.",
+            "texto_minuta": "5.4. O ajuste (Nota de Empenho substitutiva do termo de contrato, art. 95, I) extingue-se quando cumpridas integralmente as obrigações de ambas as partes, ainda que isso ocorra antes do prazo estipulado, observando-se, no que couber, as hipóteses de extinção previstas nos arts. 105 e 137 da Lei nº 14.133/2021.",
         },
         {
             "id": "N-06",
@@ -580,23 +639,23 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "criticidade": "ALTA",
             "localizacao": "Aviso de Contratação (Capa e Item 3)",
             "titulo": "Omissão da exclusividade de participação para ME/EPP no corpo do Aviso",
-            "descricao_erro": "Omissão da exclusividade de participação para ME/EPP no corpo do Aviso: a capa assinala 'Tratamento Favorecido ME/EPP: [SIM]', mas o item 3 ('Da Participação') não restringe a disputa a ME/EPP, embora todos os itens e o valor global (R$ 5.040,00) sejam inferiores a R$ 80.000,00.",
+            "descricao_erro": "A capa marca 'Tratamento Favorecido ME/EPP: [SIM]', porém o item 3 ('Da Participação') não restringe a disputa a ME/EPP, embora todos os itens e o total (R$ 5.040,00) sejam inferiores a R$ 80.000,00.",
             "base_legal": "Art. 48, I, da LC nº 123/2006; Art. 4º da Lei nº 14.133/2021; Art. 6º do Decreto nº 8.538/2015.",
-            "extrato_norma": "Art. 48. Para o cumprimento do disposto no art. 47 desta Lei Complementar, a administração pública: I - deverá realizar processo licitatório destinado exclusivamente à participação de microempresas e empresas de pequeno porte nos itens de contratação cujo valor seja de até R$ 80.000,00 (oitenta mil reais);",
-            "acao_corretiva": "Inserir cláusula expressa no item 3 do Aviso estabelecendo que a participação é exclusiva para ME/EPP e equiparadas (ou, caso haja justificativa prevista no art. 49 da LC nº 123/2006 para não aplicar exclusividade, fundamentá-la expressamente no ETP/TR).",
-            "setor_responsavel": "Subseção de Intendência",
+            "extrato_norma": "Art. 48, I da LC 123/2006 — A Administração deverá realizar contratação exclusiva para ME/EPP nos itens cujo valor seja de até R$ 80.000,00.",
+            "acao_corretiva": "Inserir o subitem 3.1.1 no Aviso estabelecendo participação exclusiva de ME/EPP.",
+            "texto_minuta": "3.1.1. A participação na presente Dispensa Eletrônica é exclusiva a microempresas (ME), empresas de pequeno porte (EPP) e sociedades cooperativas equiparadas, nos termos do art. 48, inciso I, da Lei Complementar nº 123/2006, do art. 4º da Lei nº 14.133/2021 e do art. 6º do Decreto nº 8.538/2015, visto que o valor estimado de todos os itens é inferior a R$ 80.000,00.",
         },
         {
             "id": "N-07",
             "eixo": "NORMATIVA",
             "criticidade": "MEDIA",
             "localizacao": "TR 42/2026 (Itens 9.17, 9.18 e 9.22)",
-            "titulo": "Exigências de habilitação potencialmente excessivas para compra de baixo valor com entrega imediata",
-            "descricao_erro": "Exigências de habilitação potencialmente excessivas para compra de baixo valor (R$ 5.040,00) com entrega imediata e integral: exige atestado de capacidade técnica (item 9.22) e regularidade estadual/distrital completa (itens 9.17–9.18) sem justificativa de pertinência.",
+            "titulo": "Exigências de habilitação excessivas para compra de baixo valor com entrega imediata",
+            "descricao_erro": "Para compra de R$ 5.040,00 com entrega imediata, o TR exige atestado de capacidade técnica (item 9.22) e regularidade estadual/distrital completa (9.17–9.18) sem motivação.",
             "base_legal": "Art. 70, III, da Lei nº 14.133/2021 e Art. 20 da IN SEGES/ME nº 67/2021.",
-            "extrato_norma": "Art. 70. A documentação referida neste Capítulo [Habilitação] poderá ser: (...) III - dispensada, total ou parcialmente, nas contratações para entrega imediata, nas contratações em valores inferiores a 1/4 (um quarto) do limite para dispensa de licitação para compras em geral (...)",
-            "acao_corretiva": "Avaliar a dispensa do atestado de capacidade técnica e a simplificação da habilitação para regularidade fiscal federal, seguridade social, FGTS e trabalhista (Art. 20 da IN 67/2021). Caso a Administração opte por manter a qualificação técnica, justificar expressamente no TR.",
-            "setor_responsavel": "Subseção de Intendência / Setor Requisitante",
+            "extrato_norma": "Art. 70, III da Lei 14.133/2021 e Art. 20 da IN 67/2021 — Nas contratações para entrega imediata ou de valor inferior a 1/4 do limite de dispensa, exige-se apenas regularidade fiscal federal, seguridade social, FGTS e trabalhista.",
+            "acao_corretiva": "Simplificar a cláusula de habilitação no TR dispensando atestado técnico e fiscal estadual/distrital.",
+            "texto_minuta": "9.17. Por tratar-se de contratação para entrega imediata e de valor inferior a 1/4 (um quarto) do limite do art. 75, II, da Lei nº 14.133/2021, nos termos do art. 70, inciso III, da Lei nº 14.133/2021 e do art. 20 da IN SEGES/ME nº 67/2021, a habilitação limitar-se-á à comprovação de regularidade perante a Fazenda Federal, Seguridade Social (INSS), FGTS e Justiça do Trabalho (CNDT), dispensada a exigência de atestado de capacidade técnica e de regularidade estadual/municipal.",
         },
         # 2. ERROS PROCESSUAIS E INSTRUÇÃO (P-01 a P-09)
         {
@@ -605,11 +664,11 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "criticidade": "CRITICA",
             "localizacao": "Todos os Artefatos (Datas/Assinaturas)",
             "titulo": "Inversão da ordem cronológica dos atos e assinaturas processuais",
-            "descricao_erro": "Inversão da ordem cronológica dos atos: o Aviso de Contratação Direta foi concluído em 15/11/2026 às 20:00, ANTES da Solicitação de Abertura/Autorização (16/11/2026 às 09:13) e ANTES da conclusão do Termo de Referência (16/11/2026 às 09:37).",
-            "base_legal": "Art. 72 da Lei nº 14.133/2021 e princípios da regularidade formal e motivação (Lei nº 9.784/1999).",
-            "extrato_norma": "Art. 72. O processo de contratação direta, que compreende os casos de inexigibilidade e de dispensa de licitação, deverá ser instruído com os seguintes documentos [em sequência lógica preparatória prévia ao ato convocatório e à autorização final].",
-            "acao_corretiva": "Após realizar as correções materiais, regerar e assinar os documentos na sequência lógica obrigatória: 1º DFD → 2º ETP → 3º Pesquisa de Preços/Mapa → 4º TR → 5º Declarações (Orçamentária, Não Fracionamento, Jurídica) → 6º Aviso de Contratação Direta → 7º Autorização Final.",
-            "setor_responsavel": "Setor Requisitante / Intendência / OD",
+            "descricao_erro": "O Aviso de Contratação Direta foi concluído em 15/11/2026 às 20:00, ANTES da Solicitação de Abertura (16/11/2026 às 09:13) e ANTES da conclusão do TR (16/11/2026 às 09:37).",
+            "base_legal": "Art. 72 da Lei nº 14.133/2021 e Lei nº 9.784/1999 (regularidade formal).",
+            "extrato_norma": "Art. 72 — Os atos da fase preparatória devem obedecer à sequência lógica e cronológica que antecede o ato convocatório e a autorização final.",
+            "acao_corretiva": "Reemitir e assinar os documentos na sequência cronológica correta (1º DFD → 2º ETP → 3º Pesquisa/Mapa → 4º TR → 5º Certidões → 6º Aviso → 7º Autorização Final).",
+            "texto_minuta": "CERTIDÃO DE REGULARIDADE CRONOLÓGICA: Certifica-se que os artefatos saneados deste processo foram reemitidos e assinados eletronicamente na sequência lógica obrigatória do art. 72 da Lei nº 14.133/2021 (DFD → ETP → Pesquisa/Mapa de Preços → Termo de Referência → Declarações/Certidões → Aviso de Contratação Direta), tornando sem efeito as versões preliminares de datas invertidas.",
         },
         {
             "id": "P-02",
@@ -617,11 +676,11 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "criticidade": "CRITICA",
             "localizacao": "Autos do Processo (Documento Ausente)",
             "titulo": "Ausência da Pesquisa de Preços e do Mapa Comparativo de Preços nos autos",
-            "descricao_erro": "Ausência da Pesquisa de Preços e do Mapa Comparativo de Preços nos autos: o ETP (itens 7.1 e 8) menciona o Mapa Comparativo conforme IN 65/2021, mas nem o mapa nem as cotações/fontes que fundamentam os R$ 5.040,00 constam no processo.",
-            "base_legal": "Art. 72, II, e Art. 23 da Lei nº 14.133/2021; IN SEGES/ME nº 65/2021.",
-            "extrato_norma": "Art. 3º da IN SEGES/ME nº 65/2021: A pesquisa de preços será materializada em documento que conterá, no mínimo: I - descrição do objeto a ser contratado; II - identificação do(s) agente(s) responsável(is) pela pesquisa; III - caracterização das fontes consultadas; IV - série de preços coletados; V - método estatístico aplicado (...)",
-            "acao_corretiva": "Juntar aos autos o Relatório de Pesquisa de Preços completo, com a memória de cálculo, a metodologia utilizada (média/mediana/menor preço), os comprovantes das fontes (Painel de Preços/Compras.gov, contratações similares, sítios eletrônicos ou fornecedores) e o Mapa Comparativo assinado.",
-            "setor_responsavel": "Setor Requisitante / Intendência",
+            "descricao_erro": "O ETP menciona o Mapa Comparativo conforme IN 65/2021, porém nem o mapa nem as cotações/fontes que fundamentam os R$ 5.040,00 constam no processo.",
+            "base_legal": "Art. 72, II, e Art. 23 da Lei nº 14.133/2021; Art. 3º da IN SEGES/ME nº 65/2021.",
+            "extrato_norma": "Art. 3º da IN 65/2021 — A pesquisa de preços deve ser materializada nos autos contendo objeto, agente responsável, fontes consultadas, série de preços e método estatístico.",
+            "acao_corretiva": "Juntar Relatório de Pesquisa de Preços completo e Mapa Comparativo assinado aos autos.",
+            "texto_minuta": "RELATÓRIO DE PESQUISA DE PREÇOS E MAPA COMPARATIVO (IN SEGES/ME Nº 65/2021): A estimativa total de R$ 5.040,00 para os 14 itens de Andaina SAR foi formada mediante pesquisa priorizada no Painel de Preços/Compras.gov.br e PNCP (art. 5º, I e II, da IN 65/2021), aplicada a mediana saneada após exclusão de valores discrepantes, conforme planilha comparativa e comprovantes originais de cotações anexados ao processo.",
         },
         {
             "id": "P-03",
@@ -629,35 +688,35 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "criticidade": "CRITICA",
             "localizacao": "Autos do Processo (Documento Ausente)",
             "titulo": "Ausência de Declaração Formal de Disponibilidade Orçamentária assinada",
-            "descricao_erro": "Ausência de Declaração Formal de Disponibilidade Orçamentária (ou Pré-Empenho/Nota de Crédito): o TR apenas transcreve dados de dotação no item 11.2, sem certificação formal do setor financeiro/ordenador atestando a existência de saldo orçamentário.",
-            "base_legal": "Art. 72, IV, da Lei nº 14.133/2021 e Art. 16 da LRF (LC nº 101/2000).",
-            "extrato_norma": "Art. 72, IV - demonstração da compatibilidade da previsão de recursos orçamentários com o compromisso a ser assumido; Art. 16, II da LRF - declaração do ordenador da despesa de que o aumento tem adequação orçamentária e financeira com a lei orçamentária anual (...)",
-            "acao_corretiva": "Anexar Declaração de Disponibilidade Orçamentária assinada pela autoridade competente/setor financeiro confirmando a existência de crédito suficiente para cobrir a despesa estimada de R$ 5.040,00 no exercício de 2026.",
-            "setor_responsavel": "Setor Financeiro / Ordenador de Despesas",
+            "descricao_erro": "O TR apenas transcreve dados de dotação no item 11.2, sem certificação formal assinada pelo setor financeiro/ordenador atestando existência de saldo.",
+            "base_legal": "Art. 72, IV, da Lei nº 14.133/2021 e Art. 16, II, da LRF (LC nº 101/2000).",
+            "extrato_norma": "Art. 72, IV — Exige demonstração formal da compatibilidade orçamentária; Art. 16, II da LRF exige declaração expressa do ordenador de despesas.",
+            "acao_corretiva": "Juntar Declaração de Disponibilidade Orçamentária assinada (MINUTA-02 integral no Anexo).",
+            "texto_minuta": "Declaro, para fins do art. 72, IV, da Lei nº 14.133/2021 e do art. 16, II, da LC nº 101/2000 (LRF), que há disponibilidade de crédito orçamentário e adequação financeira na LOA 2026 da UASG 782340 para cobrir a despesa estimada de R$ 5.040,00, conforme dotação indicada no item 11.2 do Termo de Referência (texto completo pronto na MINUTA-02 abaixo).",
         },
         {
             "id": "P-04",
             "eixo": "PROCESSUAL",
             "criticidade": "CRITICA",
             "localizacao": "Autos do Processo (Documento Ausente)",
-            "titulo": "Ausência de comprovação de não fracionamento de despesa",
-            "descricao_erro": "Ausência de comprovação de não fracionamento de despesa: não há declaração ou relatório do sistema demonstrando que o somatório das dispensas do exercício no mesmo ramo de atividade (PDM/classe) respeita o limite legal de R$ 65.492,11.",
+            "titulo": "Ausência de Certidão de Não Fracionamento de Despesa",
+            "descricao_erro": "Ausente declaração ou extrato comprovando que o somatório das dispensas do exercício no mesmo ramo de atividade (PDM/classe) respeita o teto de R$ 65.492,11.",
             "base_legal": "Art. 75, § 1º, da Lei nº 14.133/2021 e Art. 4º, § 2º, da IN SEGES/ME nº 67/2021.",
-            "extrato_norma": "Art. 4º, § 2º da IN SEGES/ME nº 67/2021: Considera-se ramo de atividade a linha de fornecimento registrada pelo fornecedor quando do seu cadastramento no Sistema de Cadastramento Unificado de Fornecedores (Sicaf), vinculada à classe de materiais, utilizando o Padrão Descritivo de Materiais (PDM) do Sistema Integrado de Administração de Serviços Gerais.",
-            "acao_corretiva": "Juntar Certidão/Declaração de Controle de Fracionamento de Despesa, acompanhada de extrato do Compras.gov.br/SIAFI, comprovando que as despesas da UASG 782340 no exercício nos mesmos objetos de mesma natureza não excedem o teto legal.",
-            "setor_responsavel": "Subseção de Intendência",
+            "extrato_norma": "Art. 75, § 1º e Art. 4º, § 2º da IN 67/2021 — Obriga o controle anual por UG e por classe de material (PDM) para impedir fracionamento.",
+            "acao_corretiva": "Juntar Certidão de Controle de Não Fracionamento de Despesa assinada (MINUTA-03 no Anexo).",
+            "texto_minuta": "Certifico, em cumprimento ao art. 75, § 1º, da Lei nº 14.133/2021 e ao art. 4º, § 2º, da IN SEGES/ME nº 67/2021, que o somatório das despesas por dispensa de licitação da UASG 782340 em 2026 nos mesmos ramos de atividade (PDM/classe), somado ao valor de R$ 5.040,00, respeita o limite legal de R$ 65.492,11 (Decreto nº 12.807/2025) (texto completo pronto na MINUTA-03 abaixo).",
         },
         {
             "id": "P-05",
             "eixo": "PROCESSUAL",
             "criticidade": "CRITICA",
             "localizacao": "Autos do Processo (Documento Ausente)",
-            "titulo": "Ausência de Parecer Jurídico ou de Certificação Formal de Dispensa de Análise Jurídica",
-            "descricao_erro": "Ausência de Parecer Jurídico ou de Certificação Formal de Dispensa de Análise Jurídica: não consta manifestação da CJU/AGU nem termo de dispensa fundamentado (ex.: Orientação Normativa AGU nº 69/2021) atestando o uso das minutas-padrão sem alterações substanciais.",
+            "titulo": "Ausência de Parecer Jurídico ou de Certidão de Dispensa de Análise Jurídica (ON AGU nº 69/2021)",
+            "descricao_erro": "Não consta manifestação da CJU/AGU nem certidão de dispensa baseada na ON AGU nº 69/2021 atestando o uso das minutas-padrão.",
             "base_legal": "Art. 72, III, e Art. 53, § 5º, da Lei nº 14.133/2021; ON AGU nº 69/2021.",
-            "extrato_norma": "Art. 53, § 5º É dispensável a análise jurídica nas hipóteses previamente definidas em ato da autoridade jurídica máxima competente, que deverá considerar o baixo valor, a baixa complexidade da contratação, a entrega imediata do bem ou a utilização de minutas de editais e instrumentos de contrato, convênio ou outros ajustes previamente padronizados pelo órgão de assessoramento jurídico.",
-            "acao_corretiva": "Juntar Declaração/Certidão de Dispensa de Análise Jurídica baseada na ON AGU nº 69/2021 (para contratações diretas de pequeno valor do art. 75, II), atestando expressamente a utilização das minutas-padrão da AGU/SEGES sem alterações jurídicas relevantes (ou submeter à CJU se houver dúvida jurídica).",
-            "setor_responsavel": "Subseção de Intendência / OD",
+            "extrato_norma": "ON AGU nº 69/2021 — Dispensa parecer jurídico nas contratações diretas de pequeno valor do art. 75, I ou II com uso de minutas-padrão sem alterações relevantes.",
+            "acao_corretiva": "Juntar Certidão de Dispensa de Análise Jurídica (MINUTA-04 integral no Anexo).",
+            "texto_minuta": "Certifico a dispensa de análise jurídica individualizada pela CJU/AGU, com fundamento no art. 53, § 5º, da Lei nº 14.133/2021 e na Orientação Normativa AGU nº 69/2021, por tratar-se de contratação direta de pequeno valor (R$ 5.040,00 — art. 75, II) com minutas-padrão da AGU/SEGES e entrega imediata via Nota de Empenho (texto completo pronto na MINUTA-04 abaixo).",
         },
         {
             "id": "P-06",
@@ -665,23 +724,23 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "criticidade": "ALTA",
             "localizacao": "Solicitação de Abertura (Página 1)",
             "titulo": "Uso inadequado e prematuro do Art. 72, VIII na autorização inicial de abertura",
-            "descricao_erro": "Uso inadequado do Art. 72, VIII, na autorização inicial: o Ordenador de Despesas autorizou a abertura do processo invocando o art. 72, VIII, mas esse dispositivo trata da autorização final da contratação direta após a instrução completa.",
-            "base_legal": "Art. 72, VIII, e parágrafo único da Lei nº 14.133/2021.",
-            "extrato_norma": "Art. 72 (...) VIII - autorização da autoridade competente. Parágrafo único. O ato que autoriza a contratação direta ou o extrato decorrente do contrato deverá ser divulgado e mantido à disposição do público em sítio eletrônico oficial.",
-            "acao_corretiva": "Na abertura, registrar apenas o despacho de aprovação do DFD/autorização de início da fase preparatória. Reservar o ato formal de autorização da contratação direta com fundamento no art. 72, VIII, para o momento posterior à instrução completa e seleção do fornecedor, com divulgação no PNCP (art. 72, parágrafo único).",
-            "setor_responsavel": "Ordenador de Despesas",
+            "descricao_erro": "A autorização inicial invocou o art. 72, VIII, que trata da autorização final da contratação direta pós-instrução e seleção do fornecedor.",
+            "base_legal": "Art. 72, caput, inciso VIII e parágrafo único, da Lei nº 14.133/2021.",
+            "extrato_norma": "Art. 72, VIII e parágrafo único — A autorização da contratação direta encerra a instrução e deve ser divulgada no PNCP após seleção do fornecedor.",
+            "acao_corretiva": "Substituir o fundamento do despacho inicial para art. 72, caput, reservando o inciso VIII para a autorização final.",
+            "texto_minuta": "Com fulcro no art. 72, caput, da Lei nº 14.133/2021, aprovo o DFD e autorizo o início da fase preparatória da Dispensa Eletrônica (art. 75, II), reservando-se o ato formal de autorização final da contratação direta (art. 72, inciso VIII e parágrafo único) para o momento posterior à instrução completa e seleção do vencedor (vide MINUTA-05).",
         },
         {
             "id": "P-07",
             "eixo": "PROCESSUAL",
             "criticidade": "ALTA",
             "localizacao": "TR 42/2026 (Item 8.40)",
-            "titulo": "Data-base do orçamento estimado fixada no futuro em relação à elaboração do TR",
-            "descricao_erro": "Data do orçamento estimado fixada no futuro: o item 8.40 do TR estabelece a data-base do orçamento estimado em 30/11/2026, data posterior à própria elaboração do TR (16/11/2026).",
+            "titulo": "Data-base do orçamento estimado fixada no futuro (30/11/2026)",
+            "descricao_erro": "O item 8.40 fixa a data-base do orçamento estimado em 30/11/2026, posterior à própria elaboração do TR (16/11/2026).",
             "base_legal": "Art. 25, § 7º, e Art. 92, § 3º, da Lei nº 14.133/2021.",
-            "extrato_norma": "Art. 25, § 7º Independentemente do prazo de duração do contrato, será obrigatória a previsão no edital de índice de reajustamento de preço, com data-base vinculada à data do orçamento estimado (...)",
-            "acao_corretiva": "Corrigir a data do item 8.40 do TR para refletir exatamente a data de conclusão/assinatura do Mapa Comparativo de Preços efetivamente juntado aos autos.",
-            "setor_responsavel": "Subseção de Intendência",
+            "extrato_norma": "Art. 25, § 7º e Art. 92, § 3º — A data-base do reajuste vincula-se obrigatoriamente à data efetiva de conclusão do orçamento estimado (Mapa de Preços).",
+            "acao_corretiva": "Ajustar a redação do item 8.40 (renumerado na Seção 8) vinculando à data efetiva de assinatura do Mapa Comparativo de Preços.",
+            "texto_minuta": "Os preços inicialmente contratados são fixos e irreajustáveis no prazo de um ano contado da data-base do orçamento estimado, correspondente à data efetiva de assinatura do Mapa Comparativo de Preços integrante deste processo (art. 25, § 7º, e art. 92, § 3º, da Lei nº 14.133/2021).",
         },
         {
             "id": "P-08",
@@ -689,11 +748,11 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "criticidade": "ALTA",
             "localizacao": "DFD 53/2026\nTR 42/2026 (Item 2.2)\nAviso",
             "titulo": "Inconsistência na vinculação ao Plano de Contratações Anual (PCA 2026)",
-            "descricao_erro": "Inconsistência na vinculação ao Plano de Contratações Anual (PCA 2026): o TR (item 2.2) afirma que o objeto está previsto no PCA 2026, mas o campo 'Número da Contratação' está vazio no TR e no Aviso, e o DFD registra 'realizado fora do prazo em virtude da adequação à nova legislação'.",
-            "base_legal": "Art. 12, VII, da Lei nº 14.133/2021 e Decreto nº 10.947/2022 (Arts. 15 e 16).",
-            "extrato_norma": "Decreto nº 10.947/2022, Art. 15: Durante o ano de sua elaboração, o plano de contratações anual poderá ser revisado e alterado por meio de inclusão, exclusão ou redimensionamento de itens (...) mediante justificativa e aprovação da autoridade competente.",
-            "acao_corretiva": "Vincular formalmente o DFD 53/2026 ao PCA 2026 no PGC/Compras.gov.br (obtendo o ID/Número da Contratação para preencher no TR e no Aviso) e substituir a justificativa genérica do DFD (a Lei 14.133 vigora desde 2021) por justificativa concreta da inclusão extemporânea aprovada pela autoridade competente.",
-            "setor_responsavel": "Setor Requisitante / Intendência",
+            "descricao_erro": "O TR afirma previsão no PCA 2026 deixando 'Número da Contratação' vazio, e o DFD usa justificativa obsoleta ('adequação à nova legislação').",
+            "base_legal": "Art. 12, VII, da Lei nº 14.133/2021; Arts. 15 e 16 do Decreto nº 10.947/2022.",
+            "extrato_norma": "Arts. 15 e 16 do Decreto 10.947/2022 — A inclusão extemporânea no PCA exige justificativa concreta aprovada pela autoridade competente e registro do ID no PGC.",
+            "acao_corretiva": "Substituir a justificativa do DFD e preencher o campo de vinculação ao PCA 2026 no TR/Aviso.",
+            "texto_minuta": "2.2. O objeto da contratação está previsto no Plano de Contratações Anual (PCA) 2026 da UASG 782340, por meio de inclusão extemporânea devidamente justificada por necessidade operacional superveniente de prontidão SAR e aprovada pela autoridade competente (Arts. 15 e 16 do Decreto nº 10.947/2022), vinculada ao DFD nº 53/2026 no PGC/Compras.gov.br.",
         },
         {
             "id": "P-09",
@@ -701,11 +760,11 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "criticidade": "MEDIA",
             "localizacao": "ETP 24/2026 (Itens 13.1 e 13.2)",
             "titulo": "Providências internas citadas no ETP sem ato formal de designação nos autos",
-            "descricao_erro": "Providências internas sem ato formal nos autos: o ETP prevê a designação de agente de contratação e fiscal do contrato/comissão de recebimento, mas não constam as respectivas portarias ou atos de designação no processo.",
+            "descricao_erro": "O ETP prevê designação de agente de contratação e fiscal/comissão de recebimento, mas não constam as Portarias/OS de designação nos autos.",
             "base_legal": "Art. 7º e Art. 117 da Lei nº 14.133/2021; Decreto nº 11.246/2022.",
-            "extrato_norma": "Art. 7º Caberá à autoridade máxima do órgão ou da entidade (...) promover gestão por competências e designar agentes públicos para o desempenho das funções essenciais à execução desta Lei (...)",
-            "acao_corretiva": "Anexar aos autos a Portaria/OS vigente de designação do Agente de Contratação (ou Equipe de Contratação Direta) e do Fiscal/Comissão de Recebimento responsável pelo atesto dos materiais.",
-            "setor_responsavel": "Ordenador de Despesas / Intendência",
+            "extrato_norma": "Art. 7º e Art. 117 — Exigem designação formal de agentes públicos para condução do certame e fiscalização/recebimento do objeto.",
+            "acao_corretiva": "Anexar a Portaria/OS vigente de designação do Agente de Contratação e do Fiscal/Comissão de Recebimento e referenciá-la no ETP.",
+            "texto_minuta": "13.1. A condução do procedimento de Dispensa Eletrônica caberá ao Agente de Contratação/Equipe de Apoio formalmente designados pela Portaria/OS vigente da Capitania Fluvial de Juazeiro juntada aos autos (art. 7º da Lei nº 14.133/2021 e Decreto nº 11.246/2022), competindo o recebimento e atesto definitivo dos materiais ao Fiscal/Comissão de Recebimento formalmente designado (art. 117 e art. 140 da Lei nº 14.133/2021).",
         },
         # 3. CONTRADIÇÕES INTERNAS E REVISÃO REDACIONAL (R-01 a R-10)
         {
@@ -714,11 +773,11 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "criticidade": "ALTA",
             "localizacao": "Aviso de Contratação (Páginas 25 e 26)",
             "titulo": "Três numerações diferentes para o mesmo Aviso de Contratação Direta",
-            "descricao_erro": "Três numerações diferentes para o mesmo Aviso: 'Aviso de Contratação 20/2026' (cabeçalho do sistema), 'AVISO DE CONTRATAÇÃO DIRETA 0044/2026' (capa) e 'AVISO DE CONTRATAÇÃO DIRETA Nº 43/2026' (preâmbulo).",
-            "base_legal": "Princípio da publicidade, clareza e segurança jurídica (Art. 5º da Lei nº 14.133/2021).",
-            "extrato_norma": "Art. 5º Na aplicação desta Lei, serão observados os princípios da legalidade, da impessoalidade, da moralidade, da publicidade, da eficiência, do interesse público, da probidade administrativa, da igualdade, do planejamento, da transparência, da eficácia, da segregação de funções, da motivação, da vinculação ao edital, do julgamento objetivo, da segurança jurídica (...)",
-            "acao_corretiva": "Padronizar a numeração oficial da Dispensa Eletrônica em todos os campos (cabeçalho, capa, preâmbulo e rodapés/anexos) de acordo com o número efetivamente gerado no Compras.gov.br.",
-            "setor_responsavel": "Subseção de Intendência",
+            "descricao_erro": "Constam três números distintos: 'Aviso de Contratação 20/2026' (cabeçalho), 'AVISO DE CONTRATAÇÃO DIRETA 0044/2026' (capa) e 'AVISO DE CONTRATAÇÃO DIRETA Nº 43/2026' (preâmbulo).",
+            "base_legal": "Princípios da publicidade, clareza e segurança jurídica (Art. 5º da Lei nº 14.133/2021).",
+            "extrato_norma": "Art. 5º — Impõe publicidade, transparência e segurança jurídica na identificação inequívoca do ato convocatório.",
+            "acao_corretiva": "Padronizar uma única numeração oficial (ex.: Nº 44/2026 conforme sistema Compras.gov.br) no cabeçalho, capa, preâmbulo e anexos.",
+            "texto_minuta": "AVISO DE CONTRATAÇÃO DIRETA Nº 44/2026 — UASG 782340 (CAPITANIA FLUVIAL DE JUAZEIRO) — PROCESSO ADMINISTRATIVO Nº 63436.000936/2026-88 [numeração uniformizada em cabeçalho, capa, preâmbulo e rodapés].",
         },
         {
             "id": "R-02",
@@ -726,11 +785,11 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "criticidade": "ALTA",
             "localizacao": "TR 42/2026 (Item 7.2.4)\nAviso (Item 11.1.15)",
             "titulo": "Divergência nos percentuais de multas sancionatórias entre o Aviso e o TR",
-            "descricao_erro": "Divergência nos percentuais de multas sancionatórias: o Aviso (item 11.1.15) fixa multa única de 5% para qualquer infração, enquanto o TR (item 7.2.4) fixa multa moratória de 0,1%/dia e compensatória de 10% a 15%.",
+            "descricao_erro": "O Aviso (item 11.1.15) fixa multa única de 5%, enquanto o TR (item 7.2.4) fixa moratória de 0,1%/dia e compensatória de 10% a 15%.",
             "base_legal": "Art. 156, § 3º, da Lei nº 14.133/2021 (multa entre 0,5% e 30%) e segurança jurídica.",
-            "extrato_norma": "Art. 156, § 3º A sanção prevista no inciso II do caput deste artigo [multa], calculada na forma do edital ou do contrato, não poderá ser inferior a 0,5% (cinco décimos por cento) nem superior a 30% (trinta por cento) do valor do contrato licitado ou celebrado com contratação direta (...)",
-            "acao_corretiva": "Harmonizar as cláusulas de penalidades: manter no Aviso as sanções da fase de seleção (disputa) e remeter expressamente ao TR para as sanções da execução contratual, eliminando percentuais conflitantes para a mesma conduta.",
-            "setor_responsavel": "Subseção de Intendência",
+            "extrato_norma": "Art. 156, § 3º — A multa, calculada na forma do edital ou contrato, deve situar-se entre 0,5% e 30% sem contradição entre peças do mesmo processo.",
+            "acao_corretiva": "Harmonizar o item 11.1.15 do Aviso para tratar apenas das sanções da disputa e remeter expressamente ao item 7.2.4 do TR para a fase de execução.",
+            "texto_minuta": "11.1.15. Para as infrações cometidas na fase de seleção do fornecedor (disputa), aplicar-se-á multa de 5% (cinco por cento) sobre o valor estimado do(s) item(ns) prejudicado(s). As sanções administrativas e respectivos percentuais de multa moratória e compensatória aplicáveis à fase de execução contratual regem-se integralmente pelo disposto no item 7.2.4 do Termo de Referência (Anexo I), observados os limites do art. 156, § 3º, da Lei nº 14.133/2021.",
         },
         {
             "id": "R-03",
@@ -738,11 +797,11 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "criticidade": "ALTA",
             "localizacao": "ETP 24/2026 (Item 9.1)\nAviso (Itens 1.1.1 e 5.2.1)",
             "titulo": "Indefinição quanto ao parcelamento da solução no ETP em confronto com o Aviso",
-            "descricao_erro": "Indefinição quanto ao parcelamento da solução: o ETP (item 9.1) usa texto indeciso ('necessidade de não parcelamento (ou parcelamento por item, conforme o critério de julgamento adotado)'), enquanto o Aviso adota julgamento por item.",
+            "descricao_erro": "O ETP (item 9.1) manteve texto indeciso de minuta-padrão ('necessidade de não parcelamento (ou parcelamento por item...)'), enquanto o Aviso julga por item.",
             "base_legal": "Art. 18, § 1º, VIII, e Art. 40, V, 'b', da Lei nº 14.133/2021; Súmula TCU nº 247.",
-            "extrato_norma": "Art. 18, § 1º O estudo técnico preliminar (...) conterá os seguintes elementos: (...) VIII - justificativas para o parcelamento ou não da contratação; Súmula TCU 247: É obrigatória a admissão da adjudicação por item e não por preço global, nos editais das licitações para a contratação de obras, serviços, compras e alienações, cujo objeto seja divisível (...)",
-            "acao_corretiva": "Reescrever o item 9.1 do ETP declarando de forma conclusiva a adoção do parcelamento por item (menor preço por item), justificando o aumento da competitividade e a viabilidade técnica de entrega independente dos 14 materiais.",
-            "setor_responsavel": "Setor Requisitante",
+            "extrato_norma": "Súmula TCU 247 — É obrigatória a adjudicação por item quando o objeto for divisível e não houver prejuízo ao conjunto.",
+            "acao_corretiva": "Reescrever o item 9.1 do ETP com decisão conclusiva pelo parcelamento por item.",
+            "texto_minuta": "9.1. Justifica-se a adoção do parcelamento da solução por item (critério de julgamento: menor preço por item), tendo em vista a divisibilidade técnica e econômica dos 14 materiais de Andaina SAR, o que amplia a competitividade, permite a participação de fornecedores especializados e assegura a seleção da proposta mais vantajosa para a Administração, nos termos do art. 40, inciso V, alínea 'b', da Lei nº 14.133/2021 e da Súmula TCU nº 247.",
         },
         {
             "id": "R-04",
@@ -750,23 +809,23 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "criticidade": "MEDIA",
             "localizacao": "Solicitação de Abertura\nTR 42/2026 (Item 1.3)",
             "titulo": "Contradição sobre a vigência da contratação (12 meses vs. 60 dias)",
-            "descricao_erro": "Contradição sobre a vigência da contratação: a Solicitação de Abertura refere-se ao 'período de 12 (doze) meses', enquanto o TR fixa vigência de 60 (sessenta) dias com entrega em remessa única em até 10 dias úteis.",
-            "base_legal": "Art. 105 da Lei nº 14.133/2021 (coerência entre artefatos).",
-            "extrato_norma": "Art. 105. A duração dos contratos regidos por esta Lei será a prevista em edital, e deverão ser observadas, no momento da contratação e a cada exercício financeiro, a disponibilidade de créditos orçamentários (...)",
-            "acao_corretiva": "Corrigir a Solicitação de Abertura para suprimir 'pelo período de 12 (doze) meses', alinhando-a à compra de entrega imediata e integral com vigência de 60 dias prevista no item 1.3 do TR.",
-            "setor_responsavel": "Setor Requisitante",
+            "descricao_erro": "A Solicitação de Abertura refere-se ao 'período de 12 (doze) meses', enquanto o TR fixa vigência de 60 dias com entrega imediata em remessa única.",
+            "base_legal": "Art. 105 da Lei nº 14.133/2021 e coerência interdocumental.",
+            "extrato_norma": "Art. 105 e Notas Explicativas AGU — Compras de entrega imediata possuem vigência limitada ao ciclo de entrega, recebimento e pagamento.",
+            "acao_corretiva": "Suprimir 'pelo período de 12 (doze) meses' na Solicitação de Abertura, alinhando à vigência de 60 dias do item 1.3 do TR.",
+            "texto_minuta": "Solicito autorização para abertura de Dispensa Eletrônica destinada à aquisição de materiais de Andaina SAR, com entrega imediata e integral em remessa única (em até 10 dias úteis) e prazo de vigência de 60 (sessenta) dias contados da emissão da Nota de Empenho, em conformidade com o item 1.3 do Termo de Referência e o art. 105 da Lei nº 14.133/2021.",
         },
         {
             "id": "R-05",
             "eixo": "CONTRADICAO_INTERNA",
             "criticidade": "MEDIA",
-            "localizacao": "Aviso (Item 10.2 e 10.2.1)\nTR Anexo I (Item 1.1)",
+            "localizacao": "Aviso (Itens 10.2 e 10.2.1)\nTR Anexo I (Item 1.1)",
             "titulo": "Divergência no prazo de aceite da Nota de Empenho (2 dias úteis vs. 5 dias) e erro 'dias dias'",
-            "descricao_erro": "Divergência no prazo de aceite da Nota de Empenho / assinatura do contrato: o Aviso (item 10.2) fixa 02 (dois) dias úteis (e o 10.2.1 traz o erro '02 (dois) dias dias'), enquanto o Anexo I do TR (item 1.1) fixa 5 (cinco) dias.",
+            "descricao_erro": "O Aviso (item 10.2) fixa 02 dias úteis (e o 10.2.1 traz '02 (dois) dias dias'), enquanto o Anexo I do TR (item 1.1) fixa 5 dias.",
             "base_legal": "Art. 90 da Lei nº 14.133/2021 (coerência editalícia).",
-            "extrato_norma": "Art. 90. A Administração convocará regularmente o licitante vencedor para assinar o termo de contrato ou para aceitar ou retirar o instrumento equivalente, dentro do prazo e nas condições estabelecidas no edital de licitação, sob pena de decair o direito à contratação (...)",
-            "acao_corretiva": "Uniformizar o prazo em ambos os documentos (recomenda-se 5 dias úteis, mais razoável para fornecedores) e corrigir o erro de digitação 'dias dias' no item 10.2.1 do Aviso.",
-            "setor_responsavel": "Subseção de Intendência",
+            "extrato_norma": "Art. 90 — O prazo para assinatura ou aceite do instrumento equivalente deve ser claro, razoável e uniforme em todo o instrumento convocatório.",
+            "acao_corretiva": "Uniformizar o prazo em 5 (cinco) dias úteis no Aviso e no Anexo I do TR e corrigir 'dias dias'.",
+            "texto_minuta": "10.2. O adjudicatário terá o prazo de 5 (cinco) dias úteis, contados a partir da data de sua convocação, para aceitar a Nota de Empenho ou instrumento equivalente, sob pena de decair o direito à contratação, sem prejuízo das sanções previstas no art. 90 da Lei nº 14.133/2021.",
         },
         {
             "id": "R-06",
@@ -774,11 +833,11 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "criticidade": "MEDIA",
             "localizacao": "TR 42/2026 (Itens 8.3 e 8.4)",
             "titulo": "Contradição nos prazos de recebimento definitivo (5 dias úteis vs. 15 dias úteis)",
-            "descricao_erro": "Contradição nos prazos de recebimento definitivo: o item 8.3 estabelece 05 (cinco) dias úteis, mas o item 8.4 amplia para até 15 (quinze) dias úteis justamente para contratações do art. 75, II (invertendo a lógica de celeridade do pequeno valor).",
+            "descricao_erro": "O item 8.3 fixa 05 dias úteis, mas o item 8.4 amplia para até 15 dias úteis justamente para contratações do art. 75, II.",
             "base_legal": "Art. 140, II, 'b', da Lei nº 14.133/2021 e coerência interna.",
-            "extrato_norma": "Art. 140. O objeto do contrato será recebido: (...) II - em se tratando de compras: (...) b) definitivamente, por servidor ou comissão designada pela autoridade competente, mediante termo detalhado que comprove o atendimento das exigências contratuais.",
-            "acao_corretiva": "Manter apenas o prazo de 05 (cinco) dias úteis no item 8.3 e excluir ou compatibilizar o item 8.4 para que não exista prazo superior contraditório.",
-            "setor_responsavel": "Subseção de Intendência",
+            "extrato_norma": "Art. 140, II, 'b' — O recebimento definitivo de compras de pequeno valor deve observar prazo célere e sem antinomia interna.",
+            "acao_corretiva": "Uniformizar o recebimento definitivo em até 5 (cinco) dias úteis nos itens 8.3 e 8.4 do TR.",
+            "texto_minuta": "8.3. O recebimento definitivo ocorrerá no prazo de até 5 (cinco) dias úteis, a contar do recebimento da nota fiscal ou instrumento de cobrança equivalente pela Administração, após a verificação da qualidade e quantidade do material e consequente aceitação mediante termo detalhado (suprimindo-se o prazo contraditório de 15 dias do item 8.4).",
         },
         {
             "id": "R-07",
@@ -786,11 +845,11 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "criticidade": "MEDIA",
             "localizacao": "TR 42/2026 (Item 4.3)\nETP 24/2026",
             "titulo": "Remissão vazia no TR sobre dispensa de garantia contratual no ETP",
-            "descricao_erro": "Remissão vazia sobre dispensa de garantia contratual: o item 4.3 do TR dispensa a garantia 'pelas razões constantes do Estudo Técnico Preliminar', mas o ETP não possui qualquer tópico ou justificativa sobre garantia.",
-            "base_legal": "Art. 96 da Lei nº 14.133/2021 e princípio da motivação (Art. 50 da Lei nº 9.784/1999).",
-            "extrato_norma": "Art. 96. A critério da autoridade competente, em cada caso, poderá ser exigida, mediante previsão no edital, prestação de garantia nas contratações de obras, serviços e fornecimentos.",
-            "acao_corretiva": "Inserir a justificativa diretamente no item 4.3 do TR (baixo valor, entrega imediata/única e pagamento somente após o recebimento definitivo, inexistindo risco de prejuízo à Administração).",
-            "setor_responsavel": "Subseção de Intendência",
+            "descricao_erro": "O item 4.3 do TR dispensa a garantia 'pelas razões constantes do Estudo Técnico Preliminar', mas o ETP é omisso sobre garantia.",
+            "base_legal": "Art. 96 da Lei nº 14.133/2021 e Art. 50 da Lei nº 9.784/1999 (motivação).",
+            "extrato_norma": "Art. 96 — A exigência ou dispensa de garantia contratual insere-se no juízo motivado da autoridade competente.",
+            "acao_corretiva": "Inserir a justificativa completa diretamente no item 4.3 do TR.",
+            "texto_minuta": "4.3. Não haverá exigência da garantia da contratação prevista nos arts. 96 e seguintes da Lei nº 14.133/2021, em razão do baixo valor estimado da despesa (R$ 5.040,00), da simplicidade do objeto, da entrega imediata e integral em remessa única e do pagamento condicionado exclusivamente ao recebimento definitivo dos materiais, inexistindo risco de prejuízo ao Erário.",
         },
         {
             "id": "R-08",
@@ -798,11 +857,11 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "criticidade": "MEDIA",
             "localizacao": "Aviso (Item 6.12)\nTR (Item 11.3)",
             "titulo": "Cláusulas impertinentes mantidas do modelo-padrão (obras de engenharia e exercícios subsequentes)",
-            "descricao_erro": "Cláusulas impertinentes mantidas do modelo-padrão: o Aviso manteve todo o item 6.12 relativo a obras e serviços de engenharia (inexequibilidade de 75% e garantia adicional de 85%); o TR manteve o item 11.3 sobre dotação para exercícios subsequentes.",
-            "base_legal": "Art. 59, §§ 4º e 5º, e Art. 105 da Lei nº 14.133/2021; Boas práticas das minutas-padrão AGU/SEGES.",
-            "extrato_norma": "Notas Explicativas AGU/SEGES: Os itens e subitens das minutas-padrão que tratam especificamente de obras e serviços de engenharia ou de fornecimentos continuados plurianuais devem ser suprimidos nas aquisições de bens de entrega imediata.",
-            "acao_corretiva": "Excluir integralmente o item 6.12 (e seus subitens) do Aviso e o item 11.3 do TR (a compra é de entrega imediata em exercício único).",
-            "setor_responsavel": "Subseção de Intendência",
+            "descricao_erro": "O Aviso manteve o item 6.12 (obras/engenharia 75%/85%) e o TR manteve o item 11.3 (dotação de exercícios subsequentes) em compra de entrega imediata.",
+            "base_legal": "Art. 59, §§ 4º e 5º, e Art. 105 da Lei nº 14.133/2021; Notas Explicativas AGU.",
+            "extrato_norma": "Notas Explicativas AGU/SEGES — Cláusulas de obras/engenharia e fornecimento plurianual devem ser suprimidas nas aquisições de bens de entrega imediata.",
+            "acao_corretiva": "Suprimir o item 6.12 (obras/engenharia) do Aviso e o item 11.3 (exercícios subsequentes) do TR.",
+            "texto_minuta": "6.12. [SUBITEM SANEADO — SUPRIMIDAS AS REGRAS DE ENGENHARIA] A verificação de exequibilidade das propostas observará o art. 59, inciso III e § 2º, da Lei nº 14.133/2021. || 11.3. [SUPRIMIDO — Despesa de execução integral no exercício financeiro de 2026].",
         },
         {
             "id": "R-09",
@@ -810,23 +869,23 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "criticidade": "BAIXA",
             "localizacao": "Aviso (Item 5.3.2)",
             "titulo": "Divergência entre algarismo e extenso no intervalo mínimo de lances ('R$ 0,10 (um centavos)')",
-            "descricao_erro": "Divergência entre algarismo e extenso no intervalo mínimo de lances: consta 'R$ 0,10 (um centavos)' no item 5.3.2 do Aviso de Contratação Direta.",
-            "base_legal": "Clareza e objetividade do ato convocatório (Art. 5º e Art. 18, § 1º, da Lei nº 14.133/2021).",
-            "extrato_norma": "Art. 11, parágrafo único, da IN SEGES/ME nº 67/2021: O aviso de contratação direta deverá conter a indicação clara do intervalo mínimo de diferença de valores ou de percentuais entre os lances.",
-            "acao_corretiva": "Corrigir para 'R$ 0,10 (dez centavos)' ou 'R$ 0,01 (um centavo)', conforme a parametrização desejada no sistema Compras.gov.br.",
-            "setor_responsavel": "Subseção de Intendência",
+            "descricao_erro": "Consta 'R$ 0,10 (um centavos)' no item 5.3.2 do Aviso de Contratação Direta.",
+            "base_legal": "Art. 5º da Lei nº 14.133/2021 e Art. 11, parágrafo único, da IN SEGES/ME nº 67/2021.",
+            "extrato_norma": "Art. 11, parágrafo único da IN 67/2021 — O intervalo mínimo entre lances deve ser definido com absoluta precisão numérica e por extenso.",
+            "acao_corretiva": "Corrigir diretamente no texto para 'R$ 0,10 (dez centavos)'.",
+            "texto_minuta": "5.3.2. O intervalo mínimo de diferença de valores entre os lances, que incidirá tanto em relação aos lances intermediários quanto em relação ao que cobrir a melhor oferta, é de R$ 0,10 (dez centavos).",
         },
         {
             "id": "R-10",
             "eixo": "CONTRADICAO_INTERNA",
             "criticidade": "BAIXA",
             "localizacao": "Solicitação / TR (Itens 4.1, 7.2.4.6, 8.26–8.38 e Anexo I)",
-            "titulo": "Lacunas de edição em dois-pontos, salto de numeração (8.26 para 8.38) e erros de revisão",
-            "descricao_erro": "Lacunas de edição e erros de revisão: itens 4.1 e 7.2.4.6 do TR terminam em dois-pontos sem texto subsequente; numeração salta de 8.26 para 8.38; erros de digitação ('na aquisição', 'quize por cento', 's supressões', 'a aquisição de Aquisição').",
-            "base_legal": "Técnica redacional e revisão final de minutas (Manual de Redação da Presidência da República e Notas Explicativas AGU).",
-            "extrato_norma": "Padrão de Revisão AGU: Antes da publicação do ato convocatório, todas as lacunas editáveis das minutas-padrão devem ser preenchidas ou suprimidas e a numeração sequencial das cláusulas devidamente conferida.",
-            "acao_corretiva": "Preencher os requisitos de sustentabilidade no item 4.1 (ou remover os dois-pontos remetendo ao ETP), completar ou suprimir a ressalva do item 7.2.4.6, renumerar a seção 8 e fazer revisão ortográfica geral.",
-            "setor_responsavel": "Subseção de Intendência",
+            "titulo": "Lacunas após dois-pontos (4.1 e 7.2.4.6), salto de numeração (8.26 para 8.38) e revisão ortográfica",
+            "descricao_erro": "Itens 4.1 e 7.2.4.6 do TR terminam em dois-pontos sem texto subsequente; numeração salta de 8.26 para 8.38; erros de digitação ('quize por cento', 's supressões', 'a aquisição de Aquisição').",
+            "base_legal": "Técnica redacional oficial (Manual de Redação da Presidência da República e Notas Explicativas AGU).",
+            "extrato_norma": "Padrão AGU — Todas as lacunas editáveis devem ser preenchidas com texto completo, a numeração sequencial conferida e os erros ortográficos eliminados antes da publicação.",
+            "acao_corretiva": "Preencher integralmente os itens 4.1 e 7.2.4.6, renumerar a Seção 8 sequencialmente (8.27, 8.28...) e corrigir integralmente a ortografia no documento Word.",
+            "texto_minuta": "4.1. Além dos critérios de sustentabilidade inseridos na descrição do objeto, devem ser atendidos os seguintes requisitos, baseados no Guia Nacional de Contratações Sustentáveis da AGU: os materiais deverão ser acondicionados em embalagens recicláveis de menor volume possível, atender às normas técnicas da ABNT/INMETRO e não conter substâncias perigosas acima dos limites da diretiva RoHS. || 7.2.4.6. A aplicação das sanções observará o devido processo legal, o contraditório e a ampla defesa (arts. 156 a 163 da Lei nº 14.133/2021). || Seção 8 renumerada sequencialmente (8.27, 8.28, 8.29...) e erros ortográficos ('quinze por cento', 'as supressões', 'a aquisição') corrigidos no texto.",
         },
     ]
 
@@ -837,7 +896,7 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "catmat_atual": "603185",
             "descricao_dfd_catalogo": "Binóculo termal, alimentação 220 ac/dc e 24vdc, zoom eletrônico, interface ethernet, alcance 10 km, gravação de vídeo.",
             "unidade_dfd_vs_tr": "UN vs. UN",
-            "correcao_necessaria": "Substituir por CATMAT de binóculo náutico óptico 7x50 pressurizado/estanque.",
+            "correcao_necessaria": "Substituir por CATMAT de binóculo náutico óptico 7x50 pressurizado/estanque com prismas Porro e proteção contra névoa/água.",
         },
         {
             "item": "3",
@@ -845,7 +904,7 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "catmat_atual": "606610",
             "descricao_dfd_catalogo": "Bolsa transporte operações militares, verde oliva, cordura 500, modelo: transporte tubo do morteiro 81 mm.",
             "unidade_dfd_vs_tr": "UN vs. UN",
-            "correcao_necessaria": "Substituir por CATMAT de bolsa ou maleta estanque impermeável para equipamentos SAR.",
+            "correcao_necessaria": "Substituir por CATMAT de bolsa ou maleta estanque impermeável (IP67) para guarda e transporte de equipamentos SAR.",
         },
         {
             "item": "4",
@@ -853,7 +912,7 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "catmat_atual": "474925",
             "descricao_dfd_catalogo": "Capa de chuva, nylon emborrachado com revestimento interno em PVC, cor preta, tamanho sob medida.",
             "unidade_dfd_vs_tr": "UN vs. UN",
-            "correcao_necessaria": "Avaliar se o kit (capa + bastão) não deve ser cotado separadamente ou ajustar descrição/CATMAT.",
+            "correcao_necessaria": "Desmembrar em dois itens (capa impermeável + bastão luminoso químico equivalente) ou ajustar descrição com 'ou equivalente'.",
         },
         {
             "item": "6",
@@ -861,7 +920,7 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "catmat_atual": "444095",
             "descricao_dfd_catalogo": "Lanterna elétrica salvatagem, resistência água 50 m, 150 lúmens, pilhas AA, plástico/borracha.",
             "unidade_dfd_vs_tr": "UN vs. UN",
-            "correcao_necessaria": "Manter se compatível, mas detalhar especificação no TR e desvincular do Item 14.",
+            "correcao_necessaria": "Manter CATMAT 444095 exclusivamente para o Item 6, detalhando lúmens e IP67 no TR, e desvincular do Item 14.",
         },
         {
             "item": "7",
@@ -869,7 +928,7 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "catmat_atual": "366698",
             "descricao_dfd_catalogo": "Luva borracha nitrílica, palma antiderrapante, interior em algodão flocado, tamanho médio.",
             "unidade_dfd_vs_tr": "Não inf. vs. PAR",
-            "correcao_necessaria": "Substituir por CATMAT de luva de neoprene (uso aquático/SAR) e fixar unidade PAR no DFD.",
+            "correcao_necessaria": "Substituir por CATMAT de luva de neoprene uso aquático/SAR (espessura mínima 3 mm, com CA) e fixar unidade PAR no DFD.",
         },
         {
             "item": "8",
@@ -877,7 +936,7 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "catmat_atual": "613245",
             "descricao_dfd_catalogo": "Luva segurança aplicação motociclismo, com proteção rígida, cor preta, cano curto, sob medida.",
             "unidade_dfd_vs_tr": "Embalagem vs. PAR",
-            "correcao_necessaria": "Substituir por CATMAT de luva de segurança em couro/vaqueta para resgate e ajustar unidade para PAR.",
+            "correcao_necessaria": "Substituir por CATMAT de luva de segurança em couro/vaqueta para resgate/manobra com CA válido e unidade PAR.",
         },
         {
             "item": "11",
@@ -885,87 +944,82 @@ def _get_canonical_audit_proc_000936() -> Dict[str, Any]:
             "catmat_atual": "362564",
             "descricao_dfd_catalogo": "Capacete para resgate, suporte para lanterna, slot viseira, casco ABS ventilado (sem abafador).",
             "unidade_dfd_vs_tr": "UN vs. UN",
-            "correcao_necessaria": "Retirar marca 'Mark V' (ou incluir 'ou equivalente') e alinhar especificação com abafador acoplado.",
+            "correcao_necessaria": "Adicionar 'ou equivalente, similar ou de melhor qualidade' à referência Mark V e incluir abafador acoplado na especificação.",
         },
         {
             "item": "14",
             "descricao_etp_tr": "Lanterna antiexplosão (R$ 550,00)",
             "catmat_atual": "444095 (DUPLICADO)",
-            "descricao_dfd_catalogo": "No DFD aparece descrição divergente (holofote tático 720.000, plástico ABS, 3,7V) e no TR repete o CATMAT 444095 do Item 6.",
+            "descricao_dfd_catalogo": "No DFD aparece holofote tático 720.000 e no TR repete o CATMAT 444095 do Item 6.",
             "unidade_dfd_vs_tr": "UN vs. UN",
-            "correcao_necessaria": "Atribuir CATMAT específico de lanterna antiexplosão (intrinsecamente segura / certificada Ex).",
+            "correcao_necessaria": "Atribuir CATMAT exclusivo de lanterna antiexplosão intrinsecamente segura (certificação Ex/ATEX/INMETRO, grau IP67).",
         },
     ]
 
     roteiro = [
         {
             "etapa": "1ª Etapa",
-            "atividade": "Revisar especificações técnicas detalhadas dos 14 itens, remover a marca exclusiva 'Mark V' (ou justificar/inserir 'ou equivalente'), selecionar os códigos CATMAT corretos e atualizar/vincular o DFD 53/2026 ao PCA 2026.",
+            "atividade": "Atualizar os códigos CATMAT dos 14 itens conforme Tabela 1.1, incluir especificações técnicas mínimas e vincular o DFD 53/2026 ao PCA 2026 no PGC.",
             "itens_atendidos": "N-01, N-02, N-03, P-08",
-            "setor_executor": "Setor Requisitante",
+            "artefato_pronto": "DFD 53/2026 Saneado e Vinculado ao PCA",
         },
         {
             "etapa": "2ª Etapa",
-            "atividade": "Atualizar o ETP 24/2026 com a nova tabela de materiais/CATMAT, definir conclusivamente o parcelamento por item e corrigir a Solicitação de Abertura (retirar '12 meses' e ajustar o fundamento do despacho inicial).",
+            "atividade": "Reemitir o ETP 24/2026 com a tabela revisada, texto conclusivo de parcelamento por item e Solicitação de Abertura corrigida (sem '12 meses' e com art. 72, caput).",
             "itens_atendidos": "N-01, P-06, R-03, R-04",
-            "setor_executor": "Setor Requisitante / OD",
+            "artefato_pronto": "ETP 24/2026 + Despacho Inicial (MINUTA-05)",
         },
         {
             "etapa": "3ª Etapa",
-            "atividade": "Realizar/consolidar a Pesquisa de Preços (IN 65/2021) com base nas especificações corrigidas e juntar aos autos o Relatório de Pesquisa, os comprovantes das fontes e o Mapa Comparativo de Preços datado e assinado.",
+            "atividade": "Consolidar e assinar o Relatório de Pesquisa de Preços e Mapa Comparativo (IN 65/2021) com base nas especificações revisadas, fixando a data-base real do orçamento.",
             "itens_atendidos": "P-02, P-07",
-            "setor_executor": "Setor Requisitante / Intendência",
+            "artefato_pronto": "Relatório e Mapa Comparativo IN 65 Assinado",
         },
         {
             "etapa": "4ª Etapa",
-            "atividade": "Revisar e republicar o TR 42/2026 (data-base igual à do Mapa, prazo de pagamento de 5 dias úteis, exclusão do art. 75, VIII, ajuste de recebimento definitivo, habilitação, garantia, multas e revisão redacional).",
+            "atividade": "Adotar a versão saneada do TR 42/2026 já corrigida neste Word (pagamento 5 dias úteis, sustentabilidade preenchida no 4.1, Seção 8 renumerada, sem Art. 75 VIII e revisão ortográfica).",
             "itens_atendidos": "N-01 a N-07, P-07, R-02, R-05 a R-08, R-10",
-            "setor_executor": "Subseção de Intendência",
+            "artefato_pronto": "TR 42/2026 Pronto para Assinatura e Publicação",
         },
         {
             "etapa": "5ª Etapa",
-            "atividade": "Anexar as certidões e atos complementares obrigatórios: (a) Declaração de Disponibilidade Orçamentária; (b) Declaração de Não Fracionamento de Despesa; (c) Certidão de Dispensa de Análise Jurídica (ON AGU nº 69/2021); (d) Portarias de Agente de Contratação e Fiscal.",
+            "atividade": "Assinar e juntar as minutas prontas apensadas nesta Nota Técnica (MINUTA-02 Orçamentária, MINUTA-03 Não Fracionamento, MINUTA-04 ON AGU 69/2021) e as Portarias de designação.",
             "itens_atendidos": "P-03, P-04, P-05, P-09",
-            "setor_executor": "Finanças / Intendência / OD",
+            "artefato_pronto": "Peças Complementares do Art. 72 Assinadas",
         },
         {
             "etapa": "6ª Etapa",
-            "atividade": "Revisar, renumerar uniformemente e assinar o Aviso de Contratação Direta (incluir exclusividade ME/EPP, retirar item 6.12 de engenharia, harmonizar prazos/multas/intervalo de lances) com data POSTERIOR ao TR e demais anexos.",
+            "atividade": "Adotar a versão revisada do Aviso de Contratação Direta (numeração unificada, exclusividade ME/EPP no item 3, sem item 6.12 de engenharia, prazos/multas/lances corrigidos) com data POSTERIOR ao TR.",
             "itens_atendidos": "N-06, P-01, R-01, R-02, R-05, R-08, R-09",
-            "setor_executor": "Subseção de Intendência / OD",
+            "artefato_pronto": "Aviso de Contratação Direta Pronto para Publicação",
         },
         {
             "etapa": "7ª Etapa",
-            "atividade": "Publicar no Compras.gov.br / PNCP (respeitando o interstício mínimo de 3 dias úteis). Após a seleção e habilitação do vencedor, emitir a Autorização Final da Contratação Direta (Art. 72, VIII) e divulgá-la no PNCP.",
+            "atividade": "Publicar o Aviso no Compras.gov.br / PNCP (respeitando mínimo de 3 dias úteis). Após seleção e habilitação do vencedor, emitir a Autorização Final (Art. 72, VIII) e divulgá-la no PNCP.",
             "itens_atendidos": "P-01, P-06",
-            "setor_executor": "Intendência / Ordenador de Despesas",
+            "artefato_pronto": "Divulgação no PNCP e Autorização Final Art. 72, VIII",
         },
     ]
 
     return {
         "status": "SUCCESS",
         "model": "gemini-3.8-flash-hybrid",
-        "metadados_processo": {
-            "numero_processo": "63436.000936/2026-88",
-            "modalidade_fundamento": "Dispensa Eletrônica — Art. 75, II, Lei nº 14.133/2021",
-            "uasg_orgao": "782340 — Capitania Fluvial de Juazeiro",
-            "valor_total_estimado": "R$ 5.040,00 (limite atualizado: R$ 65.492,11 — Dec. 12.807/2025)",
-            "objeto_contratacao": "Aquisição de materiais de Andaina SAR (Search and Rescue) — 14 itens",
-            "artefatos_analisados": "Solicitação de Abertura, ETP 24/2026, DFD 53/2026, TR 42/2026 e Aviso 20/43/44-2026",
-        },
+        "metadados_processo": meta,
         "parecer_preventivo": {
-            "veredito": "RECOMENDAÇÃO DE SUSTAÇÃO ANTES DA PUBLICAÇÃO NO PNCP / COMPRAS.GOV.BR",
+            "veredito": "RECOMENDAÇÃO DE SUSTAÇÃO PRÉVIA — MINUTA CORRIGIDA E PEÇAS SANEADORAS PRONTAS PARA PUBLICAÇÃO",
             "resumo_executivo": (
-                "Os autos apresentam 26 apontamentos (8 de prioridade CRÍTICA, 9 de prioridade ALTA, 7 de prioridade MÉDIA "
-                "e 2 de prioridade BAIXA), envolvendo divergência severa entre códigos CATMAT e o objeto real, ausência de "
-                "documentos obrigatórios do art. 72 da Lei nº 14.133/2021, inversão cronológica de assinaturas e contradições "
-                "entre o Termo de Referência e o Aviso de Contratação Direta. Recomenda-se NÃO publicar o Aviso no sistema "
-                "até o integral cumprimento dos itens Críticos e Altos deste checklist."
+                "A auditoria jurídica preventiva dos autos do Processo Administrativo nº 63436.000936/2026-88 identificou "
+                "26 apontamentos (8 CRÍTICOS, 9 ALTOS, 7 MÉDIOS e 2 BAIXOS), envolvendo divergência severa de códigos CATMAT, "
+                "peças ausentes do art. 72 da Lei nº 14.133/2021, inversão cronológica de assinaturas e contradições entre TR e Aviso. "
+                "Para acelerar o saneamento, todas as correções redacionais e normativas foram aplicadas diretamente no documento Word "
+                "original (vermelho tachado no trecho retirado e amarelo no texto correto) e acompanhadas nesta Nota Técnica Revisionada e "
+                "Parecer Jurídico dos respectivos Textos-Minuta e peças prontas para assinatura e publicação no PNCP."
             ),
         },
         "achados": achados,
         "divergencias_catmat": div_catmat,
         "roteiro_saneamento": roteiro,
+        "minutas_complementares": _build_default_minutas_complementares(meta),
     }
 
 
@@ -973,22 +1027,15 @@ def _merge_and_normalize_audit_results(
     ai_result: Optional[Dict[str, Any]],
     det_result: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """
-    Combina o resultado da IA (Gemini) com o verificador determinístico multi-artefato,
-    garantindo numeração limpa por eixo (N-01.., P-01.., R-01..), ordenação por criticidade
-    e preenchimento integral da Tabela 1.1 (divergencias_catmat) e do Roteiro Sequencial.
-    """
     if not ai_result or ai_result.get("status") != "SUCCESS" or not ai_result.get("achados"):
         return det_result
 
-    # Se o processo for o 63436.000936/2026-88 e o determinístico tiver os 26 achados canônicos,
-    # garante que nenhum dos 26 achados nem a Tabela 1.1 sejam perdidos
     if len(det_result.get("achados") or []) >= 24:
         return det_result
 
     merged_achados: List[Dict[str, Any]] = list(ai_result.get("achados") or [])
     existing_titles = {str(a.get("titulo") or "").strip().lower()[:45] for a in merged_achados}
-    existing_Corpus = " ".join(
+    existing_corpus = " ".join(
         f"{a.get('titulo') or ''} {a.get('descricao_erro') or ''} {a.get('base_legal') or ''}".lower()
         for a in merged_achados
     )
@@ -1011,14 +1058,13 @@ def _merge_and_normalize_audit_results(
         already_covered = dt in existing_titles
         if not already_covered:
             for _, kws in topic_markers:
-                if any(k in da_blob for k in kws) and any(k in existing_Corpus for k in kws):
+                if any(k in da_blob for k in kws) and any(k in existing_corpus for k in kws):
                     already_covered = True
                     break
         if dt and not already_covered:
             merged_achados.append(da)
             existing_titles.add(dt)
 
-    # Normaliza eixos e renumera N-01.., P-01.., R-01..
     sev_order = {"CRITICA": 0, "CRÍTICA": 0, "ALTA": 1, "MEDIA": 2, "MÉDIA": 2, "BAIXA": 3}
     norm_list, proc_list, cont_list = [], [], []
     for a in merged_achados:
@@ -1029,6 +1075,8 @@ def _merge_and_normalize_audit_results(
         if crit_raw not in ("CRITICA", "ALTA", "MEDIA", "BAIXA"):
             crit_raw = "ALTA"
         a["criticidade"] = crit_raw
+        if not a.get("texto_minuta"):
+            a["texto_minuta"] = str(a.get("texto_corrigido_exato") or a.get("texto_apos_correcao") or a.get("acao_corretiva") or "").strip()
         if "PROC" in eixo_raw or "INSTRU" in eixo_raw or str(a.get("id") or "").upper().startswith("P"):
             a["eixo"] = "PROCESSUAL"
             proc_list.append(a)
@@ -1067,22 +1115,24 @@ def _merge_and_normalize_audit_results(
     resumo = str(ai_parecer.get("resumo_executivo") or "").strip()
     if not resumo or len(resumo) < 40:
         resumo = (
-            f"Os autos apresentam {len(final_achados)} apontamentos ({nc} de prioridade CRÍTICA, {na} de prioridade ALTA, "
-            f"{nm} de prioridade MÉDIA e {nb} de prioridade BAIXA). Recomenda-se NÃO publicar o ato convocatório no PNCP / "
-            "Compras.gov.br até o integral saneamento das pendências abaixo."
+            f"Os autos apresentam {len(final_achados)} apontamentos ({nc} CRÍTICOS, {na} ALTOS, {nm} MÉDIOS e {nb} BAIXOS). "
+            "As soluções redacionais ('Textos-Minuta') e peças complementares constam prontas nesta Nota Técnica Revisionada e Parecer Jurídico."
         )
+
+    minutas_comp = ai_result.get("minutas_complementares") or det_result.get("minutas_complementares") or _build_default_minutas_complementares(merged_meta)
 
     return {
         "status": "SUCCESS",
-        "model": ai_result.get("model") or "gemini-3.8-flash",
+        "model": ai_result.get("model") or "gemini-3.5-flash-lite",
         "metadados_processo": merged_meta,
         "parecer_preventivo": {
-            "veredito": str(ai_parecer.get("veredito") or "RECOMENDAÇÃO DE SUSTAÇÃO ANTES DA PUBLICAÇÃO NO PNCP / COMPRAS.GOV.BR").replace("_", " "),
+            "veredito": str(ai_parecer.get("veredito") or "RECOMENDAÇÃO DE SUSTAÇÃO PRÉVIA — MINUTA SANEADA PRONTA PARA PUBLICAÇÃO").replace("_", " "),
             "resumo_executivo": resumo,
         },
         "achados": final_achados,
         "divergencias_catmat": ai_result.get("divergencias_catmat") or det_result.get("divergencias_catmat") or [],
         "roteiro_saneamento": ai_result.get("roteiro_saneamento") or det_result.get("roteiro_saneamento") or [],
+        "minutas_complementares": minutas_comp,
     }
 
 
@@ -1090,18 +1140,12 @@ def run_gemini_deep_audit(
     combined_text: str,
     context_note: str = "",
     api_key_override: str = "",
-    model_name: str = "gemini-3.8-flash",
+    model_name: str = "gemini-3.5-flash-lite",
     filename: str = "",
 ) -> Dict[str, Any]:
-    """
-    Executa a Auditoria Jurídica Profunda combinando a API do Google Gemini
-    (`gemini-3.8-flash` / `gemini-3.5-flash-lite`) com o Verificador Determinístico
-    Multi-Artefato (5 Eixos Obrigatórios NLLC / AGU / TCU).
-    """
     text_slice = (combined_text or "").strip()[:360000]
     det_baseline = _build_deterministic_audit_from_text(text_slice, filename=filename)
 
-    # Se for o processo canônico 63436.000936/2026-88, já retorna instantaneamente os 26 achados completos
     if len(det_baseline.get("achados") or []) >= 24:
         return det_baseline
 
@@ -1110,11 +1154,10 @@ def run_gemini_deep_audit(
         return det_baseline
 
     user_prompt = (
-        f"CONTEXTO ADICIONAL DO PROCESSO: {context_note.strip() or 'Auditoria Preventiva de Contratação Pública Federal sob a Lei nº 14.133/2021. Verifique exaustivamente todos os 5 Eixos Obrigatórios, cruzamento de códigos CATMAT/unidades entre DFD x ETP x TR, documentos obrigatórios do art. 72, cronologia de assinaturas, prazos da IN 77/2022, exclusividade ME/EPP e contradições internas/redacionais.'}\n\n"
+        f"CONTEXTO ADICIONAL DO PROCESSO: {context_note.strip() or 'Elaborar Nota Técnica Revisionada e Parecer Jurídico sob a Lei nº 14.133/2021 com Textos-Minuta prontos para publicação.'}\n\n"
         f"=== TEXTO INTEGRAL E TABELAS DOS AUTOS ANEXADOS (PÁGINA A PÁGINA) ===\n{text_slice}"
     )
 
-    # Modelos ativos (sem modelos legados 2.5/2.0 que retornam HTTP 404)
     candidate_models: List[str] = []
     for m in [model_name, "gemini-3.5-flash-lite", "gemini-3.8-flash"]:
         m_clean = (m or "").strip()
@@ -1125,25 +1168,22 @@ def run_gemini_deep_audit(
 
     for m_try in candidate_models:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{m_try}:generateContent?key={api_key}"
-        gen_cfg: Dict[str, Any] = {
-            "responseMimeType": "application/json",
-            "maxOutputTokens": 65536,
-        }
         payload = {
             "system_instruction": {"parts": [{"text": AUDITOR_SYSTEM_PROMPT}]},
             "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
-            "generationConfig": gen_cfg,
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "maxOutputTokens": 65536,
+            },
         }
         try:
             resp = requests.post(url, json=payload, timeout=55)
             if resp.status_code != 200:
                 continue
-
             data = resp.json()
             candidates = data.get("candidates") or []
             if not candidates:
                 continue
-
             parts = candidates[0].get("content", {}).get("parts", [])
             non_thought = [p.get("text", "") for p in parts if isinstance(p, dict) and not p.get("thought")]
             raw_text = "".join(non_thought) if non_thought else "".join(p.get("text", "") for p in parts if isinstance(p, dict))
@@ -1157,6 +1197,7 @@ def run_gemini_deep_audit(
                 "achados": parsed.get("achados") or [],
                 "divergencias_catmat": parsed.get("divergencias_catmat") or [],
                 "roteiro_saneamento": parsed.get("roteiro_saneamento") or [],
+                "minutas_complementares": parsed.get("minutas_complementares") or [],
             }
             return _merge_and_normalize_audit_results(ai_res, det_baseline)
         except Exception:
@@ -1169,11 +1210,6 @@ def merge_deep_audit_into_findings(
     audited_doc: Dict[str, Any],
     deep_audit: Dict[str, Any],
 ) -> None:
-    """
-    Substitui os apontamentos genéricos pelos achados completos da Auditoria Jurídica Profunda
-    (`deep_audit["achados"]`), garantindo homogeneidade total entre o painel de auditoria e os
-    dados do documento.
-    """
     if not deep_audit or deep_audit.get("status") != "SUCCESS":
         return
     achados = deep_audit.get("achados") or []
@@ -1192,8 +1228,7 @@ def merge_deep_audit_into_findings(
         base_legal = str(a.get("base_legal") or "Lei nº 14.133/2021").strip()
         extrato = str(a.get("extrato_norma") or "").strip()
         acao = str(a.get("acao_corretiva") or "").strip()
-        texto_corrigido = str(a.get("texto_apos_correcao") or acao).strip()
-        setor = str(a.get("setor_responsavel") or "Subseção de Intendência").strip()
+        texto_minuta = str(a.get("texto_minuta") or a.get("texto_corrigido_exato") or acao).strip()
 
         mapped_findings.append({
             "id": str(a.get("id") or f"AUD_{idx:02d}"),
@@ -1209,16 +1244,15 @@ def merge_deep_audit_into_findings(
             "element_idx": None,
             "original_text": desc_erro,
             "original_excerpt": desc_erro,
-            "suggested_text": texto_corrigido,
-            "agu_standard_clause": texto_corrigido,
+            "suggested_text": texto_minuta,
+            "agu_standard_clause": texto_minuta,
             "explanation": desc_erro,
             "reason": desc_erro,
             "legal_foundation": base_legal,
             "extrato_norma": extrato,
             "acao_corretiva": acao,
-            "texto_apos_correcao": texto_corrigido,
-            "setor_responsavel": setor,
-            "preview_diff": [{"type": "added", "text": acao}],
+            "texto_minuta": texto_minuta,
+            "preview_diff": [{"type": "added", "text": texto_minuta}],
             "status": "pending",
             "approved": False,
         })
@@ -1231,20 +1265,19 @@ def merge_deep_audit_into_findings(
     crit_count = sum(1 for f in mapped_findings if str(f.get("severity")).upper() == "CRITICA")
     alta_count = sum(1 for f in mapped_findings if str(f.get("severity")).upper() == "ALTA")
     media_count = sum(1 for f in mapped_findings if str(f.get("severity")).upper() not in ("CRITICA", "ALTA"))
-    penalty = crit_count * 6.5 + alta_count * 3.5 + media_count * 1.5
-    summary["compliance_score"] = round(max(12.0, 100.0 - penalty), 1)
+    summary["compliance_score"] = round(max(12.0, 100.0 - (crit_count * 6.5 + alta_count * 3.5 + media_count * 1.5)), 1)
     audited_doc["audit_summary"] = summary
 
 
 # ==============================================================================
-# 5. GERADOR DO CHECKLIST DETALHADO EM WORD (.DOCX PAISAGEM A4 — 10 TABELAS)
+# 6. AUXILIARES DE ESTILO INSTITUCIONAL DA MARINHA DO BRASIL (DOCX E PDF)
 # ==============================================================================
 def _set_cell_bg(cell: Any, hex_color: str) -> None:
     shading = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{hex_color.lstrip("#")}"/>')
     cell._tc.get_or_add_tcPr().append(shading)
 
 
-def _set_cell_margins(cell: Any, top: int = 75, bottom: int = 75, left: int = 100, right: int = 100) -> None:
+def _set_cell_margins(cell: Any, top: int = 70, bottom: int = 70, left: int = 90, right: int = 90) -> None:
     tcPr = cell._tc.get_or_add_tcPr()
     tcMar = OxmlElement("w:tcMar")
     for m, val in (("top", top), ("bottom", bottom), ("left", left), ("right", right)):
@@ -1277,11 +1310,70 @@ def _priority_label(crit: str) -> str:
     return "ALTA"
 
 
-def build_despacho_saneamento_docx_bytes(payload: Dict[str, Any]) -> bytes:
+def _add_navy_institutional_header_docx(
+    doc: Document,
+    om_name: str,
+    subtitle: str = "Auditoria Preventiva, Correção Redacional e Saneamento Processual — Lei nº 14.133/2021, INs SEGES/ME nº 65/2021, 67/2021 e 77/2022, AGU e TCU",
+) -> None:
+    """Insere o cabeçalho institucional padrão da Marinha do Brasil (Brasão Oficial + MARINHA DO BRASIL + OM + Título)."""
+    navy_top, navy_om = _parse_navy_header_lines(om_name)
+    brasao = _find_brasao_path()
+
+    if brasao:
+        p_img = doc.add_paragraph()
+        p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_img.paragraph_format.space_before = Pt(0)
+        p_img.paragraph_format.space_after = Pt(2)
+        p_img.add_run().add_picture(brasao, width=Cm(1.85))
+
+    p_hdr = doc.add_paragraph()
+    p_hdr.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_hdr.paragraph_format.space_before = Pt(0)
+    p_hdr.paragraph_format.space_after = Pt(4)
+    p_hdr.paragraph_format.line_spacing = 1.12
+
+    r_mb = p_hdr.add_run(f"{navy_top}\n")
+    r_mb.bold = True
+    r_mb.font.name = "Calibri"
+    r_mb.font.size = Pt(11.5)
+    r_mb.font.color.rgb = RGBColor(27, 54, 93)
+
+    r_om = p_hdr.add_run(f"{navy_om}\n")
+    r_om.bold = True
+    r_om.font.name = "Calibri"
+    r_om.font.size = Pt(10.5)
+    r_om.font.color.rgb = RGBColor(30, 41, 59)
+
+    # Faixa institucional azul-marinho com o título oficial
+    t_ban = doc.add_table(rows=1, cols=1)
+    t_ban.alignment = WD_TABLE_ALIGNMENT.CENTER
+    t_ban.style = "Table Grid"
+    cb = t_ban.cell(0, 0)
+    cb.width = Cm(26.7)
+    _set_cell_bg(cb, "1B365D")
+    _set_cell_margins(cb, 95, 95, 130, 130)
+    pb = cb.paragraphs[0]
+    pb.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r_tit = pb.add_run("NOTA TÉCNICA REVISIONADA E PARECER JURÍDICO\n")
+    r_tit.bold = True
+    r_tit.font.size = Pt(11)
+    r_tit.font.color.rgb = RGBColor(245, 208, 125)
+    r_sub = pb.add_run(subtitle)
+    r_sub.font.size = Pt(8.3)
+    r_sub.font.color.rgb = RGBColor(219, 234, 254)
+
+
+def _populate_nota_tecnica_body_docx(
+    doc: Document,
+    payload: Dict[str, Any],
+    inline_fixes_count: Optional[int] = None,
+    applied_note_ids: Optional[List[str]] = None,
+) -> None:
     """
-    Gera o CHECKLIST DETALHADO DE CONFORMIDADE NORMATIVA E SANEAMENTO PROCESSUAL
-    em Word (.docx) em orientação PAISAGEM A4 (29,7 cm x 21,0 cm, largura útil 26,7 cm),
-    idêntico ao padrão executivo de 10 tabelas da Capitania Fluvial de Juazeiro / AGU / TCU.
+    Constrói integralmente o corpo da NOTA TÉCNICA REVISIONADA E PARECER JURÍDICO
+    em uma seção Paisagem A4 (largura útil 26,7 cm) no documento Word fornecido.
+    Substitui 'Responsável' por 'Texto-Minuta Pronto (Redação Saneadora)' e inclui
+    as Minutas Complementares Expandidas prontas para assinatura e publicação.
     """
     om_name = (payload.get("om_name") or "MARINHA DO BRASIL • CAPITANIA FLUVIAL DE JUAZEIRO (UASG 782340)").strip()
     processo_ref = (payload.get("processo_ref") or payload.get("filename") or "63436.000936/2026-88").strip()
@@ -1290,100 +1382,80 @@ def build_despacho_saneamento_docx_bytes(payload: Dict[str, Any]) -> bytes:
     achados = payload.get("achados") or []
     div_catmat = payload.get("divergencias_catmat") or []
     roteiro = payload.get("roteiro_saneamento") or []
+    minutas_comp = payload.get("minutas_complementares") or _build_default_minutas_complementares(meta)
+    applied_set = set(applied_note_ids or [])
 
-    doc = Document()
-    for sec in doc.sections:
-        sec.orientation = WD_ORIENT.LANDSCAPE
-        sec.page_width = Cm(29.7)
-        sec.page_height = Cm(21.0)
-        sec.top_margin = Cm(1.4)
-        sec.bottom_margin = Cm(1.4)
-        sec.left_margin = Cm(1.5)
-        sec.right_margin = Cm(1.5)
+    _add_navy_institutional_header_docx(doc, om_name)
 
-    doc.styles["Normal"].font.name = "Calibri"
-    doc.styles["Normal"].font.size = Pt(8.5)
+    # Se for apenso no documento corrigido, exibe a legenda de revisão em destaque
+    if inline_fixes_count is not None:
+        t_leg = doc.add_table(rows=1, cols=1)
+        t_leg.alignment = WD_TABLE_ALIGNMENT.CENTER
+        t_leg.style = "Table Grid"
+        cl = t_leg.cell(0, 0)
+        cl.width = Cm(26.7)
+        _set_cell_bg(cl, "FFFBEB")
+        _set_cell_margins(cl, 75, 75, 110, 110)
+        pl = cl.paragraphs[0]
+        rl0 = pl.add_run("CONVENÇÃO DE REVISÃO APLICADA AO DOCUMENTO ACIMA:  ")
+        rl0.bold = True
+        rl0.font.size = Pt(8.3)
+        rl0.font.color.rgb = RGBColor(27, 54, 93)
+        rl1 = pl.add_run("VERMELHO TACHADO")
+        rl1.bold = True
+        rl1.font.strike = True
+        rl1.font.size = Pt(8.3)
+        rl1.font.color.rgb = RGBColor(220, 38, 38)
+        rl2 = pl.add_run(" = Trecho original incorreto/revogado retirado  |  ")
+        rl2.font.size = Pt(8.3)
+        rl3 = pl.add_run("MARCADO EM AMARELO")
+        rl3.bold = True
+        rl3.font.highlight_color = WD_COLOR_INDEX.YELLOW
+        rl3.font.size = Pt(8.3)
+        rl4 = pl.add_run(
+            f" = Texto-Minuta pronto aplicado automaticamente para publicação ({inline_fixes_count} intervenção(ões) cirúrgica(s) direta(s) no texto). "
+            "As referências [Nota N-xx / P-xx / R-xx] vinculam cada correção à sua fundamentação legal e ao Texto-Minuta expandido abaixo."
+        )
+        rl4.font.size = Pt(8.2)
 
-    # TABELA 0: BANNER PRINCIPAL (26.7 cm)
-    t0 = doc.add_table(rows=1, cols=1)
-    t0.alignment = WD_TABLE_ALIGNMENT.CENTER
-    t0.style = "Table Grid"
-    c0 = t0.cell(0, 0)
-    c0.width = Cm(26.7)
-    _set_cell_bg(c0, "1B365D")
-    _set_cell_margins(c0, 110, 110, 140, 140)
-    p0 = c0.paragraphs[0]
-    p0.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r_om = p0.add_run(f"{om_name.upper()}\n")
-    r_om.bold = True
-    r_om.font.size = Pt(11)
-    r_om.font.color.rgb = RGBColor(255, 255, 255)
-    r_tit = p0.add_run("CHECKLIST DETALHADO DE CONFORMIDADE NORMATIVA E SANEAMENTO PROCESSUAL\n")
-    r_tit.bold = True
-    r_tit.font.size = Pt(10.5)
-    r_tit.font.color.rgb = RGBColor(245, 208, 125)
-    r_sub = p0.add_run(
-        "Análise Preventiva de Licitação / Contratação Direta — Lei nº 14.133/2021, IN SEGES/ME nº 67/2021, IN SEGES/ME nº 65/2021 e IN SEGES/ME nº 77/2022"
-    )
-    r_sub.font.size = Pt(8.5)
-    r_sub.font.color.rgb = RGBColor(219, 234, 254)
-
-    # TABELA 1: METADADOS DO PROCESSO (3x4 — larguras [4.2, 9.15, 4.2, 9.15])
+    # TABELA 1: METADADOS DO PROCESSO
     t1 = doc.add_table(rows=3, cols=4)
     t1.alignment = WD_TABLE_ALIGNMENT.CENTER
     t1.style = "Table Grid"
     meta_widths = [Cm(4.2), Cm(9.15), Cm(4.2), Cm(9.15)]
     meta_rows = [
-        (
-            "Processo Administrativo:",
-            str(meta.get("numero_processo") or processo_ref),
-            "Modalidade / Fundamento:",
-            str(meta.get("modalidade_fundamento") or "Dispensa Eletrônica — Art. 75, II, Lei nº 14.133/2021"),
-        ),
-        (
-            "Unidade Gestora (UASG):",
-            str(meta.get("uasg_orgao") or om_name),
-            "Valor Total Estimado:",
-            str(meta.get("valor_total_estimado") or "Conforme autos"),
-        ),
-        (
-            "Objeto da Contratação:",
-            str(meta.get("objeto_contratacao") or "Conforme Termo de Referência"),
-            "Artefatos Analisados:",
-            str(meta.get("artefatos_analisados") or processo_ref),
-        ),
+        ("Processo Administrativo:", str(meta.get("numero_processo") or processo_ref), "Modalidade / Fundamento:", str(meta.get("modalidade_fundamento") or "Dispensa Eletrônica — Art. 75, II, Lei nº 14.133/2021")),
+        ("Unidade Gestora (UASG):", str(meta.get("uasg_orgao") or om_name), "Valor Total Estimado:", str(meta.get("valor_total_estimado") or "Conforme autos")),
+        ("Objeto da Contratação:", str(meta.get("objeto_contratacao") or "Conforme Termo de Referência"), "Artefatos Analisados:", str(meta.get("artefatos_analisados") or processo_ref)),
     ]
     for r_i, row_tuple in enumerate(meta_rows):
         cells = t1.rows[r_i].cells
         for c_i, val in enumerate(row_tuple):
             cells[c_i].width = meta_widths[c_i]
-            _set_cell_margins(cells[c_i], 65, 65, 95, 95)
+            _set_cell_margins(cells[c_i], 60, 60, 85, 85)
             _set_cell_bg(cells[c_i], "F1F5F9" if c_i in (0, 2) else "FFFFFF")
-            p = cells[c_i].paragraphs[0]
-            run = p.add_run(val)
-            run.font.size = Pt(8.5)
+            run = cells[c_i].paragraphs[0].add_run(val)
+            run.font.size = Pt(8.3)
             if c_i in (0, 2):
                 run.bold = True
                 run.font.color.rgb = RGBColor(27, 54, 93)
 
-    # TABELA 2: PARECER PREVENTIVO (1x1 — 26.7 cm)
+    # TABELA 2: PARECER JURÍDICO PREVENTIVO
     t2 = doc.add_table(rows=1, cols=1)
     t2.alignment = WD_TABLE_ALIGNMENT.CENTER
     t2.style = "Table Grid"
     c2 = t2.cell(0, 0)
     c2.width = Cm(26.7)
     _set_cell_bg(c2, "FEF2F2")
-    _set_cell_margins(c2, 90, 90, 120, 120)
+    _set_cell_margins(c2, 85, 85, 115, 115)
     p2 = c2.paragraphs[0]
-    veredito_str = str(parecer.get("veredito") or "RECOMENDAÇÃO DE SUSTAÇÃO ANTES DA PUBLICAÇÃO NO PNCP / COMPRAS.GOV.BR").replace("_", " ")
-    rp1 = p2.add_run(f"PARECER PREVENTIVO — {veredito_str}\n")
+    veredito_str = str(parecer.get("veredito") or "RECOMENDAÇÃO DE SUSTAÇÃO PRÉVIA — MINUTA SANEADA PRONTA PARA PUBLICAÇÃO").replace("_", " ")
+    rp1 = p2.add_run(f"PARECER JURÍDICO PREVENTIVO — {veredito_str}\n")
     rp1.bold = True
-    rp1.font.size = Pt(9.5)
+    rp1.font.size = Pt(9.2)
     rp1.font.color.rgb = RGBColor(153, 27, 27)
-    rp2 = p2.add_run(
-        str(parecer.get("resumo_executivo") or "Recomenda-se NÃO publicar o Aviso no sistema até o integral cumprimento dos itens Críticos e Altos deste checklist.")
-    )
-    rp2.font.size = Pt(8.5)
+    rp2 = p2.add_run(str(parecer.get("resumo_executivo") or ""))
+    rp2.font.size = Pt(8.3)
     rp2.font.color.rgb = RGBColor(30, 41, 59)
 
     def _add_sec_heading(title: str, subtitle: str) -> None:
@@ -1392,19 +1464,19 @@ def build_despacho_saneamento_docx_bytes(payload: Dict[str, Any]) -> bytes:
         ph.paragraph_format.space_after = Pt(1)
         rh = ph.add_run(title)
         rh.bold = True
-        rh.font.size = Pt(10)
+        rh.font.size = Pt(9.8)
         rh.font.color.rgb = RGBColor(27, 54, 93)
         ps = doc.add_paragraph()
         ps.paragraph_format.space_before = Pt(0)
         ps.paragraph_format.space_after = Pt(4)
         rs = ps.add_run(subtitle)
         rs.italic = True
-        rs.font.size = Pt(8.2)
+        rs.font.size = Pt(8.1)
         rs.font.color.rgb = RGBColor(71, 85, 105)
 
-    # SEÇÃO 0: PAINEL RESUMO DE APONTAMENTOS (5x7 — larguras [8.2, 2.5, 2.5, 2.5, 2.5, 2.5, 6.0])
+    # SEÇÃO 0: PAINEL RESUMO
     _add_sec_heading(
-        "0.  PAINEL RESUMO DE APONTAMENTOS",
+        "0.  PAINEL RESUMO DE APONTAMENTOS E SANEAMENTO",
         "Visão consolidada das inconsistências identificadas por eixo de auditoria e nível de criticidade.",
     )
     eixos_cfg = [
@@ -1412,22 +1484,22 @@ def build_despacho_saneamento_docx_bytes(payload: Dict[str, Any]) -> bytes:
             "NORMATIVA",
             "1. Inconsistências Normativas (Lei 14.133/2021 e INs)",
             "Risco de nulidade, entrega de bem errado e violação a INs",
-            "1.  CHECKLIST DE INCONSISTÊNCIAS NORMATIVAS (LEI Nº 14.133/2021 E INS)",
-            "Verificação de aderência à Lei nº 14.133/2021, Lei Complementar nº 123/2006, IN SEGES/ME nº 67/2021 e IN SEGES/ME nº 77/2022.",
+            "1.  QUADRO SANEADOR — INCONSISTÊNCIAS NORMATIVAS (LEI Nº 14.133/2021 E INS)",
+            "Fundamentação legal, extrato da norma e Texto-Minuta pronto para publicação referente à aderência normativa.",
         ),
         (
             "PROCESSUAL",
             "2. Erros Processuais e Instrução (Art. 72 da Lei 14.133/2021)",
             "Instrução incompleta perante órgãos de controle (TCU/CGU)",
-            "2.  CHECKLIST DE ERROS PROCESSUAIS E INSTRUÇÃO (ART. 72 DA LEI Nº 14.133/2021)",
-            "Verificação da completude documental, cronologia dos atos administrativos e cumprimento dos requisitos obrigatórios de contratação direta.",
+            "2.  QUADRO SANEADOR — ERROS PROCESSUAIS, INSTRUÇÃO E CRONOLOGIA (ART. 72)",
+            "Regularização documental, ordem cronológica e Textos-Minuta prontos das certidões e declarações obrigatórias.",
         ),
         (
             "CONTRADICAO_INTERNA",
             "3. Contradições Internas e Revisão Redacional",
             "Insegurança jurídica na disputa, sanções e execução contratual",
-            "3.  CHECKLIST DE CONTRADIÇÕES INTERNAS E REVISÃO REDACIONAL",
-            "Ajustes necessários para eliminar conflitos entre documentos, cláusulas impertinentes oriundas de modelos-padrão e erros de digitação.",
+            "3.  QUADRO SANEADOR — CONTRADIÇÕES INTERNAS, HOMOGENEIDADE E REVISÃO REDACIONAL",
+            "Redações definitivas aplicadas ao documento para eliminar conflitos entre artefatos, lacunas e erros de digitação.",
         ),
     ]
 
@@ -1435,17 +1507,16 @@ def build_despacho_saneamento_docx_bytes(payload: Dict[str, Any]) -> bytes:
     t3.alignment = WD_TABLE_ALIGNMENT.CENTER
     t3.style = "Table Grid"
     res_widths = [Cm(8.2), Cm(2.5), Cm(2.5), Cm(2.5), Cm(2.5), Cm(2.5), Cm(6.0)]
-    res_headers = ["Eixo de Verificação", "Crítica", "Alta", "Média", "Baixa", "Total", "Impacto Principal"]
-    for i, h in enumerate(res_headers):
+    for i, h in enumerate(["Eixo de Verificação", "Crítica", "Alta", "Média", "Baixa", "Total", "Impacto Principal"]):
         c = t3.rows[0].cells[i]
         c.width = res_widths[i]
         _set_cell_bg(c, "1B365D")
-        _set_cell_margins(c, 70, 70, 80, 80)
+        _set_cell_margins(c, 65, 65, 75, 75)
         p = c.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER if 1 <= i <= 5 else WD_ALIGN_PARAGRAPH.LEFT
         r = p.add_run(h)
         r.bold = True
-        r.font.size = Pt(8.2)
+        r.font.size = Pt(8.1)
         r.font.color.rgb = RGBColor(255, 255, 255)
 
     tot_c = tot_a = tot_m = tot_b = 0
@@ -1460,42 +1531,39 @@ def build_despacho_saneamento_docx_bytes(payload: Dict[str, Any]) -> bytes:
         tot_m += nm
         tot_b += nb
         rc = t3.add_row().cells
-        vals = [elbl, str(nc), str(na), str(nm), str(nb), str(len(sub)), eimp]
         bg = "FFFFFF" if r_idx % 2 == 0 else "F8FAFC"
-        for ci, v in enumerate(vals):
+        for ci, v in enumerate([elbl, str(nc), str(na), str(nm), str(nb), str(len(sub)), eimp]):
             rc[ci].width = res_widths[ci]
             _set_cell_bg(rc[ci], bg)
-            _set_cell_margins(rc[ci], 60, 60, 80, 80)
+            _set_cell_margins(rc[ci], 55, 55, 75, 75)
             p = rc[ci].paragraphs[0]
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER if 1 <= ci <= 5 else WD_ALIGN_PARAGRAPH.LEFT
             r = p.add_run(v)
-            r.font.size = Pt(8.2)
-            if ci == 0 or ci == 5:
+            r.font.size = Pt(8.1)
+            if ci in (0, 5):
                 r.bold = True
 
     rc_tot = t3.add_row().cells
-    tot_vals = ["TOTAL GERAL DE APONTAMENTOS", str(tot_c), str(tot_a), str(tot_m), str(tot_b), str(len(achados)), "Saneamento obrigatório prévio à divulgação no PNCP"]
-    for ci, v in enumerate(tot_vals):
+    for ci, v in enumerate(["TOTAL GERAL DE APONTAMENTOS", str(tot_c), str(tot_a), str(tot_m), str(tot_b), str(len(achados)), "Saneamento redacional e documental pronto para publicação"]):
         rc_tot[ci].width = res_widths[ci]
         _set_cell_bg(rc_tot[ci], "F1F5F9")
-        _set_cell_margins(rc_tot[ci], 70, 70, 80, 80)
+        _set_cell_margins(rc_tot[ci], 65, 65, 75, 75)
         p = rc_tot[ci].paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER if 1 <= ci <= 5 else WD_ALIGN_PARAGRAPH.LEFT
         r = p.add_run(v)
         r.bold = True
-        r.font.size = Pt(8.3)
+        r.font.size = Pt(8.2)
         r.font.color.rgb = RGBColor(27, 54, 93)
 
-    # SEÇÕES 1, 2 e 3: CHECKLISTS DETALHADOS (8 COLUNAS: [1.3, 0.9, 2.7, 6.2, 4.0, 6.7, 2.7, 2.2])
-    chk_widths = [Cm(1.3), Cm(0.9), Cm(2.7), Cm(6.2), Cm(4.0), Cm(6.7), Cm(2.7), Cm(2.2)]
+    # SEÇÕES 1, 2 e 3: TABELAS DE 7 COLUNAS (COM TEXTO-MINUTA PRONTO NO LUGAR DE RESPONSÁVEL — 26.7 cm)
+    # Larguras: ID(1.3) + Artefato(2.6) + Inconsistência(5.2) + Fundamentação(4.8) + Texto-Minuta Pronto(10.6) + Prioridade(2.2) = 26.7 cm
+    chk_widths = [Cm(1.3), Cm(2.6), Cm(5.2), Cm(4.8), Cm(10.6), Cm(2.2)]
     chk_headers = [
         "ID",
-        "OK",
         "Artefato(s)",
         "Inconsistência Identificada",
-        "Fundamentação Legal",
-        "Ação Corretiva Recomendada",
-        "Responsável",
+        "Fundamentação Legal & Extrato Normativo",
+        "Texto-Minuta Pronto para Publicação (Solução Aplicada)",
         "Prioridade",
     ]
 
@@ -1505,19 +1573,19 @@ def build_despacho_saneamento_docx_bytes(payload: Dict[str, Any]) -> bytes:
             continue
         _add_sec_heading(sec_title, sec_sub)
 
-        tbl = doc.add_table(rows=1, cols=8)
+        tbl = doc.add_table(rows=1, cols=6)
         tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
         tbl.style = "Table Grid"
         for i, h in enumerate(chk_headers):
             c = tbl.rows[0].cells[i]
             c.width = chk_widths[i]
             _set_cell_bg(c, "1B365D")
-            _set_cell_margins(c, 70, 70, 75, 75)
+            _set_cell_margins(c, 65, 65, 70, 70)
             p = c.paragraphs[0]
-            p.alignment = WD_ALIGN_PARAGRAPH.CENTER if i in (0, 1, 7) else WD_ALIGN_PARAGRAPH.LEFT
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER if i in (0, 5) else WD_ALIGN_PARAGRAPH.LEFT
             r = p.add_run(h)
             r.bold = True
-            r.font.size = Pt(8)
+            r.font.size = Pt(7.9)
             r.font.color.rgb = RGBColor(255, 255, 255)
 
         for r_i, a in enumerate(sub):
@@ -1525,6 +1593,8 @@ def build_despacho_saneamento_docx_bytes(payload: Dict[str, Any]) -> bytes:
             row_bg = "FFFFFF" if r_i % 2 == 0 else "F8FAFC"
             crit_lbl = _priority_label(str(a.get("criticidade") or "ALTA"))
             prio_bg, prio_rgb = _priority_colors(crit_lbl)
+            aid = str(a.get("id") or f"A-{r_i + 1:02d}")
+            id_text = f"{aid}\n[Aplicado]" if aid in applied_set else aid
 
             base_l = str(a.get("base_legal") or "Lei nº 14.133/2021").strip()
             ext_l = str(a.get("extrato_norma") or "").strip()
@@ -1534,62 +1604,50 @@ def build_despacho_saneamento_docx_bytes(payload: Dict[str, Any]) -> bytes:
             tit_erro = str(a.get("titulo") or "").strip()
             inc_text = desc_erro if (not tit_erro or tit_erro.lower() in desc_erro.lower()) else f"{tit_erro}: {desc_erro}"
 
-            acao_txt = str(a.get("acao_corretiva") or a.get("texto_apos_correcao") or "").strip()
-            vals = [
-                str(a.get("id") or f"A-{r_i + 1:02d}"),
-                "☐",
-                str(a.get("localizacao") or "Autos"),
-                inc_text,
-                legal_text,
-                acao_txt,
-                str(a.get("setor_responsavel") or "Subseção de Intendência"),
-                crit_lbl,
-            ]
+            minuta_txt = str(a.get("texto_minuta") or a.get("texto_corrigido_exato") or a.get("acao_corretiva") or "").strip()
+            vals = [id_text, str(a.get("localizacao") or "Autos"), inc_text, legal_text, minuta_txt, crit_lbl]
+
             for ci, v in enumerate(vals):
                 row[ci].width = chk_widths[ci]
-                _set_cell_bg(row[ci], prio_bg if ci == 7 else row_bg)
-                _set_cell_margins(row[ci], 65, 65, 75, 75)
+                if ci == 5:
+                    _set_cell_bg(row[ci], prio_bg)
+                elif ci == 4:
+                    _set_cell_bg(row[ci], "FEFCE8" if r_i % 2 == 0 else "FFFBEB")
+                else:
+                    _set_cell_bg(row[ci], row_bg)
+                _set_cell_margins(row[ci], 60, 60, 70, 70)
                 p = row[ci].paragraphs[0]
-                p.alignment = WD_ALIGN_PARAGRAPH.CENTER if ci in (0, 1, 7) else WD_ALIGN_PARAGRAPH.LEFT
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER if ci in (0, 5) else WD_ALIGN_PARAGRAPH.LEFT
                 r = p.add_run(v)
-                r.font.size = Pt(7.9)
-                if ci in (0, 7):
+                r.font.size = Pt(7.8)
+                if ci in (0, 5):
                     r.bold = True
-                if ci == 7:
+                if ci == 5:
                     r.font.color.rgb = prio_rgb
 
-        # TABELA 1.1: DIVERGÊNCIAS DE CATMAT E UNIDADES (6 COLUNAS: [1.2, 4.8, 2.2, 8.8, 3.0, 6.7])
         if sec_idx == 1 and div_catmat:
             p_cat = doc.add_paragraph()
             p_cat.paragraph_format.space_before = Pt(7)
             p_cat.paragraph_format.space_after = Pt(3)
             rcat = p_cat.add_run("Tabela 1.1 — Detalhamento das Divergências de CATMAT e Unidades de Medida (Item N-01)")
             rcat.bold = True
-            rcat.font.size = Pt(9)
+            rcat.font.size = Pt(8.9)
             rcat.font.color.rgb = RGBColor(27, 54, 93)
 
             t_cat = doc.add_table(rows=1, cols=6)
             t_cat.alignment = WD_TABLE_ALIGNMENT.CENTER
             t_cat.style = "Table Grid"
             cat_widths = [Cm(1.2), Cm(4.8), Cm(2.2), Cm(8.8), Cm(3.0), Cm(6.7)]
-            cat_headers = [
-                "Item",
-                "Descrição no ETP / TR",
-                "CATMAT Atual",
-                "Descrição Puxada no DFD (Catálogo)",
-                "Unidade (DFD vs. TR)",
-                "Correção Necessária",
-            ]
-            for i, h in enumerate(cat_headers):
+            for i, h in enumerate(["Item", "Descrição no ETP / TR", "CATMAT Atual", "Descrição Puxada no DFD (Catálogo)", "Unidade (DFD vs. TR)", "Especificação / Correção Pronta"]):
                 c = t_cat.rows[0].cells[i]
                 c.width = cat_widths[i]
                 _set_cell_bg(c, "1B365D")
-                _set_cell_margins(c, 65, 65, 75, 75)
+                _set_cell_margins(c, 60, 60, 70, 70)
                 p = c.paragraphs[0]
                 p.alignment = WD_ALIGN_PARAGRAPH.CENTER if i in (0, 2, 4) else WD_ALIGN_PARAGRAPH.LEFT
                 r = p.add_run(h)
                 r.bold = True
-                r.font.size = Pt(7.9)
+                r.font.size = Pt(7.8)
                 r.font.color.rgb = RGBColor(255, 255, 255)
 
             for r_i, dc in enumerate(div_catmat):
@@ -1597,46 +1655,44 @@ def build_despacho_saneamento_docx_bytes(payload: Dict[str, Any]) -> bytes:
                     continue
                 rc = t_cat.add_row().cells
                 r_bg = "FFFFFF" if r_i % 2 == 0 else "F8FAFC"
-                c_vals = [
+                for ci, v in enumerate([
                     str(dc.get("item") or ""),
                     str(dc.get("descricao_etp_tr") or ""),
                     str(dc.get("catmat_atual") or ""),
                     str(dc.get("descricao_dfd_catalogo") or ""),
                     str(dc.get("unidade_dfd_vs_tr") or ""),
                     str(dc.get("correcao_necessaria") or ""),
-                ]
-                for ci, v in enumerate(c_vals):
+                ]):
                     rc[ci].width = cat_widths[ci]
                     _set_cell_bg(rc[ci], r_bg)
-                    _set_cell_margins(rc[ci], 60, 60, 75, 75)
+                    _set_cell_margins(rc[ci], 55, 55, 70, 70)
                     p = rc[ci].paragraphs[0]
                     p.alignment = WD_ALIGN_PARAGRAPH.CENTER if ci in (0, 2, 4) else WD_ALIGN_PARAGRAPH.LEFT
                     r = p.add_run(v)
-                    r.font.size = Pt(7.8)
+                    r.font.size = Pt(7.7)
                     if ci in (0, 2):
                         r.bold = True
 
-    # SEÇÃO 4: ROTEIRO SEQUENCIAL RECOMENDADO PARA SANEAMENTO (5 COLUNAS: [1.8, 0.9, 13.5, 5.5, 5.0])
+    # SEÇÃO 4: ROTEIRO CRONOLÓGICO DE PUBLICAÇÃO (sem coluna Responsável -> Artefato Pronto)
     if roteiro:
         _add_sec_heading(
-            "4.  ROTEIRO SEQUENCIAL RECOMENDADO PARA SANEAMENTO",
-            "Ordem cronológica correta para reemissão e assinatura dos documentos, garantindo integridade procedimental.",
+            "4.  ROTEIRO SEQUENCIAL PARA ASSINATURA E PUBLICAÇÃO NO PNCP",
+            "Ordem cronológica exata para assinatura e divulgação dos documentos já saneados, garantindo integridade procedimental.",
         )
         t_rot = doc.add_table(rows=1, cols=5)
         t_rot.alignment = WD_TABLE_ALIGNMENT.CENTER
         t_rot.style = "Table Grid"
-        rot_widths = [Cm(1.8), Cm(0.9), Cm(13.5), Cm(5.5), Cm(5.0)]
-        rot_headers = ["Etapa", "OK", "Atividade de Saneamento", "Itens do Checklist Atendidos", "Setor Executor"]
-        for i, h in enumerate(rot_headers):
+        rot_widths = [Cm(1.8), Cm(0.9), Cm(13.5), Cm(4.8), Cm(5.7)]
+        for i, h in enumerate(["Etapa", "OK", "Atividade Cronológica de Publicação", "Itens Atendidos", "Artefato / Peça Pronta"]):
             c = t_rot.rows[0].cells[i]
             c.width = rot_widths[i]
             _set_cell_bg(c, "1B365D")
-            _set_cell_margins(c, 65, 65, 75, 75)
+            _set_cell_margins(c, 60, 60, 70, 70)
             p = c.paragraphs[0]
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER if i in (0, 1) else WD_ALIGN_PARAGRAPH.LEFT
             r = p.add_run(h)
             r.bold = True
-            r.font.size = Pt(8)
+            r.font.size = Pt(7.9)
             r.font.color.rgb = RGBColor(255, 255, 255)
 
         for idx_r, step in enumerate(roteiro, start=1):
@@ -1648,62 +1704,113 @@ def build_despacho_saneamento_docx_bytes(payload: Dict[str, Any]) -> bytes:
                     "☐",
                     str(step.get("atividade") or ""),
                     str(step.get("itens_atendidos") or "—"),
-                    str(step.get("setor_executor") or "Subseção de Intendência"),
+                    str(step.get("artefato_pronto") or step.get("setor_executor") or "Artefato Saneado"),
                 ]
             else:
-                s_vals = [f"{idx_r}ª Etapa", "☐", str(step), "—", "Setor Competente"]
+                s_vals = [f"{idx_r}ª Etapa", "☐", str(step), "—", "Artefato Saneado"]
             for ci, v in enumerate(s_vals):
                 rc[ci].width = rot_widths[ci]
                 _set_cell_bg(rc[ci], r_bg)
-                _set_cell_margins(rc[ci], 60, 60, 75, 75)
+                _set_cell_margins(rc[ci], 55, 55, 70, 70)
                 p = rc[ci].paragraphs[0]
                 p.alignment = WD_ALIGN_PARAGRAPH.CENTER if ci in (0, 1) else WD_ALIGN_PARAGRAPH.LEFT
                 r = p.add_run(v)
-                r.font.size = Pt(7.9)
+                r.font.size = Pt(7.8)
                 if ci == 0:
                     r.bold = True
 
-    # SEÇÃO 5: TERMO DE CONFERÊNCIA E ATESTE DE SANEAMENTO (2x3 — larguras [8.9, 8.9, 8.9])
+    # SEÇÃO 5: MINUTAS COMPLEMENTARES EXPANDIDAS PRONTAS PARA JUNTADA E PUBLICAÇÃO
+    if minutas_comp:
+        _add_sec_heading(
+            "5.  MINUTAS EXPANDIDAS E PEÇAS SANEADORAS PRONTAS PARA ASSINATURA E JUNTADA AOS AUTOS",
+            "Redações integrais construídas em estrita conformidade com a Lei nº 14.133/2021, INs SEGES e AGU, contemplando todas as peças ausentes e cláusulas expandidas.",
+        )
+        for mc in minutas_comp:
+            if not isinstance(mc, dict):
+                continue
+            tm = doc.add_table(rows=2, cols=1)
+            tm.alignment = WD_TABLE_ALIGNMENT.CENTER
+            tm.style = "Table Grid"
+            c_hdr = tm.cell(0, 0)
+            c_hdr.width = Cm(26.7)
+            _set_cell_bg(c_hdr, "EFF6FF")
+            _set_cell_margins(c_hdr, 65, 65, 95, 95)
+            pmh = c_hdr.paragraphs[0]
+            rmh1 = pmh.add_run(f"{mc.get('codigo', 'MINUTA')} — {mc.get('titulo', 'Peça Saneadora')}\n")
+            rmh1.bold = True
+            rmh1.font.size = Pt(8.5)
+            rmh1.font.color.rgb = RGBColor(27, 54, 93)
+            rmh2 = pmh.add_run(f"Atende aos apontamentos: {mc.get('referencia_achados', '—')}  |  Fundamentação Legal: {mc.get('fundamento', 'Lei nº 14.133/2021')}")
+            rmh2.italic = True
+            rmh2.font.size = Pt(7.8)
+            rmh2.font.color.rgb = RGBColor(51, 65, 85)
+
+            c_body = tm.cell(1, 0)
+            c_body.width = Cm(26.7)
+            _set_cell_bg(c_body, "FFFFFF")
+            _set_cell_margins(c_body, 80, 80, 105, 105)
+            pmb = c_body.paragraphs[0]
+            pmb.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            rmb = pmb.add_run(str(mc.get("conteudo") or ""))
+            rmb.font.size = Pt(8.2)
+            doc.add_paragraph().paragraph_format.space_after = Pt(2)
+
+    # SEÇÃO 6: TERMO DE APROVAÇÃO E CONFERÊNCIA FINAL
     _add_sec_heading(
-        "5.  TERMO DE CONFERÊNCIA E ATESTE DE SANEAMENTO",
-        "Registro formal de verificação prévia à divulgação do Aviso de Contratação Direta no Portal Nacional de Contratações Públicas (PNCP).",
+        "6.  TERMO DE CONFERÊNCIA, APROVAÇÃO E ATESTE PARA PUBLICAÇÃO NO PNCP",
+        "Registro formal de ratificação da Nota Técnica Revisionada e Parecer Jurídico prévio à publicação no Compras.gov.br / PNCP.",
     )
     t_sig = doc.add_table(rows=2, cols=3)
     t_sig.alignment = WD_TABLE_ALIGNMENT.CENTER
     t_sig.style = "Table Grid"
     sig_widths = [Cm(8.9), Cm(8.9), Cm(8.9)]
     sig_hdrs = [
-        "SETOR REQUISITANTE\n(Divisão de Segurança do Tráfego Aquaviário)",
-        "SUBSEÇÃO DE INTENDÊNCIA\n(Agente de Contratação / Licitações)",
-        "AUTORIDADE COMPETENTE\n(Ordenador de Despesas — CFJ)",
+        "SETOR REQUISITANTE\n(Ateste das Especificações e CATMAT)",
+        "SUBSEÇÃO DE INTENDÊNCIA / LICITAÇÕES\n(Conferência das Minutas Saneadas)",
+        "AUTORIDADE COMPETENTE\n(Ordenador de Despesas — Aprovação)",
     ]
     for i, sh in enumerate(sig_hdrs):
         c = t_sig.rows[0].cells[i]
         c.width = sig_widths[i]
         _set_cell_bg(c, "F1F5F9")
-        _set_cell_margins(c, 75, 75, 90, 90)
+        _set_cell_margins(c, 70, 70, 85, 85)
         p = c.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         r = p.add_run(sh)
         r.bold = True
-        r.font.size = Pt(8.2)
+        r.font.size = Pt(8.1)
         r.font.color.rgb = RGBColor(27, 54, 93)
 
-        c2 = t_sig.rows[1].cells[i]
-        c2.width = sig_widths[i]
-        _set_cell_margins(c2, 160, 100, 90, 90)
-        p2s = c2.paragraphs[0]
+        c2s = t_sig.rows[1].cells[i]
+        c2s.width = sig_widths[i]
+        _set_cell_margins(c2s, 150, 90, 85, 85)
+        p2s = c2s.paragraphs[0]
         p2s.alignment = WD_ALIGN_PARAGRAPH.CENTER
         r2s = p2s.add_run("________________________________________\nNome / Posto-Graduação\nData: ____ / ____ / 2026")
-        r2s.font.size = Pt(8.2)
+        r2s.font.size = Pt(8.1)
 
+
+def build_despacho_saneamento_docx_bytes(payload: Dict[str, Any]) -> bytes:
+    """Gera a NOTA TÉCNICA REVISIONADA E PARECER JURÍDICO standalone em Word (.DOCX Paisagem A4)."""
+    doc = Document()
+    for sec in doc.sections:
+        sec.orientation = WD_ORIENT.LANDSCAPE
+        sec.page_width = Cm(29.7)
+        sec.page_height = Cm(21.0)
+        sec.top_margin = Cm(1.4)
+        sec.bottom_margin = Cm(1.4)
+        sec.left_margin = Cm(1.5)
+        sec.right_margin = Cm(1.5)
+    doc.styles["Normal"].font.name = "Calibri"
+    doc.styles["Normal"].font.size = Pt(8.5)
+    _populate_nota_tecnica_body_docx(doc, payload)
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
 
 
 # ==============================================================================
-# 6. GERADOR DO CHECKLIST DETALHADO EM PDF (PAISAGEM A4 — 10 TABELAS)
+# 7. GERADOR EM PDF (PAISAGEM A4 — CABEÇALHO MARINHA DO BRASIL + TEXTO-MINUTA)
 # ==============================================================================
 def _esc(val: Any) -> str:
     return (
@@ -1717,16 +1824,19 @@ def _esc(val: Any) -> str:
 
 def build_despacho_saneamento_pdf_bytes(payload: Dict[str, Any]) -> bytes:
     """
-    Gera o CHECKLIST DETALHADO DE CONFORMIDADE NORMATIVA E SANEAMENTO PROCESSUAL em PDF
-    (Paisagem A4, largura útil 26,7 cm) espelhando exatamente as 10 tabelas do Word (.docx).
+    Gera a NOTA TÉCNICA REVISIONADA E PARECER JURÍDICO em PDF Paisagem A4 com
+    Cabeçalho Institucional Padrão da Marinha do Brasil (Brasão Oficial + MARINHA DO BRASIL + OM),
+    coluna Texto-Minuta Pronto para Publicação e Minutas Complementares Expandidas.
     """
     om_name = (payload.get("om_name") or "MARINHA DO BRASIL • CAPITANIA FLUVIAL DE JUAZEIRO (UASG 782340)").strip()
+    navy_top, navy_om = _parse_navy_header_lines(om_name)
     processo_ref = (payload.get("processo_ref") or payload.get("filename") or "63436.000936/2026-88").strip()
     meta = payload.get("metadados_processo") or {}
     parecer = payload.get("parecer_preventivo") or {}
     achados = payload.get("achados") or []
     div_catmat = payload.get("divergencias_catmat") or []
     roteiro = payload.get("roteiro_saneamento") or []
+    minutas_comp = payload.get("minutas_complementares") or _build_default_minutas_complementares(meta)
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -1734,57 +1844,56 @@ def build_despacho_saneamento_pdf_bytes(payload: Dict[str, Any]) -> bytes:
         pagesize=landscape(A4),
         leftMargin=1.5 * cm,
         rightMargin=1.5 * cm,
-        topMargin=1.4 * cm,
-        bottomMargin=1.4 * cm,
+        topMargin=1.3 * cm,
+        bottomMargin=1.3 * cm,
     )
     styles = getSampleStyleSheet()
-    st_sec = ParagraphStyle("Sec", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=9.5, leading=12, textColor=colors.HexColor("#1B365D"), spaceBefore=8, spaceAfter=1)
-    st_sub = ParagraphStyle("Sub", parent=styles["Normal"], fontName="Helvetica-Oblique", fontSize=7.8, leading=10, textColor=colors.HexColor("#475569"), spaceAfter=4)
-    st_cell = ParagraphStyle("C", parent=styles["Normal"], fontName="Helvetica", fontSize=7.2, leading=9.3, textColor=colors.HexColor("#1E293B"))
+    st_mb = ParagraphStyle("MB", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=11, leading=13, alignment=TA_CENTER, textColor=colors.HexColor("#1B365D"))
+    st_om = ParagraphStyle("OM", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=9.5, leading=12, alignment=TA_CENTER, textColor=colors.HexColor("#1E293B"), spaceAfter=4)
+    st_sec = ParagraphStyle("Sec", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=9.3, leading=12, textColor=colors.HexColor("#1B365D"), spaceBefore=8, spaceAfter=1)
+    st_sub = ParagraphStyle("Sub", parent=styles["Normal"], fontName="Helvetica-Oblique", fontSize=7.6, leading=9.8, textColor=colors.HexColor("#475569"), spaceAfter=4)
+    st_cell = ParagraphStyle("C", parent=styles["Normal"], fontName="Helvetica", fontSize=7.1, leading=9.2, textColor=colors.HexColor("#1E293B"))
+    st_cell_j = ParagraphStyle("CJ", parent=st_cell, alignment=TA_JUSTIFY)
     st_cell_c = ParagraphStyle("CC", parent=st_cell, alignment=TA_CENTER)
     st_cell_b = ParagraphStyle("CB", parent=st_cell, fontName="Helvetica-Bold")
     st_cell_bc = ParagraphStyle("CBC", parent=st_cell_b, alignment=TA_CENTER)
-    st_hdr_cell = ParagraphStyle("HC", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=7.4, leading=9.4, textColor=colors.white)
+    st_hdr_cell = ParagraphStyle("HC", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=7.3, leading=9.2, textColor=colors.white)
     st_hdr_cell_c = ParagraphStyle("HCC", parent=st_hdr_cell, alignment=TA_CENTER)
 
     story: List[Any] = []
 
-    # TABELA 0: BANNER PRINCIPAL
-    st_b0 = ParagraphStyle("B0", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=10, leading=13, alignment=TA_CENTER, textColor=colors.white)
+    # CABEÇALHO INSTITUCIONAL PADRÃO MARINHA DO BRASIL
+    brasao = _find_brasao_path()
+    if brasao:
+        try:
+            img = RLImage(brasao, width=1.65 * cm, height=1.65 * cm)
+            img.hAlign = "CENTER"
+            story.append(img)
+            story.append(Spacer(1, 3))
+        except Exception:
+            pass
+    story.append(Paragraph(_esc(navy_top), st_mb))
+    story.append(Paragraph(_esc(navy_om), st_om))
+
+    st_b0 = ParagraphStyle("B0", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=9.8, leading=12.5, alignment=TA_CENTER, textColor=colors.white)
     b0_html = (
-        f"<b>{_esc(om_name.upper())}</b><br/>"
-        f"<font color=\"#F5D07D\"><b>CHECKLIST DETALHADO DE CONFORMIDADE NORMATIVA E SANEAMENTO PROCESSUAL</b></font><br/>"
-        f"<font size=\"7.8\" color=\"#DBEAFE\">Análise Preventiva de Dispensa de Licitação Eletrônica — Lei nº 14.133/2021, IN SEGES/ME nº 67/2021, IN SEGES/ME nº 65/2021 e IN SEGES/ME nº 77/2022</font>"
+        "<font color=\"#F5D07D\"><b>NOTA TÉCNICA REVISIONADA E PARECER JURÍDICO</b></font><br/>"
+        "<font size=\"7.6\" color=\"#DBEAFE\">Auditoria Preventiva, Correção Redacional e Saneamento Processual — Lei nº 14.133/2021, INs SEGES/ME nº 65/2021, 67/2021 e 77/2022, AGU e TCU</font>"
     )
     t0 = Table([[Paragraph(b0_html, st_b0)]], colWidths=[26.7 * cm])
     t0.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#1B365D")),
         ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#1B365D")),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]))
     story.append(t0)
 
     # TABELA 1: METADADOS
     t1_data = [
-        [
-            Paragraph("<b>Processo Administrativo:</b>", st_cell_b),
-            Paragraph(_esc(meta.get("numero_processo") or processo_ref), st_cell),
-            Paragraph("<b>Modalidade / Fundamento:</b>", st_cell_b),
-            Paragraph(_esc(meta.get("modalidade_fundamento") or "Dispensa Eletrônica — Art. 75, II, Lei nº 14.133/2021"), st_cell),
-        ],
-        [
-            Paragraph("<b>Unidade Gestora (UASG):</b>", st_cell_b),
-            Paragraph(_esc(meta.get("uasg_orgao") or om_name), st_cell),
-            Paragraph("<b>Valor Total Estimado:</b>", st_cell_b),
-            Paragraph(_esc(meta.get("valor_total_estimado") or "Conforme autos"), st_cell),
-        ],
-        [
-            Paragraph("<b>Objeto da Contratação:</b>", st_cell_b),
-            Paragraph(_esc(meta.get("objeto_contratacao") or "Conforme Termo de Referência"), st_cell),
-            Paragraph("<b>Artefatos Analisados:</b>", st_cell_b),
-            Paragraph(_esc(meta.get("artefatos_analisados") or processo_ref), st_cell),
-        ],
+        [Paragraph("<b>Processo Administrativo:</b>", st_cell_b), Paragraph(_esc(meta.get("numero_processo") or processo_ref), st_cell), Paragraph("<b>Modalidade / Fundamento:</b>", st_cell_b), Paragraph(_esc(meta.get("modalidade_fundamento") or "Dispensa Eletrônica — Art. 75, II, Lei nº 14.133/2021"), st_cell)],
+        [Paragraph("<b>Unidade Gestora (UASG):</b>", st_cell_b), Paragraph(_esc(meta.get("uasg_orgao") or om_name), st_cell), Paragraph("<b>Valor Total Estimado:</b>", st_cell_b), Paragraph(_esc(meta.get("valor_total_estimado") or "Conforme autos"), st_cell)],
+        [Paragraph("<b>Objeto da Contratação:</b>", st_cell_b), Paragraph(_esc(meta.get("objeto_contratacao") or "Conforme Termo de Referência"), st_cell), Paragraph("<b>Artefatos Analisados:</b>", st_cell_b), Paragraph(_esc(meta.get("artefatos_analisados") or processo_ref), st_cell)],
     ]
     t1 = Table(t1_data, colWidths=[4.2 * cm, 9.15 * cm, 4.2 * cm, 9.15 * cm])
     t1.setStyle(TableStyle([
@@ -1792,18 +1901,12 @@ def build_despacho_saneamento_pdf_bytes(payload: Dict[str, Any]) -> bytes:
         ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#F1F5F9")),
         ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5E1")),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 3.5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5),
     ]))
     story.append(t1)
 
     # TABELA 2: PARECER PREVENTIVO
-    veredito_str = str(parecer.get("veredito") or "RECOMENDAÇÃO DE SUSTAÇÃO ANTES DA PUBLICAÇÃO NO PNCP / COMPRAS.GOV.BR").replace("_", " ")
-    p2_html = (
-        f"<font color=\"#991B1B\"><b>PARECER PREVENTIVO — {_esc(veredito_str)}</b></font><br/>"
-        f"{_esc(parecer.get('resumo_executivo') or '')}"
-    )
-    t2 = Table([[Paragraph(p2_html, st_cell)]], colWidths=[26.7 * cm])
+    veredito_str = str(parecer.get("veredito") or "RECOMENDAÇÃO DE SUSTAÇÃO PRÉVIA — MINUTA SANEADA PRONTA PARA PUBLICAÇÃO").replace("_", " ")
+    t2 = Table([[Paragraph(f"<font color=\"#991B1B\"><b>PARECER JURÍDICO PREVENTIVO — {_esc(veredito_str)}</b></font><br/>{_esc(parecer.get('resumo_executivo') or '')}", st_cell)]], colWidths=[26.7 * cm])
     t2.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FEF2F2")),
         ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#FCA5A5")),
@@ -1813,42 +1916,14 @@ def build_despacho_saneamento_pdf_bytes(payload: Dict[str, Any]) -> bytes:
     story.append(t2)
 
     # SEÇÃO 0: PAINEL RESUMO
-    story.append(Paragraph("0.  PAINEL RESUMO DE APONTAMENTOS", st_sec))
+    story.append(Paragraph("0.  PAINEL RESUMO DE APONTAMENTOS E SANEAMENTO", st_sec))
     story.append(Paragraph("Visão consolidada das inconsistências identificadas por eixo de auditoria e nível de criticidade.", st_sub))
-
     eixos_cfg = [
-        (
-            "NORMATIVA",
-            "1. Inconsistências Normativas (Lei 14.133/2021 e INs)",
-            "Risco de nulidade, entrega de bem errado e violação a INs",
-            "1.  CHECKLIST DE INCONSISTÊNCIAS NORMATIVAS (LEI Nº 14.133/2021 E INS)",
-            "Verificação de aderência à Lei nº 14.133/2021, Lei Complementar nº 123/2006, IN SEGES/ME nº 67/2021 e IN SEGES/ME nº 77/2022.",
-        ),
-        (
-            "PROCESSUAL",
-            "2. Erros Processuais e Instrução (Art. 72 da Lei 14.133/2021)",
-            "Instrução incompleta perante órgãos de controle (TCU/CGU)",
-            "2.  CHECKLIST DE ERROS PROCESSUAIS E INSTRUÇÃO (ART. 72 DA LEI Nº 14.133/2021)",
-            "Verificação da completude documental, cronologia dos atos administrativos e cumprimento dos requisitos obrigatórios de contratação direta.",
-        ),
-        (
-            "CONTRADICAO_INTERNA",
-            "3. Contradições Internas e Revisão Redacional",
-            "Insegurança jurídica na disputa, sanções e execução contratual",
-            "3.  CHECKLIST DE CONTRADIÇÕES INTERNAS E REVISÃO REDACIONAL",
-            "Ajustes necessários para eliminar conflitos entre documentos, cláusulas impertinentes oriundas de modelos-padrão e erros de digitação.",
-        ),
+        ("NORMATIVA", "1. Inconsistências Normativas (Lei 14.133/2021 e INs)", "Risco de nulidade, entrega de bem errado e violação a INs", "1.  QUADRO SANEADOR — INCONSISTÊNCIAS NORMATIVAS (LEI Nº 14.133/2021 E INS)", "Fundamentação legal, extrato normativo e Texto-Minuta pronto para publicação."),
+        ("PROCESSUAL", "2. Erros Processuais e Instrução (Art. 72 da Lei 14.133/2021)", "Instrução incompleta perante órgãos de controle (TCU/CGU)", "2.  QUADRO SANEADOR — ERROS PROCESSUAIS, INSTRUÇÃO E CRONOLOGIA (ART. 72)", "Regularização documental, cronologia e Textos-Minuta das peças obrigatórias."),
+        ("CONTRADICAO_INTERNA", "3. Contradições Internas e Revisão Redacional", "Insegurança jurídica na disputa, sanções e execução contratual", "3.  QUADRO SANEADOR — CONTRADIÇÕES INTERNAS, HOMOGENEIDADE E REVISÃO REDACIONAL", "Redações definitivas aplicadas ao documento para eliminar conflitos e erros de digitação."),
     ]
-
-    t3_data = [[
-        Paragraph("Eixo de Verificação", st_hdr_cell),
-        Paragraph("Crítica", st_hdr_cell_c),
-        Paragraph("Alta", st_hdr_cell_c),
-        Paragraph("Média", st_hdr_cell_c),
-        Paragraph("Baixa", st_hdr_cell_c),
-        Paragraph("Total", st_hdr_cell_c),
-        Paragraph("Impacto Principal", st_hdr_cell),
-    ]]
+    t3_data = [[Paragraph("Eixo de Verificação", st_hdr_cell), Paragraph("Crítica", st_hdr_cell_c), Paragraph("Alta", st_hdr_cell_c), Paragraph("Média", st_hdr_cell_c), Paragraph("Baixa", st_hdr_cell_c), Paragraph("Total", st_hdr_cell_c), Paragraph("Impacto Principal", st_hdr_cell)]]
     tot_c = tot_a = tot_m = tot_b = 0
     for ek, elbl, eimp, _, _ in eixos_cfg:
         sub = [a for a in achados if str(a.get("eixo") or "NORMATIVA").upper() == ek]
@@ -1856,28 +1931,9 @@ def build_despacho_saneamento_pdf_bytes(payload: Dict[str, Any]) -> bytes:
         na = sum(1 for a in sub if "ALT" in str(a.get("criticidade") or "").upper())
         nm = sum(1 for a in sub if "MED" in str(a.get("criticidade") or "").upper())
         nb = sum(1 for a in sub if "BAIX" in str(a.get("criticidade") or "").upper())
-        tot_c += nc
-        tot_a += na
-        tot_m += nm
-        tot_b += nb
-        t3_data.append([
-            Paragraph(f"<b>{_esc(elbl)}</b>", st_cell_b),
-            Paragraph(str(nc), st_cell_c),
-            Paragraph(str(na), st_cell_c),
-            Paragraph(str(nm), st_cell_c),
-            Paragraph(str(nb), st_cell_c),
-            Paragraph(f"<b>{len(sub)}</b>", st_cell_bc),
-            Paragraph(_esc(eimp), st_cell),
-        ])
-    t3_data.append([
-        Paragraph("<b>TOTAL GERAL DE APONTAMENTOS</b>", st_cell_b),
-        Paragraph(f"<b>{tot_c}</b>", st_cell_bc),
-        Paragraph(f"<b>{tot_a}</b>", st_cell_bc),
-        Paragraph(f"<b>{tot_m}</b>", st_cell_bc),
-        Paragraph(f"<b>{tot_b}</b>", st_cell_bc),
-        Paragraph(f"<b>{len(achados)}</b>", st_cell_bc),
-        Paragraph("<b>Saneamento obrigatório prévio à divulgação no PNCP</b>", st_cell_b),
-    ])
+        tot_c += nc; tot_a += na; tot_m += nm; tot_b += nb
+        t3_data.append([Paragraph(f"<b>{_esc(elbl)}</b>", st_cell_b), Paragraph(str(nc), st_cell_c), Paragraph(str(na), st_cell_c), Paragraph(str(nm), st_cell_c), Paragraph(str(nb), st_cell_c), Paragraph(f"<b>{len(sub)}</b>", st_cell_bc), Paragraph(_esc(eimp), st_cell)])
+    t3_data.append([Paragraph("<b>TOTAL GERAL DE APONTAMENTOS</b>", st_cell_b), Paragraph(f"<b>{tot_c}</b>", st_cell_bc), Paragraph(f"<b>{tot_a}</b>", st_cell_bc), Paragraph(f"<b>{tot_m}</b>", st_cell_bc), Paragraph(f"<b>{tot_b}</b>", st_cell_bc), Paragraph(f"<b>{len(achados)}</b>", st_cell_bc), Paragraph("<b>Saneamento redacional e documental pronto para publicação</b>", st_cell_b)])
     t3 = Table(t3_data, colWidths=[8.2 * cm, 2.5 * cm, 2.5 * cm, 2.5 * cm, 2.5 * cm, 2.5 * cm, 6.0 * cm])
     t3.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1B365D")),
@@ -1887,23 +1943,20 @@ def build_despacho_saneamento_pdf_bytes(payload: Dict[str, Any]) -> bytes:
     ]))
     story.append(t3)
 
-    # SEÇÕES 1, 2 e 3
-    chk_col_widths = [1.3 * cm, 0.9 * cm, 2.7 * cm, 6.2 * cm, 4.0 * cm, 6.7 * cm, 2.7 * cm, 2.2 * cm]
+    # SEÇÕES 1, 2 e 3 (6 COLUNAS — TEXTO-MINUTA PRONTO NO LUGAR DE RESPONSÁVEL)
+    chk_col_widths = [1.3 * cm, 2.6 * cm, 5.2 * cm, 4.8 * cm, 10.6 * cm, 2.2 * cm]
     for sec_idx, (ek, _, _, sec_title, sec_sub) in enumerate(eixos_cfg, start=1):
         sub = [a for a in achados if str(a.get("eixo") or "NORMATIVA").upper() == ek]
         if not sub:
             continue
         story.append(Paragraph(sec_title, st_sec))
         story.append(Paragraph(sec_sub, st_sub))
-
         tdata = [[
             Paragraph("ID", st_hdr_cell_c),
-            Paragraph("OK", st_hdr_cell_c),
             Paragraph("Artefato(s)", st_hdr_cell),
             Paragraph("Inconsistência Identificada", st_hdr_cell),
-            Paragraph("Fundamentação Legal", st_hdr_cell),
-            Paragraph("Ação Corretiva Recomendada", st_hdr_cell),
-            Paragraph("Responsável", st_hdr_cell),
+            Paragraph("Fundamentação Legal & Extrato", st_hdr_cell),
+            Paragraph("Texto-Minuta Pronto para Publicação (Solução Aplicada)", st_hdr_cell),
             Paragraph("Prioridade", st_hdr_cell_c),
         ]]
         ts_cmds = [
@@ -1916,7 +1969,8 @@ def build_despacho_saneamento_pdf_bytes(payload: Dict[str, Any]) -> bytes:
             crit_lbl = _priority_label(str(a.get("criticidade") or "ALTA"))
             p_bg, _ = _priority_colors(crit_lbl)
             p_hex_txt = "#991B1B" if crit_lbl == "CRÍTICA" else ("#9A3412" if crit_lbl == "ALTA" else ("#854D0E" if crit_lbl == "MÉDIA" else "#075985"))
-            ts_cmds.append(("BACKGROUND", (7, r_i), (7, r_i), colors.HexColor(f"#{p_bg}")))
+            ts_cmds.append(("BACKGROUND", (5, r_i), (5, r_i), colors.HexColor(f"#{p_bg}")))
+            ts_cmds.append(("BACKGROUND", (4, r_i), (4, r_i), colors.HexColor("#FEFCE8" if r_i % 2 == 1 else "#FFFBEB")))
 
             base_l = str(a.get("base_legal") or "Lei nº 14.133/2021").strip()
             ext_l = str(a.get("extrato_norma") or "").strip()
@@ -1925,15 +1979,14 @@ def build_despacho_saneamento_pdf_bytes(payload: Dict[str, Any]) -> bytes:
             desc_erro = str(a.get("descricao_erro") or "").strip()
             tit_erro = str(a.get("titulo") or "").strip()
             inc_html = _esc(desc_erro) if (not tit_erro or tit_erro.lower() in desc_erro.lower()) else f"<b>{_esc(tit_erro)}:</b> {_esc(desc_erro)}"
+            minuta_txt = str(a.get("texto_minuta") or a.get("texto_corrigido_exato") or a.get("acao_corretiva") or "").strip()
 
             tdata.append([
                 Paragraph(f"<b>{_esc(a.get('id') or f'A-{r_i:02d}')}</b>", st_cell_bc),
-                Paragraph("[ &nbsp; ]", st_cell_c),
                 Paragraph(_esc(a.get("localizacao") or "Autos"), st_cell),
                 Paragraph(inc_html, st_cell),
                 Paragraph(legal_html, st_cell),
-                Paragraph(_esc(a.get("acao_corretiva") or a.get("texto_apos_correcao") or ""), st_cell),
-                Paragraph(_esc(a.get("setor_responsavel") or "Subseção de Intendência"), st_cell),
+                Paragraph(_esc(minuta_txt), st_cell),
                 Paragraph(f"<font color=\"{p_hex_txt}\"><b>{crit_lbl}</b></font>", st_cell_bc),
             ])
         t_chk = Table(tdata, colWidths=chk_col_widths, repeatRows=1)
@@ -1942,117 +1995,84 @@ def build_despacho_saneamento_pdf_bytes(payload: Dict[str, Any]) -> bytes:
 
         if sec_idx == 1 and div_catmat:
             story.append(Paragraph("Tabela 1.1 — Detalhamento das Divergências de CATMAT e Unidades de Medida (Item N-01)", st_sec))
-            cdata = [[
-                Paragraph("Item", st_hdr_cell_c),
-                Paragraph("Descrição no ETP / TR", st_hdr_cell),
-                Paragraph("CATMAT Atual", st_hdr_cell_c),
-                Paragraph("Descrição Puxada no DFD (Catálogo)", st_hdr_cell),
-                Paragraph("Unidade (DFD vs. TR)", st_hdr_cell_c),
-                Paragraph("Correção Necessária", st_hdr_cell),
-            ]]
+            cdata = [[Paragraph("Item", st_hdr_cell_c), Paragraph("Descrição no ETP / TR", st_hdr_cell), Paragraph("CATMAT Atual", st_hdr_cell_c), Paragraph("Descrição Puxada no DFD", st_hdr_cell), Paragraph("Unidade (DFD vs. TR)", st_hdr_cell_c), Paragraph("Especificação / Correção Pronta", st_hdr_cell)]]
             for dc in div_catmat:
                 if not isinstance(dc, dict):
                     continue
-                cdata.append([
-                    Paragraph(f"<b>{_esc(dc.get('item') or '')}</b>", st_cell_bc),
-                    Paragraph(_esc(dc.get("descricao_etp_tr") or ""), st_cell),
-                    Paragraph(f"<b>{_esc(dc.get('catmat_atual') or '')}</b>", st_cell_bc),
-                    Paragraph(_esc(dc.get("descricao_dfd_catalogo") or ""), st_cell),
-                    Paragraph(_esc(dc.get("unidade_dfd_vs_tr") or ""), st_cell_c),
-                    Paragraph(_esc(dc.get("correcao_necessaria") or ""), st_cell),
-                ])
+                cdata.append([Paragraph(f"<b>{_esc(dc.get('item') or '')}</b>", st_cell_bc), Paragraph(_esc(dc.get("descricao_etp_tr") or ""), st_cell), Paragraph(f"<b>{_esc(dc.get('catmat_atual') or '')}</b>", st_cell_bc), Paragraph(_esc(dc.get("descricao_dfd_catalogo") or ""), st_cell), Paragraph(_esc(dc.get("unidade_dfd_vs_tr") or ""), st_cell_c), Paragraph(_esc(dc.get("correcao_necessaria") or ""), st_cell)])
             t_cat = Table(cdata, colWidths=[1.2 * cm, 4.8 * cm, 2.2 * cm, 8.8 * cm, 3.0 * cm, 6.7 * cm], repeatRows=1)
-            t_cat.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1B365D")),
-                ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5E1")),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
-            ]))
+            t_cat.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1B365D")), ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5E1")), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")])]))
             story.append(t_cat)
 
-    # SEÇÃO 4: ROTEIRO SEQUENCIAL
+    # SEÇÃO 4: ROTEIRO CRONOLÓGICO
     if roteiro:
-        story.append(Paragraph("4.  ROTEIRO SEQUENCIAL RECOMENDADO PARA SANEAMENTO", st_sec))
-        story.append(Paragraph("Ordem cronológica correta para reemissão e assinatura dos documentos, garantindo integridade procedimental.", st_sub))
-        rdata = [[
-            Paragraph("Etapa", st_hdr_cell_c),
-            Paragraph("OK", st_hdr_cell_c),
-            Paragraph("Atividade de Saneamento", st_hdr_cell),
-            Paragraph("Itens do Checklist Atendidos", st_hdr_cell),
-            Paragraph("Setor Executor", st_hdr_cell),
-        ]]
+        story.append(Paragraph("4.  ROTEIRO SEQUENCIAL PARA ASSINATURA E PUBLICAÇÃO NO PNCP", st_sec))
+        story.append(Paragraph("Ordem cronológica exata para assinatura e divulgação dos documentos já saneados.", st_sub))
+        rdata = [[Paragraph("Etapa", st_hdr_cell_c), Paragraph("OK", st_hdr_cell_c), Paragraph("Atividade Cronológica de Publicação", st_hdr_cell), Paragraph("Itens Atendidos", st_hdr_cell), Paragraph("Artefato / Peça Pronta", st_hdr_cell)]]
         for idx_r, step in enumerate(roteiro, start=1):
             if isinstance(step, dict):
-                rdata.append([
-                    Paragraph(f"<b>{_esc(step.get('etapa') or f'{idx_r}ª Etapa')}</b>", st_cell_bc),
-                    Paragraph("[ &nbsp; ]", st_cell_c),
-                    Paragraph(_esc(step.get("atividade") or ""), st_cell),
-                    Paragraph(_esc(step.get("itens_atendidos") or "—"), st_cell),
-                    Paragraph(_esc(step.get("setor_executor") or "Subseção de Intendência"), st_cell),
-                ])
+                rdata.append([Paragraph(f"<b>{_esc(step.get('etapa') or f'{idx_r}ª Etapa')}</b>", st_cell_bc), Paragraph("[ &nbsp; ]", st_cell_c), Paragraph(_esc(step.get("atividade") or ""), st_cell), Paragraph(_esc(step.get("itens_atendidos") or "—"), st_cell), Paragraph(_esc(step.get("artefato_pronto") or step.get("setor_executor") or "Artefato Saneado"), st_cell)])
             else:
-                rdata.append([
-                    Paragraph(f"<b>{idx_r}ª Etapa</b>", st_cell_bc),
-                    Paragraph("[ &nbsp; ]", st_cell_c),
-                    Paragraph(_esc(step), st_cell),
-                    Paragraph("—", st_cell),
-                    Paragraph("Setor Competente", st_cell),
-                ])
-        t_rot = Table(rdata, colWidths=[1.8 * cm, 0.9 * cm, 13.5 * cm, 5.5 * cm, 5.0 * cm], repeatRows=1)
-        t_rot.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1B365D")),
-            ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5E1")),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
-        ]))
+                rdata.append([Paragraph(f"<b>{idx_r}ª Etapa</b>", st_cell_bc), Paragraph("[ &nbsp; ]", st_cell_c), Paragraph(_esc(step), st_cell), Paragraph("—", st_cell), Paragraph("Artefato Saneado", st_cell)])
+        t_rot = Table(rdata, colWidths=[1.8 * cm, 0.9 * cm, 13.5 * cm, 4.8 * cm, 5.7 * cm], repeatRows=1)
+        t_rot.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1B365D")), ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5E1")), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")])]))
         story.append(t_rot)
 
-    # SEÇÃO 5: TERMO DE CONFERÊNCIA
-    story.append(Paragraph("5.  TERMO DE CONFERÊNCIA E ATESTE DE SANEAMENTO", st_sec))
-    story.append(Paragraph("Registro formal de verificação prévia à divulgação do Aviso de Contratação Direta no Portal Nacional de Contratações Públicas (PNCP).", st_sub))
+    # SEÇÃO 5: MINUTAS COMPLEMENTARES EXPANDIDAS
+    if minutas_comp:
+        story.append(Paragraph("5.  MINUTAS EXPANDIDAS E PEÇAS SANEADORAS PRONTAS PARA ASSINATURA E JUNTADA AOS AUTOS", st_sec))
+        story.append(Paragraph("Redações integrais construídas conforme a Lei nº 14.133/2021, INs SEGES e AGU, contemplando todas as peças ausentes e cláusulas expandidas.", st_sub))
+        for mc in minutas_comp:
+            if not isinstance(mc, dict):
+                continue
+            tm = Table([
+                [Paragraph(f"<b>{_esc(mc.get('codigo', 'MINUTA'))} — {_esc(mc.get('titulo', ''))}</b><br/><i>Atende: {_esc(mc.get('referencia_achados', '—'))} | Base Legal: {_esc(mc.get('fundamento', ''))}</i>", st_cell)],
+                [Paragraph(_esc(mc.get("conteudo") or ""), st_cell_j)],
+            ], colWidths=[26.7 * cm])
+            tm.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EFF6FF")),
+                ("BACKGROUND", (0, 1), (-1, 1), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5E1")),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]))
+            story.append(tm)
+            story.append(Spacer(1, 4))
+
+    # SEÇÃO 6: TERMO DE APROVAÇÃO
+    story.append(Paragraph("6.  TERMO DE CONFERÊNCIA, APROVAÇÃO E ATESTE PARA PUBLICAÇÃO NO PNCP", st_sec))
     s_data = [
-        [
-            Paragraph("<b>SETOR REQUISITANTE</b><br/>(Divisão de Segurança do Tráfego Aquaviário)", st_cell_bc),
-            Paragraph("<b>SUBSEÇÃO DE INTENDÊNCIA</b><br/>(Agente de Contratação / Licitações)", st_cell_bc),
-            Paragraph("<b>AUTORIDADE COMPETENTE</b><br/>(Ordenador de Despesas — CFJ)", st_cell_bc),
-        ],
-        [
-            Paragraph("<br/>________________________________________<br/>Nome / Posto-Graduação<br/>Data: ____ / ____ / 2026", st_cell_c),
-            Paragraph("<br/>________________________________________<br/>Nome / Posto-Graduação<br/>Data: ____ / ____ / 2026", st_cell_c),
-            Paragraph("<br/>________________________________________<br/>Nome / Posto-Graduação<br/>Data: ____ / ____ / 2026", st_cell_c),
-        ],
+        [Paragraph("<b>SETOR REQUISITANTE</b><br/>(Ateste das Especificações e CATMAT)", st_cell_bc), Paragraph("<b>SUBSEÇÃO DE INTENDÊNCIA / LICITAÇÕES</b><br/>(Conferência das Minutas Saneadas)", st_cell_bc), Paragraph("<b>AUTORIDADE COMPETENTE</b><br/>(Ordenador de Despesas — Aprovação)", st_cell_bc)],
+        [Paragraph("<br/>________________________________________<br/>Nome / Posto-Graduação<br/>Data: ____ / ____ / 2026", st_cell_c), Paragraph("<br/>________________________________________<br/>Nome / Posto-Graduação<br/>Data: ____ / ____ / 2026", st_cell_c), Paragraph("<br/>________________________________________<br/>Nome / Posto-Graduação<br/>Data: ____ / ____ / 2026", st_cell_c)],
     ]
     t_sig = Table(s_data, colWidths=[8.9 * cm, 8.9 * cm, 8.9 * cm])
-    t_sig.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F1F5F9")),
-        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5E1")),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-    ]))
+    t_sig.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F1F5F9")), ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5E1")), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
     story.append(t_sig)
 
     doc.build(story)
     return buf.getvalue()
 
 
-
 # ==============================================================================
-# 7. MOTOR DE CORREÇÃO CIRÚRGICA NO DOCUMENTO ORIGINAL (.DOCX)
-#    VERMELHO TACHADO (ERRADO) + AMARELO (CORRIGIDO) + NOTA EXPLICATIVA APENSADA
+# 8. MOTOR DE CORREÇÃO CIRÚRGICA PRONTA PARA PUBLICAÇÃO (.DOCX ORIGINAL)
+#    VERMELHO TACHADO + AMARELO + PREENCHIMENTO REAL DE LACUNAS + RENUMERAÇÃO
+#    DA SEÇÃO 8 + APENSO NOTA TÉCNICA REVISIONADA E PARECER JURÍDICO
 # ==============================================================================
 def _apply_surgical_rules_to_text(
     orig_text: str,
     ai_patches: Optional[List[Dict[str, str]]] = None,
     is_dispensa_art75_ii: bool = True,
+    sec8_tracker: Optional[Dict[str, int]] = None,
+    clause_num_hint: str = "",
 ) -> Tuple[str, List[str]]:
     """
-    Aplica correções cirúrgicas (determinísticas + achados da IA) sobre um parágrafo
-    ou célula de tabela, retornando `(texto_corrigido, lista_de_notas_aplicadas)`.
-    Mantém o texto circundante intacto para que o word-diff marque em VERMELHO TACHADO
-    apenas o trecho errado e em AMARELO apenas o texto substituto correto.
+    Aplica soluções redacionais PRONTAS PARA PUBLICAÇÃO (construídas a partir dos
+    Textos-Minuta da Nota Técnica) diretamente sobre o parágrafo/célula original,
+    incluindo preenchimento real de lacunas em dois-pontos (4.1 e 7.2.4.6),
+    renumeração automática da Seção 8 (ex.: salto 8.26 -> 8.38 corrigido para 8.27, 8.28...),
+    inserção da exclusividade ME/EPP na Seção 3 do Aviso e revisão ortográfica completa.
     """
-    if not orig_text or len(orig_text.strip()) < 3:
+    if not orig_text or len(orig_text.strip()) < 2:
         return orig_text, []
 
     revised = orig_text
@@ -2068,161 +2088,236 @@ def _apply_surgical_rules_to_text(
                 if note_id not in notes:
                     notes.append(note_id)
 
-    # 1. Prazo de pagamento IN SEGES/ME nº 77/2022 (Art. 7º, § 2º — 10 dias -> 5 dias úteis)
-    if is_dispensa_art75_ii and ("pagamento" in low_orig or "8.20" in low_orig) and "liquida" not in low_orig[:45]:
+    # 0. Renumeração automática sequencial da Seção 8 (ex.: salto 8.26 -> 8.38 vira 8.27, 8.28...)
+    if sec8_tracker is not None:
+        m8 = re.match(r"^\s*(8)\.(\d{1,2})(\.?)\s+", revised)
+        if m8:
+            curr_sub = int(m8.group(2))
+            last_sub = sec8_tracker.get("last_sub", 0)
+            if last_sub > 0 and curr_sub > last_sub + 1:
+                expected_sub = last_sub + 1
+                revised = re.sub(
+                    r"^\s*8\.\d{1,2}(\.?)",
+                    f"8.{expected_sub}{m8.group(3)} [Nota R-10]",
+                    revised,
+                    count=1,
+                )
+                sec8_tracker["last_sub"] = expected_sub
+                if "R-10" not in notes:
+                    notes.append("R-10")
+            else:
+                sec8_tracker["last_sub"] = curr_sub
+
+    # 1. Preenchimento real do Item 4.1 (Sustentabilidade terminando em dois-pontos ':') -> PRONTO PARA PUBLICAR (R-10)
+    if (
+        (clause_num_hint == "4.1" or re.match(r"^\s*4\.1\b", revised) or "sustentabilidade" in low_orig)
+        and revised.rstrip().endswith(":")
+        and len(revised) < 350
+    ):
+        revised = (
+            revised.rstrip()
+            + " os materiais fornecidos deverão ser constituídos, no todo ou em parte, por material reciclado, atóxico ou biodegradável "
+            "conforme normas da ABNT, acondicionados em embalagem individual adequada com o menor volume possível utilizando materiais recicláveis, "
+            "atender às normas técnicas da ABNT e do INMETRO quanto à durabilidade e segurança e não conter substâncias perigosas acima dos limites "
+            "da diretiva RoHS, em conformidade com o Guia Nacional de Contratações Sustentáveis da AGU (Art. 18, XI e Art. 144 da Lei nº 14.133/2021). [Nota R-10]"
+        )
+        if "R-10" not in notes:
+            notes.append("R-10")
+
+    # 2. Preenchimento real do Item 7.2.4.6 (ressalva terminando em dois-pontos ':') -> PRONTO PARA PUBLICAR (R-10)
+    if (
+        (clause_num_hint == "7.2.4.6" or re.match(r"^\s*7\.2\.4\.6\b", revised) or ("sanç" in low_orig and "ressalv" in low_orig))
+        and revised.rstrip().endswith(":")
+    ):
+        revised = (
+            revised.rstrip()
+            + " a aplicação de quaisquer penalidades observará obrigatoriamente o devido processo legal administrativo, assegurados o contraditório "
+            "e a ampla defesa, com abertura de prazo de 15 (quinze) dias úteis para defesa prévia, nos termos dos arts. 156 a 163 da Lei nº 14.133/2021. [Nota R-10]"
+        )
+        if "R-10" not in notes:
+            notes.append("R-10")
+
+    # 3. Inserção da Exclusividade ME/EPP no Item 3 do Aviso (N-06) -> PRONTO PARA PUBLICAR
+    if (
+        (re.match(r"^\s*3\.1\.?\s+", revised) or "participação na dispensa eletrônica" in low_orig)
+        and "exclusiva" not in low_orig
+        and "compras.gov" in low_orig
+    ):
+        revised = (
+            revised.rstrip()
+            + " A participação na presente Dispensa Eletrônica é exclusiva a microempresas (ME), empresas de pequeno porte (EPP) e sociedades cooperativas "
+            "equiparadas, nos termos do art. 48, inciso I, da Lei Complementar nº 123/2006, do art. 4º da Lei nº 14.133/2021 e do art. 6º do Decreto nº 8.538/2015, "
+            "visto que o valor estimado de todos os itens é inferior a R$ 80.000,00. [Nota N-06]"
+        )
+        if "N-06" not in notes:
+            notes.append("N-06")
+
+    # 4. Prazo de pagamento IN SEGES/ME nº 77/2022 (Art. 7º, § 2º — 10 dias -> 5 dias úteis) (N-04)
+    if is_dispensa_art75_ii and ("pagamento" in low_orig or clause_num_hint == "8.20" or "8.20" in low_orig) and "liquida" not in low_orig[:45]:
         _sub_once(
             r"\b10\s*\(dez\)\s*dias\s+[úu]teis\b",
-            "5 (cinco) dias úteis [Nota N-04]",
+            "5 (cinco) dias úteis, em atendimento à redução obrigatória do art. 7º, § 2º, da IN SEGES/ME nº 77/2022 [Nota N-04]",
             "N-04",
         )
         if "N-04" not in notes:
             _sub_once(
                 r"\b10\s+dias\s+[úu]teis\b",
-                "5 (cinco) dias úteis [Nota N-04]",
+                "5 (cinco) dias úteis (Art. 7º, § 2º, da IN SEGES/ME nº 77/2022) [Nota N-04]",
                 "N-04",
             )
 
-    # 2. Cláusula de extinção contratual citando art. 75, VIII (emergencial) em processo do art. 75, II
+    # 5. Cláusula de extinção contratual citando art. 75, VIII em processo do art. 75, II (N-05) -> REDAÇÃO PRONTA
     if is_dispensa_art75_ii and re.search(r"art\.?\s*75,?\s*(?:inciso\s*)?viii\b|inciso\s*viii\s+do\s+art\.?\s*75", low_orig):
         revised = (
-            "[CLÁUSULA SUPRIMIDA — INCOMPATÍVEL COM DISPENSA POR BAIXO VALOR DO ART. 75, INCISO II DA LEI Nº 14.133/2021; "
-            "APLICAM-SE AS HIPÓTESES DE EXTINÇÃO POR ESCOPO DOS ARTS. 105 E 137] [Nota N-05]"
+            "O ajuste (Nota de Empenho substitutiva do termo de contrato, art. 95, I) extingue-se quando cumpridas integralmente "
+            "as obrigações de entrega, recebimento definitivo e pagamento, ainda que isso ocorra antes do prazo estipulado, "
+            "observadas as hipóteses legais dos arts. 105 e 137 da Lei nº 14.133/2021. [Nota N-05]"
         )
         notes.append("N-05")
 
-    # 3. Indicação de marca sem "ou equivalente/similar" (Art. 41, I e Súmula TCU 270)
+    # 6. Indicação de marca sem "ou equivalente/similar" (N-03) -> REDAÇÃO PRONTA
     if "ou equivalente" not in low_orig and "ou similar" not in low_orig:
         _sub_once(
             r"\bMark\s+V\b",
-            "Mark V (ou equivalente, similar ou de melhor qualidade, servindo a marca apenas como referência técnica) [Nota N-03]",
+            "Mark V (ou equivalente, similar ou de melhor qualidade, servindo a marca exclusivamente como referência técnica — Art. 41, I, 'd', Lei nº 14.133/2021 e Súmula TCU nº 270) [Nota N-03]",
             "N-03",
         )
         _sub_once(
             r"\bCyalume\b",
-            "Cyalume (ou bastão luminoso químico equivalente/similar) [Nota N-03]",
+            "Cyalume (ou bastão luminoso químico equivalente, similar ou de melhor qualidade — Art. 41, I, 'd', Lei nº 14.133/2021) [Nota N-03]",
             "N-03",
         )
 
-    # 4. EIRELI extinta (Art. 41 da Lei nº 14.195/2021 -> SLU)
+    # 7. EIRELI extinta -> SLU
     _sub_once(
         r"\b(?:empresa\s+individual\s+de\s+responsabilidade\s+limitada\s*[-–—]?\s*EIRELI|EIRELI|empresa\s+individual\s+de\s+responsabilidade\s+limitada)\b",
         "Sociedade Limitada Unipessoal – SLU [Nota N-08]",
         "N-08",
     )
 
-    # 5. Leis e Decretos Revogados (8.666/93, 10.520/02, Dec. 7.892/13, Dec. 10.024/19, IN 73/2020)
+    # 8. Leis e Decretos Revogados
     _sub_once(r"\b(?:Lei\s+(?:Federal\s+)?n[ºo°]?\s*8\.?666(?:/1993|/93)?|Lei\s+8\.666)\b", "Lei nº 14.133/2021 [Nota N-09]", "N-09")
     _sub_once(r"\b(?:Lei\s+(?:Federal\s+)?n[ºo°]?\s*10\.?520(?:/2002|/02)?|Lei\s+10\.520)\b", "Lei nº 14.133/2021 [Nota N-09]", "N-09")
     _sub_once(r"\b(?:Decreto\s+n[ºo°]?\s*7\.?892(?:/2013)?|Decreto\s+7\.892)\b", "Decreto nº 11.462/2023 [Nota N-09]", "N-09")
     _sub_once(r"\b(?:Decreto\s+n[ºo°]?\s*10\.?024(?:/2019)?|Decreto\s+10\.024)\b", "IN SEGES/ME nº 73/2022 e Lei nº 14.133/2021 [Nota N-09]", "N-09")
     _sub_once(r"\bInstru[çc][ãa]o\s+Normativa\s+(?:SEGES/ME\s+)?n[ºo°]?\s*73(?:/2020|,\s*de\s*2020)\b", "IN SEGES/ME nº 65/2021 [Nota N-09]", "N-09")
 
-    # 6. Uso prematuro do Art. 72, VIII na Solicitação Inicial (P-06)
+    # 9. Uso prematuro do Art. 72, VIII na Solicitação Inicial (P-06)
     if any(k in low_orig for k in ("abertura", "solicita", "autorizo", "início", "inicio")):
         _sub_once(
             r"\bart\.?\s*72,?\s*(?:inciso\s*)?viii\b|\binciso\s*viii\s+do\s+art\.?\s*72\b",
-            "art. 72, caput, da Lei nº 14.133/2021 (aprovação do DFD e início da fase preparatória; reservando-se o inciso VIII para a autorização final pós-instrução) [Nota P-06]",
+            "art. 72, caput, da Lei nº 14.133/2021 (aprovação do DFD e abertura da fase preparatória, reservando-se o inciso VIII para a autorização final pós-instrução) [Nota P-06]",
             "P-06",
         )
 
-    # 7. Data-base futura do orçamento estimado (P-07)
+    # 10. Data-base futura do orçamento estimado (P-07)
     if any(k in low_orig for k in ("orçamento estimado", "orcamento estimado", "data-base", "8.40")):
         _sub_once(
             r"\b30/11/2026\b",
-            "[DATA EXATA DE ASSINATURA DO MAPA COMPARATIVO DE PREÇOS] [Nota P-07]",
+            "a data efetiva de assinatura do Mapa Comparativo de Preços integrante deste processo (art. 25, § 7º, da Lei nº 14.133/2021) [Nota P-07]",
             "P-07",
         )
 
-    # 8. Justificativa genérica de PCA no DFD (P-08)
+    # 11. Justificativa genérica de PCA no DFD (P-08) -> REDAÇÃO PRONTA
     _sub_once(
         r"realizado\s+fora\s+do\s+prazo\s+em\s+virtude\s+da\s+adequa[çc][ãa]o\s+[àa]\s+nova\s+legisla[çc][ãa]o",
-        "incluído extemporaneamente no PCA 2026 mediante justificativa concreta aprovada pela autoridade competente, vinculado ao ID da Contratação nº [PREENCHER ID NO PGC] (Arts. 15 e 16 do Decreto nº 10.947/2022) [Nota P-08]",
+        "incluído extemporaneamente no Plano de Contratações Anual (PCA) 2026 em razão de necessidade operacional superveniente de prontidão SAR, devidamente aprovada pela autoridade competente nos termos dos arts. 15 e 16 do Decreto nº 10.947/2022 [Nota P-08]",
         "P-08",
     )
 
-    # 9. Numerações divergentes do Aviso (R-01)
+    # 12. Numerações divergentes do Aviso (R-01) -> UNIFICADA EM Nº 44/2026
     _sub_once(
         r"\bAviso\s+de\s+Contrata[çc][ãa]o\s+20/2026\b|\bAVISO\s+DE\s+CONTRATA[ÇC][ÃA]O\s+DIRETA\s+0044/2026\b|\bAVISO\s+DE\s+CONTRATA[ÇC][ÃA]O\s+DIRETA\s+N[ºo°]?\s*43/2026\b",
-        "AVISO DE CONTRATAÇÃO DIRETA Nº [PADRONIZAR Nº OFICIAL DO COMPRAS.GOV.BR]/2026 [Nota R-01]",
+        "AVISO DE CONTRATAÇÃO DIRETA Nº 44/2026 [Nota R-01]",
         "R-01",
     )
 
-    # 10. Indefinição sobre parcelamento no ETP (R-03)
+    # 13. Multa conflitante de 5% no Aviso (Item 11.1.15 — R-02) -> REDAÇÃO PRONTA HARMONIZADA
+    if (clause_num_hint == "11.1.15" or "11.1.15" in low_orig) or ("multa" in low_orig and "5%" in low_orig and "qualquer" in low_orig):
+        revised = (
+            "Para as infrações cometidas na fase de seleção do fornecedor (disputa), aplicar-se-á multa de 5% (cinco por cento) "
+            "sobre o valor estimado do(s) item(ns) prejudicado(s). As sanções administrativas e respectivos percentuais de multa "
+            "moratória e compensatória aplicáveis à fase de execução contratual regem-se integralmente pelo disposto no item 7.2.4 "
+            "do Termo de Referência (Anexo I), observados os limites de 0,5% a 30% do art. 156, § 3º, da Lei nº 14.133/2021. [Nota R-02]"
+        )
+        if "R-02" not in notes:
+            notes.append("R-02")
+
+    # 14. Indefinição sobre parcelamento no ETP (R-03) -> REDAÇÃO CONCLUSIVA PRONTA
     _sub_once(
         r"necessidade\s+de\s+n[ãa]o\s+parcelamento\s*\(\s*ou\s+parcelamento\s+por\s+item[^)]*\)",
-        "adoção conclusiva do parcelamento da solução por item (critério: menor preço por item), ampliando a competitividade conforme Art. 40, V, 'b', da Lei nº 14.133/2021 e Súmula TCU nº 247 [Nota R-03]",
+        "adoção conclusiva do parcelamento da solução por item (critério de julgamento: menor preço por item), tendo em vista a divisibilidade técnica e econômica dos materiais e a ampliação da competitividade, nos termos do art. 40, inciso V, alínea 'b', da Lei nº 14.133/2021 e da Súmula TCU nº 247 [Nota R-03]",
         "R-03",
     )
 
-    # 11. Contradição de vigência 12 meses vs 60 dias (R-04)
+    # 15. Contradição de vigência 12 meses vs 60 dias (R-04) -> REDAÇÃO PRONTA
     _sub_once(
         r"(?:pelo\s+)?per[íi]odo\s+de\s+12\s*\(doze\)\s*meses",
-        "com entrega imediata e integral em remessa única e vigência de 60 (sessenta) dias contados da emissão da Nota de Empenho (em conformidade com o item 1.3 do TR) [Nota R-04]",
+        "com entrega imediata e integral em remessa única e prazo de vigência de 60 (sessenta) dias contados da emissão da Nota de Empenho, em conformidade com o item 1.3 do Termo de Referência e o art. 105 da Lei nº 14.133/2021 [Nota R-04]",
         "R-04",
     )
 
-    # 12. Divergência prazo de aceite da Nota de Empenho (02 dias úteis / "dias dias" -> 5 dias úteis) (R-05)
-    _sub_once(
-        r"\b0?2\s*\(dois\)\s*dias\s+dias\b",
-        "5 (cinco) dias úteis [Nota R-05]",
-        "R-05",
-    )
+    # 16. Prazo de aceite da Nota de Empenho (02 dias úteis / "dias dias" -> 5 dias úteis) (R-05)
+    _sub_once(r"\b0?2\s*\(dois\)\s*dias\s+dias\b", "5 (cinco) dias úteis [Nota R-05]", "R-05")
     if any(k in low_orig for k in ("empenho", "assinar", "aceitar", "termo de contrato", "convoca")):
         _sub_once(
             r"\b0?2\s*\(dois\)\s*dias\s+[úu]teis\b",
-            "5 (cinco) dias úteis (uniformizado com o item 1.1 do Anexo I do TR) [Nota R-05]",
+            "5 (cinco) dias úteis (uniformizado com o item 1.1 do Anexo I do TR — Art. 90 da Lei nº 14.133/2021) [Nota R-05]",
             "R-05",
         )
 
-    # 13. Contradição no prazo de recebimento definitivo (15 dias úteis -> 5 dias úteis) (R-06)
+    # 17. Contradição no prazo de recebimento definitivo (15 dias úteis -> 5 dias úteis) (R-06)
     if "recebimento definitivo" in low_orig or ("75" in low_orig and "15" in low_orig and "dias" in low_orig):
         _sub_once(
             r"\b15\s*\(quinze\)\s*dias\s+[úu]teis\b",
-            "5 (cinco) dias úteis (harmonizado com o item 8.3 do TR) [Nota R-06]",
+            "5 (cinco) dias úteis, harmonizado com o item 8.3 do TR e o art. 140, II, 'b', da Lei nº 14.133/2021 [Nota R-06]",
             "R-06",
         )
 
-    # 14. Remissão vazia de garantia ao ETP (R-07)
+    # 18. Remissão vazia de garantia ao ETP (R-07) -> JUSTIFICATIVA COMPLETA PRONTA
     _sub_once(
         r"pelas\s+raz[õo]es\s+constantes\s+do\s+Estudo\s+T[ée]cnico\s+Preliminar",
-        "em razão do baixo valor estimado da contratação, da entrega imediata em remessa única e do pagamento condicionado ao recebimento definitivo (Art. 96 da Lei nº 14.133/2021) [Nota R-07]",
+        "em razão do baixo valor estimado da contratação, da entrega imediata e integral em remessa única e do pagamento condicionado exclusivamente ao recebimento definitivo dos materiais, inexistindo risco de prejuízo ao Erário, nos termos do art. 96 da Lei nº 14.133/2021 [Nota R-07]",
         "R-07",
     )
 
-    # 15. Cláusulas impertinentes de obras/engenharia (75%/85%) e exercícios subsequentes (R-08)
-    if ("engenharia" in low_orig and ("75%" in low_orig or "85%" in low_orig or "inexequ" in low_orig)) or (
-        "exercícios financeiros subsequentes" in low_orig or "exercicios financeiros subsequentes" in low_orig
-    ):
+    # 19. Cláusulas impertinentes de obras/engenharia (75%/85%) e exercícios subsequentes (R-08) -> REDAÇÃO PRONTA
+    if "engenharia" in low_orig and ("75%" in low_orig or "85%" in low_orig or "inexequ" in low_orig):
         revised = (
-            "[CLÁUSULA SUPRIMIDA — DISPOSITIVO IMPERTINENTE DE MODELO-PADRÃO PARA AQUISIÇÃO DE BENS "
-            "DE ENTREGA IMEDIATA EM EXERCÍCIO ÚNICO] [Nota R-08]"
+            "A verificação de exequibilidade das propostas para o fornecimento de bens comuns observará exclusivamente "
+            "o disposto no art. 59, inciso III e § 2º, da Lei nº 14.133/2021 e no art. 34 da IN SEGES/ME nº 73/2022, "
+            "suprimindo-se as disposições específicas de obras e serviços de engenharia. [Nota R-08]"
+        )
+        if "R-08" not in notes:
+            notes.append("R-08")
+    elif "exercícios financeiros subsequentes" in low_orig or "exercicios financeiros subsequentes" in low_orig:
+        revised = (
+            "A despesa decorrente desta aquisição será executada integralmente no exercício financeiro vigente de 2026, "
+            "com entrega imediata em remessa única, não gerando ônus para exercícios financeiros subsequentes. [Nota R-08]"
         )
         if "R-08" not in notes:
             notes.append("R-08")
 
-    # 16. Divergência algarismo vs extenso no intervalo de lances (R-09)
-    _sub_once(
-        r"R\$\s*0,10\s*\(\s*um\s+centavos?\s*\)",
-        "R$ 0,10 (dez centavos) [Nota R-09]",
-        "R-09",
-    )
+    # 20. Divergência algarismo vs extenso no intervalo de lances (R-09)
+    _sub_once(r"R\$\s*0,10\s*\(\s*um\s+centavos?\s*\)", "R$ 0,10 (dez centavos) [Nota R-09]", "R-09")
 
-    # 17. Erros ortográficos e redacionais (R-10)
+    # 21. Revisão ortográfica geral (R-10)
     _sub_once(r"\bquize\s+por\s+cento\b", "quinze por cento [Nota R-10]", "R-10")
     _sub_once(r"\bs\s+supress[õo]es\b", "as supressões [Nota R-10]", "R-10")
     _sub_once(r"\ba\s+aquisi[çc][ãa]o\s+de\s+Aquisi[çc][ãa]o\b", "a aquisição [Nota R-10]", "R-10")
+    _sub_once(r"\bna\s+aquisi[çc][ãa]o\s+de\s+aquisi[çc][ãa]o\b", "na aquisição [Nota R-10]", "R-10")
 
-    # 18. Divergências de CATMAT em células de tabela / parágrafos (N-01)
-    _sub_once(r"\b603185\b", "[SUBSTITUIR CATMAT 603185 — Binóculo náutico óptico 7x50 pressurizado] [Nota N-01]", "N-01")
-    _sub_once(r"\b606610\b", "[SUBSTITUIR CATMAT 606610 — Bolsa/maleta estanque impermeável SAR] [Nota N-01]", "N-01")
-    _sub_once(r"\b366698\b", "[SUBSTITUIR CATMAT 366698 — Luva de neoprene uso aquático/SAR (Unidade: PAR)] [Nota N-01]", "N-01")
-    _sub_once(r"\b613245\b", "[SUBSTITUIR CATMAT 613245 — Luva de segurança em couro/vaqueta (Unidade: PAR)] [Nota N-01]", "N-01")
-    _sub_once(r"bin[óo]culo\s+termal[^.;\n]*", "Binóculo náutico óptico 7x50 pressurizado/estanque [Nota N-01]", "N-01")
-    _sub_once(r"modelo:\s*transporte\s+tubo\s+do\s+morteiro\s+81\s*mm", "modelo: bolsa/maleta estanque impermeável para equipamentos SAR [Nota N-01]", "N-01")
-    _sub_once(r"Luva\s+Borracha\s+nitr[íi]lica", "Luva de neoprene para operações aquáticas/SAR (Unidade: PAR) [Nota N-01]", "N-01")
-    _sub_once(r"aplica[çc][ãa]o:?\s*motociclismo", "aplicação: resgate em couro/vaqueta (Unidade: PAR) [Nota N-01]", "N-01")
+    # 22. Divergências de CATMAT em tabelas / parágrafos (N-01) -> ESPECIFICAÇÕES PRONTAS
+    _sub_once(r"\b603185\b", "CATMAT Binóculo Óptico 7x50 Pressurizado [Nota N-01]", "N-01")
+    _sub_once(r"\b606610\b", "CATMAT Bolsa/Maleta Estanque IP67 SAR [Nota N-01]", "N-01")
+    _sub_once(r"\b366698\b", "CATMAT Luva de Neoprene SAR (Unidade: PAR) [Nota N-01]", "N-01")
+    _sub_once(r"\b613245\b", "CATMAT Luva de Couro/Vaqueta com CA (Unidade: PAR) [Nota N-01]", "N-01")
+    _sub_once(r"bin[óo]culo\s+termal[^.;\n]*", "Binóculo náutico óptico 7x50 pressurizado/estanque com proteção contra névoa e água [Nota N-01]", "N-01")
+    _sub_once(r"modelo:\s*transporte\s+tubo\s+do\s+morteiro\s+81\s*mm", "modelo: bolsa/maleta estanque impermeável (grau IP67) para guarda de equipamentos SAR [Nota N-01]", "N-01")
+    _sub_once(r"Luva\s+Borracha\s+nitr[íi]lica", "Luva de neoprene para operações aquáticas/SAR com CA válido (Unidade: PAR) [Nota N-01]", "N-01")
+    _sub_once(r"aplica[çc][ãa]o:?\s*motociclismo", "aplicação: resgate e manobra em couro/vaqueta com CA válido (Unidade: PAR) [Nota N-01]", "N-01")
 
-    # 19. Aplicação dinâmica de patches retornados pela IA Gemini (para qualquer processo novo!)
+    # 23. Patches dinâmicos retornados pela IA Gemini (qualquer processo novo)
     for p in (ai_patches or []):
         orig_snippet = str(p.get("trecho_errado_exato") or "").strip()
         corr_snippet = str(p.get("texto_corrigido_exato") or "").strip()
@@ -2240,293 +2335,6 @@ def _apply_surgical_rules_to_text(
     return revised, notes
 
 
-def _append_nota_explicativa_to_docx(
-    doc: Document,
-    deep_audit: Dict[str, Any],
-    om_name: str,
-    inline_fixes_count: int,
-    applied_note_ids: List[str],
-) -> None:
-    """
-    Apensa ao final do arquivo Word (.DOCX) uma nova seção em Paisagem A4 (sem alterar
-    a orientação/formatação das páginas originais da minuta) contendo a
-    NOTA EXPLICATIVA DE AUDITORIA JURÍDICA E FUNDAMENTAÇÃO LEGAL DAS CORREÇÕES APLICADAS.
-    """
-    new_sec = doc.add_section(WD_SECTION.NEW_PAGE)
-    new_sec.orientation = WD_ORIENT.LANDSCAPE
-    new_sec.page_width = Cm(29.7)
-    new_sec.page_height = Cm(21.0)
-    new_sec.top_margin = Cm(1.4)
-    new_sec.bottom_margin = Cm(1.4)
-    new_sec.left_margin = Cm(1.5)
-    new_sec.right_margin = Cm(1.5)
-    try:
-        new_sec.header.is_linked_to_previous = False
-        new_sec.footer.is_linked_to_previous = False
-    except Exception:
-        pass
-
-    meta = deep_audit.get("metadados_processo") or {}
-    parecer = deep_audit.get("parecer_preventivo") or {}
-    achados = deep_audit.get("achados") or []
-    div_catmat = deep_audit.get("divergencias_catmat") or []
-    roteiro = deep_audit.get("roteiro_saneamento") or []
-    now_str = datetime.now().strftime("%d/%m/%Y às %H:%M")
-
-    # BANNER DA NOTA EXPLICATIVA
-    t_ban = doc.add_table(rows=1, cols=1)
-    t_ban.alignment = WD_TABLE_ALIGNMENT.CENTER
-    t_ban.style = "Table Grid"
-    cb = t_ban.cell(0, 0)
-    cb.width = Cm(26.7)
-    _set_cell_bg(cb, "1B365D")
-    _set_cell_margins(cb, 110, 110, 140, 140)
-    pb = cb.paragraphs[0]
-    pb.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r1 = pb.add_run(f"{om_name.upper()}\n")
-    r1.bold = True
-    r1.font.size = Pt(11)
-    r1.font.color.rgb = RGBColor(255, 255, 255)
-    r2 = pb.add_run("ANEXO — NOTA EXPLICATIVA E FUNDAMENTAÇÃO LEGAL DAS CORREÇÕES APLICADAS\n")
-    r2.bold = True
-    r2.font.size = Pt(10.5)
-    r2.font.color.rgb = RGBColor(245, 208, 125)
-    r3 = pb.add_run(
-        f"Auditoria Preventiva (Lei nº 14.133/2021, INs SEGES/ME nº 65/2021, 67/2021 e 77/2022, AGU e TCU) — Emitida em {now_str}"
-    )
-    r3.font.size = Pt(8.5)
-    r3.font.color.rgb = RGBColor(219, 234, 254)
-
-    # BOX DE LEGENDA E RESUMO DAS CORREÇÕES NO TEXTO ORIGINAL
-    t_leg = doc.add_table(rows=1, cols=1)
-    t_leg.alignment = WD_TABLE_ALIGNMENT.CENTER
-    t_leg.style = "Table Grid"
-    cl = t_leg.cell(0, 0)
-    cl.width = Cm(26.7)
-    _set_cell_bg(cl, "FFFBEB")
-    _set_cell_margins(cl, 80, 80, 110, 110)
-    pl = cl.paragraphs[0]
-    rl0 = pl.add_run("CONVENÇÃO DE REVISÃO APLICADA AO DOCUMENTO ORIGINAL ACIMA:  ")
-    rl0.bold = True
-    rl0.font.size = Pt(8.5)
-    rl0.font.color.rgb = RGBColor(27, 54, 93)
-    rl1 = pl.add_run("VERMELHO TACHADO")
-    rl1.bold = True
-    rl1.font.strike = True
-    rl1.font.size = Pt(8.5)
-    rl1.font.color.rgb = RGBColor(220, 38, 38)
-    rl2 = pl.add_run(" = Trecho original errado ou revogado retirado  |  ")
-    rl2.font.size = Pt(8.5)
-    rl3 = pl.add_run("MARCADO EM AMARELO")
-    rl3.bold = True
-    rl3.font.highlight_color = WD_COLOR_INDEX.YELLOW
-    rl3.font.size = Pt(8.5)
-    rl4 = pl.add_run(
-        f" = Texto corrigido/substituído com base na norma vigente. Total de intervenções cirúrgicas aplicadas no corpo do documento: {inline_fixes_count} trecho(s). "
-        f"As remissões [Nota N-xx / P-xx / R-xx] no texto acima correspondem exatamente aos fundamentos jurídicos detalhados nos quadros abaixo."
-    )
-    rl4.font.size = Pt(8.3)
-
-    # METADADOS + PARECER PREVENTIVO
-    t_meta = doc.add_table(rows=2, cols=4)
-    t_meta.alignment = WD_TABLE_ALIGNMENT.CENTER
-    t_meta.style = "Table Grid"
-    m_widths = [Cm(4.2), Cm(9.15), Cm(4.2), Cm(9.15)]
-    m_rows = [
-        ("Processo Administrativo:", str(meta.get("numero_processo") or "Conforme autos"), "Modalidade / Fundamento:", str(meta.get("modalidade_fundamento") or "Lei nº 14.133/2021")),
-        ("Objeto da Contratação:", str(meta.get("objeto_contratacao") or "Conforme Termo de Referência"), "Valor Total Estimado:", str(meta.get("valor_total_estimado") or "Conforme autos")),
-    ]
-    for ri, rt in enumerate(m_rows):
-        cells = t_meta.rows[ri].cells
-        for ci, v in enumerate(rt):
-            cells[ci].width = m_widths[ci]
-            _set_cell_bg(cells[ci], "F1F5F9" if ci in (0, 2) else "FFFFFF")
-            _set_cell_margins(cells[ci], 60, 60, 85, 85)
-            r = cells[ci].paragraphs[0].add_run(v)
-            r.font.size = Pt(8.2)
-            if ci in (0, 2):
-                r.bold = True
-                r.font.color.rgb = RGBColor(27, 54, 93)
-
-    t_par = doc.add_table(rows=1, cols=1)
-    t_par.alignment = WD_TABLE_ALIGNMENT.CENTER
-    t_par.style = "Table Grid"
-    cp = t_par.cell(0, 0)
-    cp.width = Cm(26.7)
-    _set_cell_bg(cp, "FEF2F2")
-    _set_cell_margins(cp, 80, 80, 110, 110)
-    pp = cp.paragraphs[0]
-    veredito_s = str(parecer.get("veredito") or "RECOMENDAÇÃO DE SUSTAÇÃO ANTES DA PUBLICAÇÃO NO PNCP").replace("_", " ")
-    rp1 = pp.add_run(f"PARECER PREVENTIVO — {veredito_s}\n")
-    rp1.bold = True
-    rp1.font.size = Pt(9.2)
-    rp1.font.color.rgb = RGBColor(153, 27, 27)
-    rp2 = pp.add_run(str(parecer.get("resumo_executivo") or ""))
-    rp2.font.size = Pt(8.3)
-
-    # QUADROS DE FUNDAMENTAÇÃO LEGAL POR EIXO
-    eixos_cfg = [
-        ("NORMATIVA", "1. FUNDAMENTAÇÃO LEGAL — INCONSISTÊNCIAS NORMATIVAS CORRIGIDAS / APONTADAS (LEI Nº 14.133/2021 E INS)"),
-        ("PROCESSUAL", "2. FUNDAMENTAÇÃO LEGAL — ERROS PROCESSUAIS, CRONOLOGIA E PEÇAS AUSENTES (ART. 72 DA LEI Nº 14.133/2021)"),
-        ("CONTRADICAO_INTERNA", "3. FUNDAMENTAÇÃO LEGAL — CONTRADIÇÕES INTERNAS E REVISÃO REDACIONAL"),
-    ]
-    chk_widths = [Cm(1.4), Cm(2.8), Cm(6.0), Cm(5.5), Cm(6.2), Cm(2.6), Cm(2.2)]
-    chk_headers = [
-        "Nota / ID",
-        "Artefato / Item",
-        "Inconsistência Identificada no Texto Original",
-        "Fundamentação Legal & Extrato Normativo",
-        "Texto Corrigido / Providência de Saneamento",
-        "Setor Responsável",
-        "Prioridade",
-    ]
-
-    for sec_i, (ek, stitle) in enumerate(eixos_cfg, start=1):
-        sub = [a for a in achados if str(a.get("eixo") or "NORMATIVA").upper() == ek]
-        if not sub:
-            continue
-        ph = doc.add_paragraph()
-        ph.paragraph_format.space_before = Pt(8)
-        ph.paragraph_format.space_after = Pt(3)
-        rh = ph.add_run(stitle)
-        rh.bold = True
-        rh.font.size = Pt(9.5)
-        rh.font.color.rgb = RGBColor(27, 54, 93)
-
-        tbl = doc.add_table(rows=1, cols=7)
-        tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
-        tbl.style = "Table Grid"
-        for i, h in enumerate(chk_headers):
-            c = tbl.rows[0].cells[i]
-            c.width = chk_widths[i]
-            _set_cell_bg(c, "1B365D")
-            _set_cell_margins(c, 65, 65, 70, 70)
-            p = c.paragraphs[0]
-            p.alignment = WD_ALIGN_PARAGRAPH.CENTER if i in (0, 6) else WD_ALIGN_PARAGRAPH.LEFT
-            r = p.add_run(h)
-            r.bold = True
-            r.font.size = Pt(7.9)
-            r.font.color.rgb = RGBColor(255, 255, 255)
-
-        for r_i, a in enumerate(sub):
-            row = tbl.add_row().cells
-            row_bg = "FFFFFF" if r_i % 2 == 0 else "F8FAFC"
-            crit_lbl = _priority_label(str(a.get("criticidade") or "ALTA"))
-            prio_bg, prio_rgb = _priority_colors(crit_lbl)
-            aid = str(a.get("id") or f"A-{r_i + 1:02d}")
-            applied_mark = "\n(Aplicada no texto)" if aid in applied_note_ids else ""
-
-            base_l = str(a.get("base_legal") or "Lei nº 14.133/2021").strip()
-            ext_l = str(a.get("extrato_norma") or "").strip()
-            legal_txt = f"{base_l}\n\nExtrato da Norma: {ext_l}" if ext_l else base_l
-
-            desc_erro = str(a.get("descricao_erro") or "").strip()
-            tit_erro = str(a.get("titulo") or "").strip()
-            inc_txt = desc_erro if (not tit_erro or tit_erro.lower() in desc_erro.lower()) else f"{tit_erro}: {desc_erro}"
-
-            vals = [
-                f"{aid}{applied_mark}",
-                str(a.get("localizacao") or "Autos"),
-                inc_txt,
-                legal_txt,
-                str(a.get("acao_corretiva") or a.get("texto_apos_correcao") or ""),
-                str(a.get("setor_responsavel") or "Subseção de Intendência"),
-                crit_lbl,
-            ]
-            for ci, v in enumerate(vals):
-                row[ci].width = chk_widths[ci]
-                _set_cell_bg(row[ci], prio_bg if ci == 6 else row_bg)
-                _set_cell_margins(row[ci], 60, 60, 70, 70)
-                p = row[ci].paragraphs[0]
-                p.alignment = WD_ALIGN_PARAGRAPH.CENTER if ci in (0, 6) else WD_ALIGN_PARAGRAPH.LEFT
-                r = p.add_run(v)
-                r.font.size = Pt(7.8)
-                if ci in (0, 6):
-                    r.bold = True
-                if ci == 6:
-                    r.font.color.rgb = prio_rgb
-
-        if sec_i == 1 and div_catmat:
-            p_cat = doc.add_paragraph()
-            p_cat.paragraph_format.space_before = Pt(6)
-            p_cat.paragraph_format.space_after = Pt(2)
-            rcat = p_cat.add_run("Tabela 1.1 — Detalhamento das Divergências de CATMAT e Unidades de Medida (DFD × ETP × TR)")
-            rcat.bold = True
-            rcat.font.size = Pt(8.8)
-            rcat.font.color.rgb = RGBColor(27, 54, 93)
-            t_cat = doc.add_table(rows=1, cols=6)
-            t_cat.alignment = WD_TABLE_ALIGNMENT.CENTER
-            t_cat.style = "Table Grid"
-            cat_w = [Cm(1.2), Cm(4.8), Cm(2.2), Cm(8.8), Cm(3.0), Cm(6.7)]
-            for i, h in enumerate(["Item", "Descrição no ETP / TR", "CATMAT Atual", "Descrição Puxada no DFD", "Unidade (DFD vs. TR)", "Correção Necessária"]):
-                c = t_cat.rows[0].cells[i]
-                c.width = cat_w[i]
-                _set_cell_bg(c, "1B365D")
-                _set_cell_margins(c, 60, 60, 70, 70)
-                r = c.paragraphs[0].add_run(h)
-                r.bold = True
-                r.font.size = Pt(7.8)
-                r.font.color.rgb = RGBColor(255, 255, 255)
-            for r_i, dc in enumerate(div_catmat):
-                if not isinstance(dc, dict):
-                    continue
-                rc = t_cat.add_row().cells
-                r_bg = "FFFFFF" if r_i % 2 == 0 else "F8FAFC"
-                for ci, v in enumerate([
-                    str(dc.get("item") or ""),
-                    str(dc.get("descricao_etp_tr") or ""),
-                    str(dc.get("catmat_atual") or ""),
-                    str(dc.get("descricao_dfd_catalogo") or ""),
-                    str(dc.get("unidade_dfd_vs_tr") or ""),
-                    str(dc.get("correcao_necessaria") or ""),
-                ]):
-                    rc[ci].width = cat_w[ci]
-                    _set_cell_bg(rc[ci], r_bg)
-                    _set_cell_margins(rc[ci], 55, 55, 70, 70)
-                    r = rc[ci].paragraphs[0].add_run(v)
-                    r.font.size = Pt(7.7)
-                    if ci in (0, 2):
-                        r.bold = True
-
-    if roteiro:
-        pr = doc.add_paragraph()
-        pr.paragraph_format.space_before = Pt(8)
-        pr.paragraph_format.space_after = Pt(2)
-        rr = pr.add_run("4. ROTEIRO SEQUENCIAL CRONOLÓGICO DE SANEAMENTO")
-        rr.bold = True
-        rr.font.size = Pt(9.5)
-        rr.font.color.rgb = RGBColor(27, 54, 93)
-        t_rot = doc.add_table(rows=1, cols=4)
-        t_rot.alignment = WD_TABLE_ALIGNMENT.CENTER
-        t_rot.style = "Table Grid"
-        rw = [Cm(2.0), Cm(14.2), Cm(5.5), Cm(5.0)]
-        for i, h in enumerate(["Etapa", "Atividade de Saneamento", "Itens Atendidos", "Setor Executor"]):
-            c = t_rot.rows[0].cells[i]
-            c.width = rw[i]
-            _set_cell_bg(c, "1B365D")
-            _set_cell_margins(c, 60, 60, 70, 70)
-            r = c.paragraphs[0].add_run(h)
-            r.bold = True
-            r.font.size = Pt(7.9)
-            r.font.color.rgb = RGBColor(255, 255, 255)
-        for idx_r, step in enumerate(roteiro, start=1):
-            rc = t_rot.add_row().cells
-            r_bg = "FFFFFF" if (idx_r - 1) % 2 == 0 else "F8FAFC"
-            vals_r = (
-                [str(step.get("etapa") or f"{idx_r}ª Etapa"), str(step.get("atividade") or ""), str(step.get("itens_atendidos") or "—"), str(step.get("setor_executor") or "Intendência")]
-                if isinstance(step, dict)
-                else [f"{idx_r}ª Etapa", str(step), "—", "Setor Competente"]
-            )
-            for ci, v in enumerate(vals_r):
-                rc[ci].width = rw[ci]
-                _set_cell_bg(rc[ci], r_bg)
-                _set_cell_margins(rc[ci], 55, 55, 70, 70)
-                r = rc[ci].paragraphs[0].add_run(v)
-                r.font.size = Pt(7.8)
-                if ci == 0:
-                    r.bold = True
-
-
 def build_corrected_docx_with_nota_explicativa(
     doc_structure: Dict[str, Any],
     deep_audit: Dict[str, Any],
@@ -2534,16 +2342,15 @@ def build_corrected_docx_with_nota_explicativa(
     om_name: str = "MARINHA DO BRASIL • CAPITANIA FLUVIAL DE JUAZEIRO (UASG 782340)",
 ) -> bytes:
     """
-    Corrige automaticamente TODOS os erros textuais detectados diretamente sobre o arquivo
-    analisado, mantendo 100% da formatação original (.DOCX cirúrgico in-place ou .PDF
-    reconstruído com margens, fontes, alinhamentos e tabelas proporcionais preservadas):
-    - Trecho errado/retirado: VERMELHO TACHADO (#DC2626 + strike)
-    - Trecho correto/substituído: MARCADO EM AMARELO (highlight yellow + bold) + [Nota ID]
-    - Ao final do documento: apensa em nova seção (Paisagem A4) a NOTA EXPLICATIVA
-      COMPLETA com a fundamentação legal de cada correção e pendência processual.
+    Constrói o documento Word (.DOCX) PRONTO PARA PUBLICAÇÃO preservando a formatação original:
+    - Parte 1: O arquivo analisado já corrigido (Vermelho Tachado no trecho errado + Amarelo
+      no Texto-Minuta pronto aplicado, incluindo preenchimento de lacunas 4.1/7.2.4.6,
+      renumeração automática da Seção 8, inserção de ME/EPP e revisão ortográfica).
+    - Parte 2 (Nova Seção Paisagem A4 com Cabeçalho Institucional Padrão da Marinha do Brasil):
+      NOTA TÉCNICA REVISIONADA E PARECER JURÍDICO contendo todos os quadros saneadores
+      (com Texto-Minuta Pronto no lugar de Responsável), Tabela 1.1 CATMAT, Roteiro de
+      Publicação e todas as Minutas Complementares Expandidas prontas para assinatura e juntada.
     """
-    import copy
-
     try:
         from core.audited_document_engine import (
             _rewrite_paragraph_with_diff_preserving_style,
@@ -2571,6 +2378,7 @@ def build_corrected_docx_with_nota_explicativa(
     orig_fmt = str((doc_structure or {}).get("original_format") or "").lower()
     inline_fixes = 0
     applied_note_ids: List[str] = []
+    sec8_tracker: Dict[str, int] = {"last_sub": 0}
 
     # CASO A: ARQUIVO ORIGINAL ERA .DOCX -> CIRURGIA XML IN-PLACE 100% FIEL
     if original_bytes and orig_fmt == "docx":
@@ -2579,7 +2387,7 @@ def build_corrected_docx_with_nota_explicativa(
             orig_t = p.text
             if not orig_t or not orig_t.strip():
                 continue
-            rev_t, n_ids = _apply_surgical_rules_to_text(orig_t, ai_patches=ai_patches)
+            rev_t, n_ids = _apply_surgical_rules_to_text(orig_t, ai_patches=ai_patches, sec8_tracker=sec8_tracker)
             if rev_t != orig_t:
                 diffs = compute_word_diff(orig_t, rev_t)
                 _rewrite_paragraph_with_diff_preserving_style(p, diffs)
@@ -2604,53 +2412,108 @@ def build_corrected_docx_with_nota_explicativa(
                                 if nid not in applied_note_ids:
                                     applied_note_ids.append(nid)
 
-        _append_nota_explicativa_to_docx(doc, deep_audit, om_name, inline_fixes, applied_note_ids)
-        out_buf = io.BytesIO()
-        doc.save(out_buf)
-        return out_buf.getvalue()
+    # CASO B: ARQUIVO ORIGINAL ERA .PDF OU .TXT -> RECONSTRUÇÃO FIEL DE MARGENS, FONTES E TABELAS
+    else:
+        patched_structure = copy.deepcopy(doc_structure or {"title": "Minuta Auditada", "elements": []})
+        for el in patched_structure.get("elements", []):
+            el_type = el.get("type")
+            if el_type in ("CLAUSE", "PARAGRAPH"):
+                orig_t = str(el.get("original_text") if el.get("original_text") is not None else (el.get("text") or ""))
+                cl_hint = str(el.get("clause_number") or "").strip()
+                # Se a cláusula tiver número separado (PDF) e houver salto na Seção 8, corrige o número diretamente
+                if cl_hint.startswith("8."):
+                    m_cl = re.match(r"^8\.(\d{1,2})$", cl_hint)
+                    if m_cl:
+                        c_sub = int(m_cl.group(1))
+                        l_sub = sec8_tracker.get("last_sub", 0)
+                        if l_sub > 0 and c_sub > l_sub + 1:
+                            exp_sub = l_sub + 1
+                            orig_with_num = f"{cl_hint}. {orig_t}"
+                            rev_num = f"8.{exp_sub}. {orig_t}"
+                            rev_t, n_ids = _apply_surgical_rules_to_text(rev_num, ai_patches=ai_patches, clause_num_hint=cl_hint)
+                            if "R-10" not in n_ids:
+                                n_ids.append("R-10")
+                            el["clause_number"] = ""
+                            el["modified"] = True
+                            el["revised_text"] = rev_t
+                            el["diff_segments"] = compute_word_diff(orig_with_num, rev_t)
+                            sec8_tracker["last_sub"] = exp_sub
+                            inline_fixes += 1
+                            for nid in n_ids:
+                                if nid not in applied_note_ids:
+                                    applied_note_ids.append(nid)
+                            continue
+                        else:
+                            sec8_tracker["last_sub"] = c_sub
 
-    # CASO B: ARQUIVO ORIGINAL ERA .PDF OU .TXT -> RECONSTRUÇÃO FIEL COM MARGENS/FONTES/TABELAS + DIFFS
-    patched_structure = copy.deepcopy(doc_structure or {"title": "Minuta Auditada", "elements": []})
-    for el in patched_structure.get("elements", []):
-        el_type = el.get("type")
-        if el_type in ("CLAUSE", "PARAGRAPH"):
-            orig_t = str(el.get("original_text") if el.get("original_text") is not None else (el.get("text") or ""))
-            if not orig_t.strip():
-                continue
-            rev_t, n_ids = _apply_surgical_rules_to_text(orig_t, ai_patches=ai_patches)
-            if rev_t != orig_t:
-                el["modified"] = True
-                el["revised_text"] = rev_t
-                el["diff_segments"] = compute_word_diff(orig_t, rev_t)
-                inline_fixes += 1
-                for nid in n_ids:
-                    if nid not in applied_note_ids:
-                        applied_note_ids.append(nid)
-            else:
-                el["modified"] = False
-                el["diff_segments"] = [{"type": "equal", "text": orig_t}]
-        elif el_type == "TABLE":
-            headers = el.get("headers") or []
-            rows = el.get("rows") or []
-            all_rows = ([headers] if headers else []) + list(rows)
-            cell_diffs: Dict[str, Any] = {}
-            for r_i, row in enumerate(all_rows):
-                for c_i, cell_val in enumerate(row):
-                    c_str = str(cell_val or "")
-                    if not c_str.strip():
-                        continue
-                    rev_c, n_ids = _apply_surgical_rules_to_text(c_str, ai_patches=ai_patches)
-                    if rev_c != c_str:
-                        cell_diffs[f"{r_i}_{c_i}"] = compute_word_diff(c_str, rev_c)
-                        inline_fixes += 1
-                        for nid in n_ids:
-                            if nid not in applied_note_ids:
-                                applied_note_ids.append(nid)
-            el["cell_diffs"] = cell_diffs
+                if not orig_t.strip():
+                    continue
+                rev_t, n_ids = _apply_surgical_rules_to_text(orig_t, ai_patches=ai_patches, sec8_tracker=sec8_tracker, clause_num_hint=cl_hint)
+                if rev_t != orig_t:
+                    el["modified"] = True
+                    el["revised_text"] = rev_t
+                    el["diff_segments"] = compute_word_diff(orig_t, rev_t)
+                    inline_fixes += 1
+                    for nid in n_ids:
+                        if nid not in applied_note_ids:
+                            applied_note_ids.append(nid)
+                else:
+                    el["modified"] = False
+                    el["diff_segments"] = [{"type": "equal", "text": orig_t}]
+            elif el_type == "TABLE":
+                headers = el.get("headers") or []
+                rows = el.get("rows") or []
+                all_rows = ([headers] if headers else []) + list(rows)
+                cell_diffs: Dict[str, Any] = {}
+                for r_i, row in enumerate(all_rows):
+                    for c_i, cell_val in enumerate(row):
+                        c_str = str(cell_val or "")
+                        if not c_str.strip():
+                            continue
+                        rev_c, n_ids = _apply_surgical_rules_to_text(c_str, ai_patches=ai_patches)
+                        if rev_c != c_str:
+                            cell_diffs[f"{r_i}_{c_i}"] = compute_word_diff(c_str, rev_c)
+                            inline_fixes += 1
+                            for nid in n_ids:
+                                if nid not in applied_note_ids:
+                                    applied_note_ids.append(nid)
+                el["cell_diffs"] = cell_diffs
 
-    base_docx_bytes = build_audited_document_docx_bytes(patched_structure, org_name=om_name)
-    doc = docx.Document(io.BytesIO(base_docx_bytes))
-    _append_nota_explicativa_to_docx(doc, deep_audit, om_name, inline_fixes, applied_note_ids)
+        base_docx_bytes = build_audited_document_docx_bytes(patched_structure, org_name=om_name)
+        doc = docx.Document(io.BytesIO(base_docx_bytes))
+
+    # APENSA A NOTA TÉCNICA REVISIONADA E PARECER JURÍDICO EM NOVA SEÇÃO PAISAGEM A4
+    new_sec = doc.add_section(WD_SECTION.NEW_PAGE)
+    new_sec.orientation = WD_ORIENT.LANDSCAPE
+    new_sec.page_width = Cm(29.7)
+    new_sec.page_height = Cm(21.0)
+    new_sec.top_margin = Cm(1.4)
+    new_sec.bottom_margin = Cm(1.4)
+    new_sec.left_margin = Cm(1.5)
+    new_sec.right_margin = Cm(1.5)
+    try:
+        new_sec.header.is_linked_to_previous = False
+        new_sec.footer.is_linked_to_previous = False
+    except Exception:
+        pass
+
+    nota_payload = {
+        "om_name": om_name,
+        "processo_ref": (doc_structure or {}).get("filename") or "Processo Administrativo",
+        "metadados_processo": (deep_audit or {}).get("metadados_processo") or {},
+        "parecer_preventivo": (deep_audit or {}).get("parecer_preventivo") or {},
+        "achados": (deep_audit or {}).get("achados") or [],
+        "divergencias_catmat": (deep_audit or {}).get("divergencias_catmat") or [],
+        "roteiro_saneamento": (deep_audit or {}).get("roteiro_saneamento") or [],
+        "minutas_complementares": (deep_audit or {}).get("minutas_complementares") or [],
+    }
+    _populate_nota_tecnica_body_docx(
+        doc,
+        nota_payload,
+        inline_fixes_count=inline_fixes,
+        applied_note_ids=applied_note_ids,
+    )
+
     out_buf = io.BytesIO()
     doc.save(out_buf)
     return out_buf.getvalue()

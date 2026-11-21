@@ -914,14 +914,14 @@
     <!-- CABEÇALHO DA ABA 2 -->
     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
       <div>
-        <h2 id="ragViewDocTitle" class="text-lg font-extrabold text-[#1b365d]">Auditor Jurídico Preventivo &amp; Correção Cirúrgica de Minutas (Lei nº 14.133/2021, AGU &amp; TCU)</h2>
+        <h2 id="ragViewDocTitle" class="text-lg font-extrabold text-[#1b365d]">Nota Técnica Revisionada e Parecer Jurídico — Correção Cirúrgica de Minutas (Lei nº 14.133/2021)</h2>
         <p class="text-xs text-slate-500 mt-0.5">
-          Anexe os autos (.PDF ou .DOCX). O sistema audita nos 5 Eixos Obrigatórios, corrige o arquivo original marcando o erro em <del class="text-rose-700 font-bold">vermelho tachado</del> e o texto correto em <mark class="bg-yellow-200 px-1 font-bold">amarelo</mark> com <strong>Nota Explicativa apensada no Word</strong>, e baixa simultaneamente o <strong>Documento Corrigido (.DOCX)</strong> e o <strong>Relatório (.PDF)</strong>.
+          Anexe os autos (.PDF ou .DOCX). O sistema aplica as soluções prontas para publicação diretamente no arquivo original (<del class="text-rose-700 font-bold">vermelho tachado</del> para o trecho errado e <mark class="bg-yellow-200 px-1 font-bold">amarelo</mark> para a redação corrigida), apensa a <strong>Nota Técnica Revisionada e Parecer Jurídico</strong> com cabeçalho padrão da Marinha do Brasil e baixa simultaneamente o <strong>Documento Corrigido (.DOCX)</strong> e o <strong>Parecer (.PDF)</strong>.
         </p>
       </div>
       <div id="ragTopActions" class="hidden flex flex-wrap items-center gap-2.5">
         <button id="btnDownloadRelatorioTop" onclick="downloadDespachoSaneamentoBoth()" class="bg-[#1b365d] hover:bg-[#152840] text-white font-black px-4 py-2.5 rounded-xl text-xs shadow-md transition flex items-center gap-2 border border-[#c5a365]/50">
-          <span>✨</span> Baixar Documento Corrigido (.DOCX c/ Nota Explicativa) + Relatório (.PDF)
+          <span>✨</span> Baixar Documento Corrigido (.DOCX) + Nota Técnica e Parecer (.PDF)
         </button>
         <button onclick="resetRAGUpload()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3.5 py-2.5 rounded-xl text-xs border border-slate-300 transition flex items-center gap-1.5">
           <span>🔄</span> Novo Arquivo
@@ -3921,7 +3921,7 @@
       const acts = document.getElementById("ragTopActions");
       if (acts) acts.classList.add("hidden");
       const tEl = document.getElementById("ragViewDocTitle");
-      if (tEl) tEl.textContent = "Auditor Jurídico Preventivo & Checklist de Saneamento (Lei nº 14.133/2021, AGU & TCU)";
+      if (tEl) tEl.textContent = "Nota Técnica Revisionada e Parecer Jurídico — Correção Cirúrgica de Minutas (Lei nº 14.133/2021)";
       const fileInput = document.getElementById("fileInputRAG");
       if (fileInput) fileInput.value = "";
     }
@@ -4411,23 +4411,23 @@
       }));
 
       const tEl = document.getElementById("ragViewDocTitle");
-      if (tEl) tEl.textContent = "Checklist Detalhado de Conformidade Normativa e Saneamento Processual";
+      if (tEl) tEl.textContent = "Nota Técnica Revisionada e Parecer Jurídico (Documento Pronto para Publicação)";
 
-      // Garante que window.lastDeepAuditData esteja sempre populado para exibição e download simultâneo PDF + Word
+      // Garante que window.lastDeepAuditData esteja sempre populado para exibição e download simultâneo DOCX Corrigido + PDF
       if (!window.lastDeepAuditData || !Array.isArray(window.lastDeepAuditData.achados) || window.lastDeepAuditData.achados.length === 0) {
         window.lastDeepAuditData = {
           status: "SUCCESS",
           metadados_processo: {
             numero_processo: fileName || "Processo Administrativo",
             modalidade_fundamento: "Lei nº 14.133/2021",
-            uasg_orgao: (document.getElementById("userGlobalOrgName")?.value || "MARINHA DO BRASIL").trim(),
+            uasg_orgao: (document.getElementById("userGlobalOrgName")?.value || "MARINHA DO BRASIL • CAPITANIA FLUVIAL DE JUAZEIRO").trim(),
             valor_total_estimado: "Conforme autos",
             objeto_contratacao: state.docTitle || "Conforme Termo de Referência",
             artefatos_analisados: fileName || "Autos do Processo"
           },
           parecer_preventivo: {
-            veredito: "RECOMENDAÇÃO DE SUSTAÇÃO ANTES DA PUBLICAÇÃO NO PNCP / COMPRAS.GOV.BR",
-            resumo_executivo: `Foram identificados ${state.findings.length} apontamento(s) nos autos analisados. Recomenda-se o saneamento integral das pendências antes da publicação no PNCP / Compras.gov.br.`
+            veredito: "SANEAMENTO INTEGRAL APLICADO — DOCUMENTO REVISADO E PRONTO PARA PUBLICAÇÃO APÓS CONFERÊNCIA FINAL",
+            resumo_executivo: `Foram identificados e tratados ${state.findings.length} apontamento(s) nos autos analisados, com redação saneadora pronta para publicação no PNCP / Compras.gov.br.`
           },
           achados: (rawFindings || []).map((f, i) => ({
             id: f.id || `N-${String(i + 1).padStart(2, "0")}`,
@@ -4439,10 +4439,11 @@
             base_legal: f.legal_foundation || "Lei nº 14.133/2021",
             extrato_norma: f.extrato_norma || "",
             acao_corretiva: f.acao_corretiva || f.texto_apos_correcao || f.suggested_text || "",
-            setor_responsavel: f.setor_responsavel || "Subseção de Intendência"
+            texto_minuta: f.texto_minuta || f.texto_apos_correcao || f.suggested_text || f.acao_corretiva || ""
           })),
           divergencias_catmat: [],
-          roteiro_saneamento: []
+          roteiro_saneamento: [],
+          minutas_complementares: []
         };
       }
 
@@ -4450,7 +4451,7 @@
       showRAGEditorView();
       const totalAchados = (window.lastDeepAuditData.achados || []).length;
       showAppNotification(
-        `Auditoria concluída: ${totalAchados} apontamento(s) identificado(s). Use o botão "Baixar Relatório Completo (PDF + Word .DOCX)" para salvar os dois arquivos simultaneamente.`,
+        `Nota Técnica Revisionada e Parecer Jurídico concluídos (${totalAchados} apontamento(s) solucionados). Clique no botão acima para baixar o Documento Corrigido (.DOCX) + Parecer (.PDF) simultaneamente.`,
         "success"
       );
     }
@@ -4554,6 +4555,15 @@
       return `<span class="inline-block px-2.5 py-1 rounded font-black text-[11px] bg-[#ffedd5] text-[#9a3412]">ALTA</span>`;
     }
 
+    function _parseNavyHeaderLines(omRaw) {
+      const cleaned = String(omRaw || "").trim();
+      if (!cleaned) return { force: "MARINHA DO BRASIL", om: "CAPITANIA FLUVIAL DE JUAZEIRO" };
+      const parts = cleaned.split(/[•|\-—]/).map(p => p.trim()).filter(Boolean);
+      const subParts = parts.filter(p => !/^MARINHA\s+DO\s+BRASIL$/i.test(p));
+      const omLine = subParts.length > 0 ? subParts.join(" — ").toUpperCase() : "CAPITANIA FLUVIAL DE JUAZEIRO";
+      return { force: "MARINHA DO BRASIL", om: omLine };
+    }
+
     function renderDeepAuditPanel(deep) {
       const panel = document.getElementById("ragDeepAuditPanel");
       const listEl = document.getElementById("ragDeepFindingsList");
@@ -4566,33 +4576,35 @@
 
       const omName = (document.getElementById("userGlobalOrgName")?.value || "MARINHA DO BRASIL • CAPITANIA FLUVIAL DE JUAZEIRO (UASG 782340)").trim();
       const meta = deep.metadados_processo || {};
+      const navyHeader = _parseNavyHeaderLines(meta.uasg_orgao || omName);
       const parecer = deep.parecer_preventivo || {};
       const achados = deep.achados || [];
       const catmatList = Array.isArray(deep.divergencias_catmat) ? deep.divergencias_catmat : [];
       const roteiro = Array.isArray(deep.roteiro_saneamento) ? deep.roteiro_saneamento : [];
-      const vereditoText = String(parecer.veredito || "RECOMENDAÇÃO DE SUSTAÇÃO ANTES DA PUBLICAÇÃO NO PNCP / COMPRAS.GOV.BR").replace(/_/g, " ");
+      const minutasComp = Array.isArray(deep.minutas_complementares) ? deep.minutas_complementares : [];
+      const vereditoText = String(parecer.veredito || "SANEAMENTO INTEGRAL APLICADO — CONFERÊNCIA FINAL ANTES DA PUBLICAÇÃO NO PNCP").replace(/_/g, " ");
 
       const eixosCfg = [
         {
           key: "NORMATIVA",
           resLabel: "1. Inconsistências Normativas (Lei 14.133/2021 e INs)",
-          impact: "Risco de nulidade, entrega de bem errado e violação a INs",
-          secTitle: "1.  CHECKLIST DE INCONSISTÊNCIAS NORMATIVAS (LEI Nº 14.133/2021 E INS)",
-          secSub: "Verificação de aderência à Lei nº 14.133/2021, Lei Complementar nº 123/2006, IN SEGES/ME nº 67/2021 e IN SEGES/ME nº 77/2022."
+          impact: "Soluções normativas aplicadas com fundamento legal expresso",
+          secTitle: "1.  ANÁLISE E SOLUÇÃO DE INCONSISTÊNCIAS NORMATIVAS (LEI Nº 14.133/2021 E INS)",
+          secSub: "Adequação integral à Lei nº 14.133/2021, LC nº 123/2006, IN SEGES/ME nº 65/2021, 67/2021 e 77/2022, com texto-minuta pronto para publicação."
         },
         {
           key: "PROCESSUAL",
           resLabel: "2. Erros Processuais e Instrução (Art. 72 da Lei 14.133/2021)",
-          impact: "Instrução incompleta perante órgãos de controle (TCU/CGU)",
-          secTitle: "2.  CHECKLIST DE ERROS PROCESSUAIS E INSTRUÇÃO (ART. 72 DA LEI Nº 14.133/2021)",
-          secSub: "Verificação da completude documental, cronologia dos atos administrativos e cumprimento dos requisitos obrigatórios de contratação direta."
+          impact: "Peças complementares e saneamento cronológico prontos para juntada",
+          secTitle: "2.  ANÁLISE E SOLUÇÃO DE ERROS PROCESSUAIS E INSTRUÇÃO (ART. 72 DA LEI Nº 14.133/2021)",
+          secSub: "Saneamento da instrução documental, cronologia dos atos administrativos e requisitos obrigatórios do Art. 72 da NLLC."
         },
         {
           key: "CONTRADICAO_INTERNA",
           resLabel: "3. Contradições Internas e Revisão Redacional",
-          impact: "Insegurança jurídica na disputa, sanções e execução contratual",
-          secTitle: "3.  CHECKLIST DE CONTRADIÇÕES INTERNAS E REVISÃO REDACIONAL",
-          secSub: "Ajustes necessários para eliminar conflitos entre documentos, cláusulas impertinentes oriundas de modelos-padrão e erros de digitação."
+          impact: "Cláusulas harmonizadas, seção renumerada e ortografia corrigida",
+          secTitle: "3.  ANÁLISE E SOLUÇÃO DE CONTRADIÇÕES INTERNAS E REVISÃO REDACIONAL",
+          secSub: "Eliminação de conflitos entre artefatos, preenchimento automático de lacunas, renumeração sequencial e revisão gramatical."
         }
       ];
 
@@ -4626,11 +4638,12 @@
           const showTitle = titErro && !descErro.toLowerCase().includes(titErro.toLowerCase());
           const baseLegal = String(a.base_legal || "Lei nº 14.133/2021").trim();
           const extrato = String(a.extrato_norma || "").trim();
-          const acao = String(a.acao_corretiva || a.texto_apos_correcao || "").trim();
+          const acao = String(a.acao_corretiva || "").trim();
+          const textoMinuta = String(a.texto_minuta || a.texto_apos_correcao || acao || "").trim();
           return `
             <tr class="${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'} border-b border-slate-200 align-top">
               <td class="p-2.5 text-center font-black text-[#1b365d] whitespace-nowrap">${escapeHtml(a.id || ("A-" + (idx + 1)))}</td>
-              <td class="p-2.5 text-center text-sm">☐</td>
+              <td class="p-2.5 text-center text-sm text-emerald-700 font-bold" title="Solução aplicada">☑</td>
               <td class="p-2.5 font-semibold text-slate-800 whitespace-pre-line">${escapeHtml(a.localizacao || "Autos")}</td>
               <td class="p-2.5 text-slate-800 leading-relaxed">
                 ${showTitle ? `<div class="font-bold text-slate-900 mb-0.5">${escapeHtml(titErro)}</div>` : ""}
@@ -4641,7 +4654,7 @@
                 ${extrato ? `<div class="mt-1 pl-2 border-l-2 border-slate-300 text-[11px] italic text-slate-600">${escapeHtml(extrato)}</div>` : ""}
               </td>
               <td class="p-2.5 text-slate-800 leading-relaxed">${escapeHtml(acao)}</td>
-              <td class="p-2.5 font-semibold text-slate-700">${escapeHtml(a.setor_responsavel || "Subseção de Intendência")}</td>
+              <td class="p-2.5 bg-amber-50/80 border-l-2 border-amber-300 text-slate-900 leading-relaxed whitespace-pre-line font-medium">${escapeHtml(textoMinuta)}</td>
               <td class="p-2.5 text-center">${_formatPriorityBadgeHtml(a.criticidade)}</td>
             </tr>
           `;
@@ -4659,7 +4672,7 @@
                     <th class="p-2.5 text-center w-32">CATMAT Atual</th>
                     <th class="p-2.5">Descrição Puxada no DFD (Catálogo)</th>
                     <th class="p-2.5 text-center w-36">Unidade (DFD vs. TR)</th>
-                    <th class="p-2.5">Correção Necessária</th>
+                    <th class="p-2.5">Correção Aplicada / Solução</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -4670,7 +4683,7 @@
                       <td class="p-2.5 text-center font-mono font-black text-rose-700">${escapeHtml(dc.catmat_atual || "")}</td>
                       <td class="p-2.5 text-slate-700">${escapeHtml(dc.descricao_dfd_catalogo || "")}</td>
                       <td class="p-2.5 text-center font-bold text-slate-800">${escapeHtml(dc.unidade_dfd_vs_tr || "")}</td>
-                      <td class="p-2.5 text-slate-900 font-medium">${escapeHtml(dc.correcao_necessaria || "")}</td>
+                      <td class="p-2.5 bg-amber-50/60 text-slate-900 font-medium">${escapeHtml(dc.correcao_necessaria || "")}</td>
                     </tr>
                   `).join("")}
                 </tbody>
@@ -4691,11 +4704,11 @@
                   <tr>
                     <th class="p-2.5 text-center w-14">ID</th>
                     <th class="p-2.5 text-center w-10">OK</th>
-                    <th class="p-2.5 w-36">Artefato(s)</th>
-                    <th class="p-2.5 w-1/4">Inconsistência Identificada</th>
-                    <th class="p-2.5 w-1/5">Fundamentação Legal</th>
-                    <th class="p-2.5 w-1/4">Ação Corretiva Recomendada</th>
-                    <th class="p-2.5 w-32">Responsável</th>
+                    <th class="p-2.5 w-32">Artefato(s)</th>
+                    <th class="p-2.5 w-1/5">Inconsistência Identificada</th>
+                    <th class="p-2.5 w-1/6">Fundamentação Legal</th>
+                    <th class="p-2.5 w-1/6">Ação Corretiva</th>
+                    <th class="p-2.5 w-1/4 bg-[#244778]">Texto-Minuta Pronto para Publicação (Solução Aplicada)</th>
                     <th class="p-2.5 text-center w-24">Prioridade</th>
                   </tr>
                 </thead>
@@ -4710,8 +4723,8 @@
       const roteiroTableHtml = roteiro.length > 0 ? `
         <div class="space-y-2 pt-2">
           <div>
-            <h3 class="text-sm font-black text-[#1b365d] uppercase">4.  ROTEIRO SEQUENCIAL RECOMENDADO PARA SANEAMENTO</h3>
-            <p class="text-xs italic text-slate-600">Ordem cronológica correta para reemissão e assinatura dos documentos, garantindo integridade procedimental.</p>
+            <h3 class="text-sm font-black text-[#1b365d] uppercase">4.  ROTEIRO SEQUENCIAL PARA ASSINATURA E PUBLICAÇÃO NO PNCP</h3>
+            <p class="text-xs italic text-slate-600">Ordem cronológica correta para assinatura dos artefatos já saneados e divulgação no Compras.gov.br / PNCP.</p>
           </div>
           <div class="overflow-x-auto border border-slate-300 rounded-xl">
             <table class="w-full text-left border-collapse text-xs">
@@ -4719,9 +4732,9 @@
                 <tr>
                   <th class="p-2.5 text-center w-24">Etapa</th>
                   <th class="p-2.5 text-center w-10">OK</th>
-                  <th class="p-2.5">Atividade de Saneamento</th>
-                  <th class="p-2.5 w-56">Itens do Checklist Atendidos</th>
-                  <th class="p-2.5 w-52">Setor Executor</th>
+                  <th class="p-2.5">Atividade / Providência Final</th>
+                  <th class="p-2.5 w-52">Apontamentos Atendidos</th>
+                  <th class="p-2.5 w-60">Artefato / Peça Pronta</th>
                 </tr>
               </thead>
               <tbody>
@@ -4733,7 +4746,7 @@
                       <td class="p-2.5 text-center text-sm">☐</td>
                       <td class="p-2.5 text-slate-800 leading-relaxed">${escapeHtml(isObj ? (s.atividade || "") : String(s))}</td>
                       <td class="p-2.5 font-semibold text-slate-700">${escapeHtml(isObj ? (s.itens_atendidos || "—") : "—")}</td>
-                      <td class="p-2.5 font-semibold text-slate-800">${escapeHtml(isObj ? (s.setor_executor || "Subseção de Intendência") : "Setor Competente")}</td>
+                      <td class="p-2.5 font-semibold text-[#1b365d]">${escapeHtml(isObj ? (s.artefato_pronto || s.setor_executor || "Documento Saneado") : "Documento Saneado")}</td>
                     </tr>
                   `;
                 }).join("")}
@@ -4743,12 +4756,42 @@
         </div>
       ` : "";
 
+      const minutasExpandidasHtml = minutasComp.length > 0 ? `
+        <div class="space-y-3 pt-2">
+          <div>
+            <h3 class="text-sm font-black text-[#1b365d] uppercase">5.  MINUTAS EXPANDIDAS E PEÇAS SANEADORAS PRONTAS PARA ASSINATURA E JUNTADA AOS AUTOS</h3>
+            <p class="text-xs italic text-slate-600">Redações completas construídas com base nos textos-minuta e na legislação federal (Lei nº 14.133/2021, LRF, LC nº 123/2006, INs SEGES/ME e ON AGU nº 69/2021), já incluídas na íntegra no arquivo Word (.DOCX) baixado.</p>
+          </div>
+          <div class="space-y-3">
+            ${minutasComp.map((m, mIdx) => `
+              <div class="border border-slate-300 rounded-xl overflow-hidden shadow-xs">
+                <div class="bg-[#1b365d] text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+                  <span class="text-xs font-black tracking-wide uppercase">${escapeHtml(m.id || ("MINUTA-0" + (mIdx + 1)))} — ${escapeHtml(m.titulo || "Peça Saneadora")}</span>
+                  <span class="text-[10px] font-bold bg-[#c5a365]/25 text-[#f5d07d] px-2 py-0.5 rounded border border-[#c5a365]/40">Pronta para Assinatura</span>
+                </div>
+                ${m.fundamentacao ? `<div class="bg-slate-100 px-4 py-1.5 text-[11px] font-semibold text-[#1b365d] border-b border-slate-200">Base Legal: ${escapeHtml(m.fundamentacao)}</div>` : ""}
+                <div class="p-4 bg-amber-50/55 text-xs text-slate-900 leading-relaxed whitespace-pre-line font-medium">${escapeHtml(m.texto_pronto || "")}</div>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      ` : "";
+
+      const secTermoNum = minutasComp.length > 0 ? "6" : "5";
+
       listEl.innerHTML = `
-        <!-- TABELA 0: BANNER INSTITUCIONAL -->
-        <div class="rounded-t-xl bg-[#1b365d] text-white p-4 text-center space-y-1 border border-[#1b365d]">
-          <div class="text-xs md:text-sm font-black tracking-wide uppercase">${escapeHtml(omName)}</div>
-          <div class="text-xs md:text-sm font-black text-[#f5d07d] uppercase">CHECKLIST DETALHADO DE CONFORMIDADE NORMATIVA E SANEAMENTO PROCESSUAL</div>
-          <div class="text-[11px] text-blue-100">Análise Preventiva de Dispensa de Licitação Eletrônica — Lei nº 14.133/2021, IN SEGES/ME nº 67/2021, IN SEGES/ME nº 65/2021 e IN SEGES/ME nº 77/2022</div>
+        <!-- CABEÇALHO INSTITUCIONAL PADRÃO DA MARINHA DO BRASIL -->
+        <div class="rounded-t-xl bg-white border border-slate-300 pt-5 pb-4 px-6 text-center space-y-1.5">
+          <img src="/brasao_oficial.png" alt="Brasão da República Federativa do Brasil" class="w-16 h-16 mx-auto object-contain" onerror="this.style.display='none'" />
+          <div class="text-sm md:text-base font-black tracking-widest text-[#1b365d] uppercase">${escapeHtml(navyHeader.force)}</div>
+          <div class="text-xs md:text-sm font-extrabold tracking-wide text-slate-800 uppercase">${escapeHtml(navyHeader.om)}</div>
+          <div class="w-48 h-0.5 bg-[#c5a365] mx-auto my-2"></div>
+        </div>
+
+        <!-- BANNER DO TÍTULO DA NOTA TÉCNICA REVISIONADA E PARECER JURÍDICO -->
+        <div class="bg-[#1b365d] text-white py-3.5 px-4 text-center space-y-1 border-x border-[#1b365d] -mt-5">
+          <div class="text-sm md:text-base font-black text-[#f5d07d] tracking-wide uppercase">NOTA TÉCNICA REVISIONADA E PARECER JURÍDICO</div>
+          <div class="text-[11px] text-blue-100">Revisão Preventiva, Saneamento Integral e Textos-Minuta Prontos para Publicação — Lei nº 14.133/2021, LC nº 123/2006, INs SEGES/ME e AGU/TCU</div>
         </div>
 
         <!-- TABELA 1: METADADOS DO PROCESSO -->
@@ -4762,7 +4805,7 @@
                 <td class="p-2.5 bg-white text-slate-900">${escapeHtml(meta.modalidade_fundamento || "Dispensa Eletrônica — Art. 75, II, Lei nº 14.133/2021")}</td>
               </tr>
               <tr class="border-b border-slate-300">
-                <td class="p-2.5 bg-slate-100 font-bold text-[#1b365d]">Unidade Gestora (UASG):</td>
+                <td class="p-2.5 bg-slate-100 font-bold text-[#1b365d]">Organização Militar / UASG:</td>
                 <td class="p-2.5 bg-white text-slate-900">${escapeHtml(meta.uasg_orgao || omName)}</td>
                 <td class="p-2.5 bg-slate-100 font-bold text-[#1b365d]">Valor Total Estimado:</td>
                 <td class="p-2.5 bg-white text-slate-900 font-semibold">${escapeHtml(meta.valor_total_estimado || "Conforme autos")}</td>
@@ -4777,17 +4820,17 @@
           </table>
         </div>
 
-        <!-- TABELA 2: PARECER PREVENTIVO -->
+        <!-- TABELA 2: PARECER JURÍDICO CONCLUSIVO -->
         <div class="p-4 rounded-b-xl bg-[#fef2f2] border border-rose-300 -mt-5 space-y-1">
-          <div class="text-xs font-black text-[#991b1b] uppercase">PARECER PREVENTIVO — ${escapeHtml(vereditoText)}</div>
+          <div class="text-xs font-black text-[#991b1b] uppercase">CONCLUSÃO DO PARECER JURÍDICO — ${escapeHtml(vereditoText)}</div>
           <p class="text-xs text-slate-800 leading-relaxed">${escapeHtml(parecer.resumo_executivo || "")}</p>
         </div>
 
         <!-- SEÇÃO 0: PAINEL RESUMO DE APONTAMENTOS -->
         <div class="space-y-2 pt-1">
           <div>
-            <h3 class="text-sm font-black text-[#1b365d] uppercase">0.  PAINEL RESUMO DE APONTAMENTOS</h3>
-            <p class="text-xs italic text-slate-600">Visão consolidada das inconsistências identificadas por eixo de auditoria e nível de criticidade.</p>
+            <h3 class="text-sm font-black text-[#1b365d] uppercase">0.  QUADRO SINTÉTICO DOS APONTAMENTOS E SOLUÇÕES APLICADAS</h3>
+            <p class="text-xs italic text-slate-600">Visão consolidada das inconsistências identificadas e automaticamente solucionadas por eixo normativo e nível de criticidade.</p>
           </div>
           <div class="overflow-x-auto border border-slate-300 rounded-xl">
             <table class="w-full text-left border-collapse text-xs">
@@ -4799,19 +4842,19 @@
                   <th class="p-2.5 text-center w-20">Média</th>
                   <th class="p-2.5 text-center w-20">Baixa</th>
                   <th class="p-2.5 text-center w-20">Total</th>
-                  <th class="p-2.5">Impacto Principal</th>
+                  <th class="p-2.5">Escopo da Solução Aplicada</th>
                 </tr>
               </thead>
               <tbody>
                 ${resumoRowsHtml}
                 <tr class="bg-slate-100 font-black text-[#1b365d]">
-                  <td class="p-2.5">TOTAL GERAL DE APONTAMENTOS</td>
+                  <td class="p-2.5">TOTAL GERAL DE APONTAMENTOS SOLUCIONADOS</td>
                   <td class="p-2.5 text-center">${totC}</td>
                   <td class="p-2.5 text-center">${totA}</td>
                   <td class="p-2.5 text-center">${totM}</td>
                   <td class="p-2.5 text-center">${totB}</td>
                   <td class="p-2.5 text-center">${achados.length}</td>
-                  <td class="p-2.5">Saneamento obrigatório prévio à divulgação no PNCP</td>
+                  <td class="p-2.5">Documento revisado pronto para conferência final e publicação no PNCP</td>
                 </tr>
               </tbody>
             </table>
@@ -4824,19 +4867,22 @@
         <!-- SEÇÃO 4: ROTEIRO SEQUENCIAL -->
         ${roteiroTableHtml}
 
-        <!-- SEÇÃO 5: TERMO DE CONFERÊNCIA E ATESTE DE SANEAMENTO -->
+        <!-- SEÇÃO 5: MINUTAS EXPANDIDAS E PEÇAS SANEADORAS PRONTAS -->
+        ${minutasExpandidasHtml}
+
+        <!-- SEÇÃO ${secTermoNum}: TERMO DE CONFERÊNCIA, APROVAÇÃO E ATESTE PARA PUBLICAÇÃO -->
         <div class="space-y-2 pt-2">
           <div>
-            <h3 class="text-sm font-black text-[#1b365d] uppercase">5.  TERMO DE CONFERÊNCIA E ATESTE DE SANEAMENTO</h3>
-            <p class="text-xs italic text-slate-600">Registro formal de verificação prévia à divulgação do Aviso de Contratação Direta no Portal Nacional de Contratações Públicas (PNCP).</p>
+            <h3 class="text-sm font-black text-[#1b365d] uppercase">${secTermoNum}.  TERMO DE CONFERÊNCIA, APROVAÇÃO E ATESTE PARA PUBLICAÇÃO NO PNCP</h3>
+            <p class="text-xs italic text-slate-600">Ateste formal de conferência do documento saneado e das peças complementares antes da divulgação no Portal Nacional de Contratações Públicas (PNCP).</p>
           </div>
           <div class="overflow-x-auto border border-slate-300 rounded-xl">
             <table class="w-full text-center border-collapse text-xs">
               <thead class="bg-slate-100 text-[#1b365d] font-bold border-b border-slate-300">
                 <tr>
-                  <th class="p-3 border-r border-slate-300 w-1/3">SETOR REQUISITANTE<br/><span class="font-normal text-[11px] text-slate-600">(Divisão de Segurança do Tráfego Aquaviário)</span></th>
+                  <th class="p-3 border-r border-slate-300 w-1/3">SETOR REQUISITANTE<br/><span class="font-normal text-[11px] text-slate-600">(Conferência Técnica e CATMAT)</span></th>
                   <th class="p-3 border-r border-slate-300 w-1/3">SUBSEÇÃO DE INTENDÊNCIA<br/><span class="font-normal text-[11px] text-slate-600">(Agente de Contratação / Licitações)</span></th>
-                  <th class="p-3 w-1/3">AUTORIDADE COMPETENTE<br/><span class="font-normal text-[11px] text-slate-600">(Ordenador de Despesas — CFJ)</span></th>
+                  <th class="p-3 w-1/3">AUTORIDADE COMPETENTE<br/><span class="font-normal text-[11px] text-slate-600">(Ordenador de Despesas)</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -4859,7 +4905,7 @@
         return;
       }
       const btn = document.getElementById("btnDownloadRelatorioTop");
-      if (btn) { btn.disabled = true; btn.innerHTML = "<span>⏳</span> Corrigindo Documento (.DOCX) e Gerando Relatório (.PDF)..."; }
+      if (btn) { btn.disabled = true; btn.innerHTML = "<span>⏳</span> Aplicando Soluções (.DOCX) e Gerando Nota Técnica (.PDF)..."; }
       try {
         const omName = (document.getElementById("userGlobalOrgName")?.value || "MARINHA DO BRASIL  •  CAPITANIA FLUVIAL DE JUAZEIRO (UASG 782340)").trim();
         const procNum = String((deep.metadados_processo || {}).numero_processo || window.lastDeepAuditFilename || "Processo").replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -4872,7 +4918,8 @@
           parecer_preventivo: deep.parecer_preventivo || {},
           achados: deep.achados || [],
           divergencias_catmat: deep.divergencias_catmat || [],
-          roteiro_saneamento: deep.roteiro_saneamento || []
+          roteiro_saneamento: deep.roteiro_saneamento || [],
+          minutas_complementares: deep.minutas_complementares || []
         };
 
         const correctedDocxPayload = {
@@ -4891,12 +4938,12 @@
           {
             path: "/api/v1/rag/export-corrected-docx-with-nota",
             body: correctedDocxPayload,
-            fname: `${baseFile}_CORRIGIDO_Com_Nota_Explicativa.docx`
+            fname: `${baseFile}_CORRIGIDO_Nota_Tecnica_e_Parecer_Juridico.docx`
           },
           {
             path: "/api/v1/rag/despacho-saneamento/pdf",
             body: checklistPayload,
-            fname: `Checklist_Saneamento_${procNum}.pdf`
+            fname: `Nota_Tecnica_Revisionada_e_Parecer_Juridico_${procNum}.pdf`
           }
         ];
 
@@ -4917,11 +4964,11 @@
           a.remove();
           setTimeout(() => URL.revokeObjectURL(url), 10000);
         }
-        showAppNotification("Documento Corrigido (.DOCX com Vermelho Tachado, Amarelo e Nota Explicativa) + Relatório (.PDF) baixados simultaneamente!", "success");
+        showAppNotification("Documento Corrigido (.DOCX com Nota Técnica Revisionada e Parecer Jurídico) + Parecer (.PDF) baixados simultaneamente!", "success");
       } catch (err) {
         showAppNotification("Erro ao gerar arquivos: " + (err.message || err), "error");
       } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = "<span>✨</span> Baixar Documento Corrigido (.DOCX c/ Nota Explicativa) + Relatório (.PDF)"; }
+        if (btn) { btn.disabled = false; btn.innerHTML = "<span>✨</span> Baixar Documento Corrigido (.DOCX) + Nota Técnica e Parecer (.PDF)"; }
       }
     }
 

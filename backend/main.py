@@ -2056,20 +2056,20 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                     self._send_binary(
                         content,
                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        "Despacho_Saneamento_Auditoria_NLLC.docx",
+                        "Nota_Tecnica_Revisionada_e_Parecer_Juridico.docx",
                     )
                 else:
                     content = build_despacho_saneamento_pdf_bytes(data)
                     self._send_binary(
                         content,
                         "application/pdf",
-                        "Despacho_Saneamento_Auditoria_NLLC.pdf",
+                        "Nota_Tecnica_Revisionada_e_Parecer_Juridico.pdf",
                     )
             except Exception as exc:
-                self._send_json(500, {"error": f"Falha ao gerar Despacho de Saneamento: {exc}"})
+                self._send_json(500, {"error": f"Falha ao gerar Nota Técnica Revisionada e Parecer Jurídico: {exc}"})
             return
 
-        # 1C. Exportar Documento Original CORRIGIDO em Word (.DOCX) com Vermelho Tachado + Amarelo + Nota Explicativa Apensada
+        # 1C. Exportar Documento Original CORRIGIDO em Word (.DOCX) com Vermelho Tachado + Amarelo + Nota Técnica Revisionada e Parecer Jurídico
         if parsed.path == "/api/v1/rag/export-corrected-docx-with-nota":
             try:
                 data = json.loads(raw_body)
@@ -2102,10 +2102,10 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 self._send_binary(
                     out_bytes,
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    f"{safe_title}_CORRIGIDO_Com_Nota_Explicativa.docx",
+                    f"{safe_title}_CORRIGIDO_Nota_Tecnica_e_Parecer_Juridico.docx",
                 )
             except Exception as exc:
-                self._send_json(500, {"error": f"Falha ao gerar Documento Corrigido com Nota Explicativa: {exc}"})
+                self._send_json(500, {"error": f"Falha ao gerar Documento Corrigido com Nota Técnica e Parecer Jurídico: {exc}"})
             return
 
         # 2. Exportar Documento Word (.DOCX) — Preservação 100% da Diagramação Original + Amarelo/Vermelho Tachado
