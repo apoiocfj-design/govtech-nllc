@@ -1156,10 +1156,10 @@
             onchange="executeIRPSearch(1)"
             class="w-full py-2 px-2.5 text-xs font-bold rounded-xl border border-slate-300 bg-white focus:border-[#c5a365] outline-none text-slate-700"
           >
-            <option value="aberta" selected>🟢 IRPs Abertas para Manifestação</option>
-            <option value="em_andamento">🟡 IRPs Em Andamento / Divulgadas</option>
-            <option value="todas">⚪ Todas as IRPs no PNCP</option>
+            <option value="aberta" selected>🟢 IRPs & Oportunidades SRP na UF</option>
             <option value="srp_edital">📜 Editais & Pregões SRP (Recebendo Propostas)</option>
+            <option value="ata_vigente">🤝 Atas SRP Vigentes (Adesão / Carona)</option>
+            <option value="todas">⚪ Todas as IRPs no PNCP</option>
           </select>
         </div>
 
@@ -1170,33 +1170,33 @@
             onchange="executeIRPSearch(1)"
             class="w-full py-2 px-2.5 text-xs font-bold rounded-xl border border-slate-300 bg-white focus:border-[#c5a365] outline-none text-slate-700"
           >
-            <option value="">Todas as UFs</option>
-            <option value="RJ">RJ - Rio de Janeiro</option>
-            <option value="DF">DF - Distrito Federal</option>
-            <option value="SP">SP - São Paulo</option>
-            <option value="MG">MG - Minas Gerais</option>
-            <option value="RS">RS - Rio Grande do Sul</option>
-            <option value="PR">PR - Paraná</option>
-            <option value="SC">SC - Santa Catarina</option>
+            <option value="">🌎 Todas as UFs (Brasil)</option>
+            <option value="AC">AC - Acre</option>
+            <option value="AL">AL - Alagoas</option>
+            <option value="AM">AM - Amazonas</option>
+            <option value="AP">AP - Amapá</option>
             <option value="BA">BA - Bahia</option>
-            <option value="PE">PE - Pernambuco</option>
             <option value="CE">CE - Ceará</option>
+            <option value="DF">DF - Distrito Federal</option>
+            <option value="ES">ES - Espírito Santo</option>
+            <option value="GO">GO - Goiás</option>
+            <option value="MA">MA - Maranhão</option>
+            <option value="MG">MG - Minas Gerais</option>
             <option value="MS">MS - Mato Grosso do Sul</option>
             <option value="MT">MT - Mato Grosso</option>
-            <option value="GO">GO - Goiás</option>
-            <option value="ES">ES - Espírito Santo</option>
             <option value="PA">PA - Pará</option>
-            <option value="AM">AM - Amazonas</option>
-            <option value="RN">RN - Rio Grande do Norte</option>
             <option value="PB">PB - Paraíba</option>
-            <option value="AL">AL - Alagoas</option>
-            <option value="SE">SE - Sergipe</option>
+            <option value="PE">PE - Pernambuco</option>
             <option value="PI">PI - Piauí</option>
-            <option value="MA">MA - Maranhão</option>
+            <option value="PR">PR - Paraná</option>
+            <option value="RJ">RJ - Rio de Janeiro</option>
+            <option value="RN">RN - Rio Grande do Norte</option>
             <option value="RO">RO - Rondônia</option>
-            <option value="AC">AC - Acre</option>
-            <option value="AP">AP - Amapá</option>
             <option value="RR">RR - Roraima</option>
+            <option value="RS">RS - Rio Grande do Sul</option>
+            <option value="SC">SC - Santa Catarina</option>
+            <option value="SE">SE - Sergipe</option>
+            <option value="SP">SP - São Paulo</option>
             <option value="TO">TO - Tocantins</option>
           </select>
         </div>
@@ -1214,7 +1214,7 @@
 
       <!-- Atalhos de Busca Rápida -->
       <div class="flex flex-wrap items-center gap-1.5 pt-1 text-[11px] text-slate-500">
-        <span class="font-bold text-slate-400">Atalhos:</span>
+        <span class="font-bold text-slate-400">Atalhos Objeto:</span>
         <button onclick="setIRPTermAndSearch('veículos')" class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-200 transition">🚗 Veículos</button>
         <button onclick="setIRPTermAndSearch('limpeza')" class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-200 transition">🧹 Limpeza</button>
         <button onclick="setIRPTermAndSearch('computador')" class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-200 transition">💻 Informática / TI</button>
@@ -1223,6 +1223,24 @@
         <button onclick="setIRPTermAndSearch('alimentação')" class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-200 transition">🍎 Gêneros Alimentícios</button>
         <button onclick="setIRPTermAndSearch('pneu')" class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-200 transition">🛞 Pneus</button>
         <button onclick="setIRPTermAndSearch('')" class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-500 font-semibold border border-slate-200 transition">✖️ Limpar Termo</button>
+      </div>
+      <div class="flex flex-wrap items-center gap-1 pt-1 text-[10px] text-slate-500 border-t border-slate-100">
+        <span class="font-bold text-slate-400 mr-1">UFs Rápidas:</span>
+        <button onclick="setIRPUfAndSearch('')" class="px-2 py-0.5 rounded bg-slate-100 hover:bg-[#1e2d3d] hover:text-white font-bold border border-slate-200 transition">Todas</button>
+        <button onclick="setIRPUfAndSearch('RJ')" class="px-2 py-0.5 rounded bg-slate-100 hover:bg-[#1e2d3d] hover:text-white font-bold border border-slate-200 transition">RJ</button>
+        <button onclick="setIRPUfAndSearch('DF')" class="px-2 py-0.5 rounded bg-slate-100 hover:bg-[#1e2d3d] hover:text-white font-bold border border-slate-200 transition">DF</button>
+        <button onclick="setIRPUfAndSearch('SP')" class="px-2 py-0.5 rounded bg-slate-100 hover:bg-[#1e2d3d] hover:text-white font-bold border border-slate-200 transition">SP</button>
+        <button onclick="setIRPUfAndSearch('MG')" class="px-2 py-0.5 rounded bg-slate-100 hover:bg-[#1e2d3d] hover:text-white font-bold border border-slate-200 transition">MG</button>
+        <button onclick="setIRPUfAndSearch('BA')" class="px-2 py-0.5 rounded bg-slate-100 hover:bg-[#1e2d3d] hover:text-white font-bold border border-slate-200 transition">BA</button>
+        <button onclick="setIRPUfAndSearch('RS')" class="px-2 py-0.5 rounded bg-slate-100 hover:bg-[#1e2d3d] hover:text-white font-bold border border-slate-200 transition">RS</button>
+        <button onclick="setIRPUfAndSearch('PR')" class="px-2 py-0.5 rounded bg-slate-100 hover:bg-[#1e2d3d] hover:text-white font-bold border border-slate-200 transition">PR</button>
+        <button onclick="setIRPUfAndSearch('SC')" class="px-2 py-0.5 rounded bg-slate-100 hover:bg-[#1e2d3d] hover:text-white font-bold border border-slate-200 transition">SC</button>
+        <button onclick="setIRPUfAndSearch('PE')" class="px-2 py-0.5 rounded bg-slate-100 hover:bg-[#1e2d3d] hover:text-white font-bold border border-slate-200 transition">PE</button>
+        <button onclick="setIRPUfAndSearch('CE')" class="px-2 py-0.5 rounded bg-slate-100 hover:bg-[#1e2d3d] hover:text-white font-bold border border-slate-200 transition">CE</button>
+        <button onclick="setIRPUfAndSearch('GO')" class="px-2 py-0.5 rounded bg-slate-100 hover:bg-[#1e2d3d] hover:text-white font-bold border border-slate-200 transition">GO</button>
+        <button onclick="setIRPUfAndSearch('MS')" class="px-2 py-0.5 rounded bg-slate-100 hover:bg-[#1e2d3d] hover:text-white font-bold border border-slate-200 transition">MS</button>
+        <button onclick="setIRPUfAndSearch('PA')" class="px-2 py-0.5 rounded bg-slate-100 hover:bg-[#1e2d3d] hover:text-white font-bold border border-slate-200 transition">PA</button>
+        <button onclick="setIRPUfAndSearch('AM')" class="px-2 py-0.5 rounded bg-slate-100 hover:bg-[#1e2d3d] hover:text-white font-bold border border-slate-200 transition">AM</button>
       </div>
     </div>
 
@@ -1322,9 +1340,16 @@
 
         <!-- Seção de Itens da IRP -->
         <div class="space-y-2">
-          <div class="flex items-center justify-between font-black text-[#1e2d3d]">
-            <span>📋 Itens Previstos na IRP (<span id="modalIrpItemsCount">0</span> itens)</span>
-            <span class="text-[10px] font-normal text-slate-500">Clique em "Importar" para enviar o item para o seu lote de pesquisa</span>
+          <div class="flex flex-wrap items-center justify-between gap-2 font-black text-[#1e2d3d]">
+            <span>📋 Itens Previstos no Registro de Preços (<span id="modalIrpItemsCount">0</span> itens)</span>
+            <button
+              id="btnImportAllIrpItems"
+              onclick="importAllIrpItemsToBatch()"
+              class="px-3 py-1 rounded-lg text-[11px] font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition flex items-center gap-1.5"
+              title="Importar todos os itens desta IRP/Ata para o seu lote de pesquisa de preços"
+            >
+              📥 Importar Todos os Itens para o Lote
+            </button>
           </div>
           <div class="overflow-x-auto rounded-xl border border-slate-200">
             <table class="w-full text-left border-collapse">
@@ -6836,6 +6861,12 @@
       executeIRPSearch(1);
     }
 
+    function setIRPUfAndSearch(ufCode) {
+      const sel = document.getElementById("irpUfSelect");
+      if (sel) sel.value = ufCode || "";
+      executeIRPSearch(1);
+    }
+
     async function loadIRPSearch() {
       hasLoadedIRPOnce = true;
       executeIRPSearch(1);
@@ -6955,23 +6986,28 @@
         }
 
         const orgaoDisplay = escapeHtml(it.orgao_nome || "Órgão Não Informado");
-        const ufDisplay = it.uf ? `<span class="px-1.5 py-0.2 rounded bg-slate-200 text-slate-700 font-bold">${escapeHtml(it.uf)}</span>` : "";
+        const ufDisplay = it.uf ? `<span class="px-1.5 py-0.5 rounded bg-[#1e2d3d] text-amber-300 font-black text-[10px] tracking-wide">${escapeHtml(it.uf)}</span>` : "";
+        const municipioDisplay = it.municipio_nome ? `<span class="text-slate-500 font-medium">(${escapeHtml(it.municipio_nome)})</span>` : "";
         const descDisplay = escapeHtml(it.description || "Sem descrição cadastrada.");
+        const docType = escapeHtml(it.document_type || (it.is_edital ? "edital" : "irp"));
+        const typeTag = it.is_ata
+          ? `<span class="text-xs font-black text-indigo-900 bg-indigo-50 px-2.5 py-0.5 rounded-lg border border-indigo-200">🤝 ${escapeHtml(it.title || ('Ata SRP ' + (it.numero_irp || 'S/N') + '/' + (it.ano_irp || '')))}</span>`
+          : (it.is_edital
+            ? `<span class="text-xs font-black text-sky-900 bg-sky-50 px-2.5 py-0.5 rounded-lg border border-sky-200">📜 ${escapeHtml(it.title || ('Edital SRP ' + (it.numero_irp || 'S/N') + '/' + (it.ano_irp || '')))}</span>`
+            : `<span class="text-xs font-black text-[#1e2d3d] bg-slate-100 px-2.5 py-0.5 rounded-lg border border-slate-200">📡 IRP ${escapeHtml(it.numero_irp || 'S/N')}/${escapeHtml(it.ano_irp || '')}</span>`);
 
         return `
           <div class="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-xs hover:border-[#c5a365]/80 hover:shadow-md transition duration-200 space-y-3">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
               <div class="flex items-center gap-2 flex-wrap">
-                <span class="text-xs font-black text-[#1e2d3d] bg-slate-100 px-2.5 py-0.5 rounded-lg border border-slate-200">
-                  IRP ${escapeHtml(it.numero_irp || 'S/N')}/${escapeHtml(it.ano_irp || '')}
-                </span>
+                ${typeTag}
                 ${badgeHtml}
-                <span class="text-[11px] font-bold text-slate-600 flex items-center gap-1">
-                  🏛️ ${orgaoDisplay} ${ufDisplay}
+                <span class="text-[11px] font-bold text-slate-600 flex items-center gap-1.5">
+                  🏛️ ${orgaoDisplay} ${ufDisplay} ${municipioDisplay}
                 </span>
               </div>
               <div class="text-[11px] font-medium text-slate-500">
-                Prazo: <span class="font-bold text-[#1e2d3d]">${escapeHtml(it.prazo_manifestacao_formatado || 'Não informado')}</span>
+                Prazo / Vigência: <span class="font-bold text-[#1e2d3d]">${escapeHtml(it.prazo_manifestacao_formatado || 'Não informado')}</span>
               </div>
             </div>
 
@@ -6982,35 +7018,26 @@
             </div>
 
             <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-[11px]">
-              <div class="flex items-center gap-3 text-slate-500">
+              <div class="flex items-center gap-3 text-slate-500 flex-wrap">
                 <span>Esfera: <strong class="text-slate-700">${escapeHtml(it.esfera_nome || 'Municipal')}</strong></span>
                 <span>Modalidade: <strong class="text-slate-700">${escapeHtml(it.modalidade_nome || 'Pregão SRP')}</strong></span>
                 <span>Adesão (Carona): <strong class="text-emerald-700">${it.permite_adesao ? 'Permitida' : 'Restrita'}</strong></span>
+                ${it.numero_controle_pncp ? `<span class="font-mono text-[10px] text-slate-400">ID PNCP: ${escapeHtml(it.numero_controle_pncp)}</span>` : ''}
               </div>
               <div class="flex items-center gap-1.5 flex-wrap">
-                ${it.is_edital ? `
-                  <a
-                    href="${escapeHtml(it.link_pncp)}"
-                    target="_blank"
-                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#1e2d3d] hover:bg-[#27394d] text-white shadow-xs transition flex items-center gap-1"
-                  >
-                    📄 Abrir Edital SRP no PNCP ↗
-                  </a>
-                ` : `
-                  <button
-                    onclick="openModalIrpDetail('${escapeHtml(it.orgao_cnpj)}', '${escapeHtml(it.ano_irp)}', '${escapeHtml(it.numero_irp)}')"
-                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#1e2d3d] hover:bg-[#27394d] text-white shadow-xs transition flex items-center gap-1"
-                  >
-                    📋 Ver Itens da IRP
-                  </button>
-                  <a
-                    href="${escapeHtml(it.link_pncp)}"
-                    target="_blank"
-                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition flex items-center gap-1"
-                  >
-                    🌐 PNCP Oficial ↗
-                  </a>
-                `}
+                <button
+                  onclick="openModalIrpDetail('${escapeHtml(it.orgao_cnpj)}', '${escapeHtml(it.ano_irp)}', '${escapeHtml(it.numero_irp)}', '${docType}')"
+                  class="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#1e2d3d] hover:bg-[#27394d] text-white shadow-xs transition flex items-center gap-1"
+                >
+                  📋 Ver Itens e Importar
+                </button>
+                <a
+                  href="${escapeHtml(it.link_pncp)}"
+                  target="_blank"
+                  class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition flex items-center gap-1"
+                >
+                  🌐 PNCP Oficial ↗
+                </a>
               </div>
             </div>
           </div>
@@ -7018,12 +7045,13 @@
       }).join("");
     }
 
-    async function openModalIrpDetail(cnpj, ano, seq) {
+    async function openModalIrpDetail(cnpj, ano, seq, docType = "auto") {
       const modal = document.getElementById("modalIrpDetail");
       if (!modal) return;
       modal.classList.remove("hidden");
 
-      document.getElementById("modalIrpTitle").textContent = `IRP ${seq}/${ano}`;
+      const docLabel = docType === "ata" ? "ATA SRP" : (docType === "edital" ? "EDITAL SRP" : "IRP");
+      document.getElementById("modalIrpTitle").textContent = `${docLabel} ${seq}/${ano}`;
       document.getElementById("modalIrpOrgao").textContent = "Carregando detalhes do PNCP...";
       document.getElementById("modalIrpObjeto").textContent = "Buscando itens e documentos...";
       document.getElementById("modalIrpPrazo").textContent = "--";
@@ -7033,12 +7061,12 @@
       document.getElementById("modalIrpItemsCount").textContent = "0";
       document.getElementById("modalIrpFilesCount").textContent = "(carregando...)";
       document.getElementById("modalIrpItemsTbody").innerHTML = `
-        <tr><td colspan="6" class="p-6 text-center text-slate-400 font-bold">Consultando itens da IRP no PNCP...</td></tr>
+        <tr><td colspan="6" class="p-6 text-center text-slate-400 font-bold">Consultando itens no Portal Nacional de Contratações Públicas (PNCP)...</td></tr>
       `;
       document.getElementById("modalIrpFilesList").innerHTML = "";
 
       try {
-        const resp = await fetch(`/api/v1/irp/detail?cnpj=${encodeURIComponent(cnpj)}&ano=${encodeURIComponent(ano)}&seq=${encodeURIComponent(seq)}`);
+        const resp = await fetch(`/api/v1/irp/detail?cnpj=${encodeURIComponent(cnpj)}&ano=${encodeURIComponent(ano)}&seq=${encodeURIComponent(seq)}&doc_type=${encodeURIComponent(docType)}`);
         const data = await resp.json();
 
         if (data.status !== "SUCCESS") {
@@ -7100,7 +7128,7 @@
                     class="px-2.5 py-1 rounded-lg text-[10px] font-black bg-[#c5a365] hover:bg-[#d6b476] text-[#1e2d3d] shadow-xs transition flex items-center gap-1 mx-auto"
                     title="Adicionar item à Cesta da Pesquisa de Preços (IN 65/2021)"
                   >
-                    ➕ Importar p/ Lote
+                    ➕ Importar para Lote
                   </button>
                 </td>
               </tr>
@@ -7153,7 +7181,47 @@
       await addItemToBatchTray(tipo, codigo, desc, unid, 1);
       closeModalIrpDetail();
       openTab("PRICES");
-      showAppNotification(`Item importado da IRP para o Lote: ${desc.slice(0, 45)}...`, "success");
+      showAppNotification(`Item importado para o Lote: ${desc.slice(0, 45)}...`, "success");
+    }
+
+    async function importAllIrpItemsToBatch() {
+      if (!currentIrpModalDetail || !currentIrpModalDetail.itens || currentIrpModalDetail.itens.length === 0) {
+        showAppNotification("Nenhum item disponível nesta IRP/Ata para importação em lote.", "warn");
+        return;
+      }
+      const btn = document.getElementById("btnImportAllIrpItems");
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "⏳ Importando itens...";
+      }
+      let importedCount = 0;
+      for (let i = 0; i < currentIrpModalDetail.itens.length; i++) {
+        const item = currentIrpModalDetail.itens[i];
+        const tipo = item.tipo_codigo || "MATERIAL";
+        const desc = item.descricao || `Item ${i + 1}`;
+        const unid = item.unidade_fornecimento || "UN";
+        const qtd = Math.max(1, parseInt(item.quantidade, 10) || 1);
+        let codigo = parseInt(item.codigo_item_catalogo, 10);
+        if (!codigo || isNaN(codigo)) {
+          try {
+            const searchWord = desc.split(/[,;\s\-]/).filter(w => w.length > 3)[0] || desc.slice(0, 15);
+            const r = await fetch(`/api/v1/catalog/search?q=${encodeURIComponent(searchWord)}&type=${tipo}`);
+            const catData = await r.json();
+            codigo = (catData.results && catData.results.length > 0) ? catData.results[0].code : 475109;
+          } catch (_) {
+            codigo = 475109;
+          }
+        }
+        await addItemToBatchTray(tipo, codigo, desc, unid, qtd);
+        importedCount++;
+      }
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "📥 Importar Todos os Itens para o Lote";
+      }
+      closeModalIrpDetail();
+      openTab("PRICES");
+      showAppNotification(`${importedCount} item(ns) importado(s) do Registro de Preços para o seu Lote!`, "success");
     }
 
     // =========================================================================

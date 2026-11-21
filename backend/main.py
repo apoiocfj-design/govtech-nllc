@@ -1013,16 +1013,17 @@ class GovTechAppHandler(BaseHTTPRequestHandler):
                 self._send_json(500, {"status": "ERROR", "error": str(exc), "items": []})
             return
 
-        # 14. Detalhes Completos, Itens e Arquivos da IRP (PNCP)
+        # 14. Detalhes Completos, Itens e Arquivos da IRP / Edital SRP / Ata SRP (PNCP)
         if path == "/api/v1/irp/detail":
             cnpj = qs.get("cnpj", [""])[0]
             ano = qs.get("ano", [""])[0]
             seq = qs.get("seq", qs.get("sequencial", [""]))[0]
+            doc_type = qs.get("doc_type", qs.get("type", ["auto"]))[0]
             if not (cnpj and ano and seq):
                 self._send_json(400, {"status": "ERROR", "error": "Parâmetros 'cnpj', 'ano' e 'seq' são obrigatórios."})
                 return
             try:
-                res = get_irp_detail(cnpj=cnpj, ano=ano, sequencial=seq)
+                res = get_irp_detail(cnpj=cnpj, ano=ano, sequencial=seq, doc_type=doc_type)
                 self._send_json(200, res)
             except Exception as exc:
                 self._send_json(500, {"status": "ERROR", "error": str(exc), "itens": [], "arquivos": []})
