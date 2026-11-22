@@ -6,8 +6,9 @@
   <link rel="icon" type="image/png" href="/app_logo_transparent.png" />
   <link rel="manifest" href="/manifest.json" />
   <meta name="theme-color" content="#1e2d3d" />
-  <!-- Firebase SDKs (Compat v9) para Arquitetura Orientada a Eventos e Storage Assíncrono -->
+  <!-- Firebase SDKs (Compat v9) para Autenticação Zero-Trust, Firestore e Storage -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
   <title>GovTech NLLC • Sistema Unificado de Compras Públicas & Auditoria</title>
@@ -60,14 +61,29 @@
     button:active:not(:disabled) {
       transform: translateY(0.5px);
     }
-    input[type="text"], input[type="number"], input[type="search"], select, textarea {
+    input[type="text"]:not(.dark-input), input[type="number"]:not(.dark-input), input[type="search"]:not(.dark-input), input[type="password"]:not(.dark-input), select:not(.dark-input), textarea:not(.dark-input) {
       background-color: #ffffff;
+      color: #0f172a;
       border-color: #cbd5e1;
       transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
     }
-    input[type="text"]:focus, input[type="number"]:focus, input[type="search"]:focus, select:focus, textarea:focus {
-      border-color: #64748b !important;
-      box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.22) !important;
+    input[type="text"]:not(.dark-input):focus, input[type="number"]:not(.dark-input):focus, input[type="search"]:not(.dark-input):focus, input[type="password"]:not(.dark-input):focus, select:not(.dark-input):focus, textarea:not(.dark-input):focus {
+      border-color: #1e2d3d !important;
+      box-shadow: 0 0 0 3px rgba(30, 45, 61, 0.18) !important;
+      outline: none !important;
+    }
+    .dark-input {
+      background-color: #0f172a !important;
+      color: #f8fafc !important;
+      border-color: #475569 !important;
+      transition: border-color 160ms ease, box-shadow 160ms ease;
+    }
+    .dark-input::placeholder {
+      color: #94a3b8 !important;
+    }
+    .dark-input:focus {
+      border-color: #c5a365 !important;
+      box-shadow: 0 0 0 3px rgba(197, 163, 101, 0.25) !important;
       outline: none !important;
     }
     .font-mono, .tabular-nums, td, #batchGrandTotal, #resCV, #resRawCV, #resMean, #resMedian, #resTotalValue, #fracValorTotal {
@@ -82,6 +98,23 @@
     }
     table tbody tr:nth-child(even) {
       background-color: rgba(248, 250, 252, 0.65);
+    }
+    /* Preserva alto contraste na tabela escura da Bandeja de Lote (#batchTraySection) */
+    #batchTraySection table thead th {
+      background-color: #162230 !important;
+      color: #e2e8f0 !important;
+      border-bottom: 1px solid #334155;
+    }
+    #batchTraySection table tbody tr:nth-child(even) {
+      background-color: rgba(255, 255, 255, 0.045) !important;
+    }
+    #batchTraySection table tbody tr:hover {
+      background-color: rgba(197, 163, 101, 0.12) !important;
+    }
+    /* Preserva cabeçalhos azul-marinho nas tabelas da Nota Técnica Revisionada */
+    #ragDeepAuditPanel table thead th {
+      background-color: #1b365d !important;
+      color: #ffffff !important;
     }
     .irp-uf-pill-active {
       background-color: #1e2d3d !important;
@@ -205,7 +238,7 @@
               type="text"
               placeholder="Digite a sua OM ou Órgão..."
               oninput="updateGlobalOrgName(this.value)"
-              class="bg-[#27394d] border border-[#334960] hover:border-[#c5a365] focus:border-[#c5a365] rounded-lg px-2 py-0.5 text-[11px] text-white placeholder-slate-400 font-bold w-56 md:w-72 outline-none transition"
+              class="dark-input bg-[#27394d] border border-[#334960] hover:border-[#c5a365] focus:border-[#c5a365] rounded-lg px-2 py-0.5 text-[11px] text-white placeholder-slate-400 font-bold w-56 md:w-72 outline-none transition"
               title="Digite a sua OM para ser aplicada automaticamente em todos os relatórios em Word, PDF e Excel"
             />
           </div>
@@ -229,10 +262,10 @@
         </button>
       </div>
 
-      <!-- BOTÕES DE ACESSIBILIDADE GOVERNAMENTAL E TRILHA DE AUDITORIA -->
-      <div class="flex items-center gap-1.5">
+      <!-- BOTÕES DE ACESSIBILIDADE, AUDITORIA E SESSÃO DO MILITAR (RBAC) -->
+      <div class="flex flex-wrap items-center gap-1.5">
         <button onclick="toggleHighContrast()" id="btnHighContrast" class="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-[#27394d] hover:bg-[#334960] text-slate-200 border border-[#334960] transition flex items-center gap-1" title="Ativar/desativar modo de alto contraste (Acessibilidade eMAG / WCAG 2.1)" aria-label="Alternar modo de alto contraste">
-          <span>👁️</span> <span class="hidden xl:inline">Contraste</span>
+          <span>👁️</span> <span class="hidden 2xl:inline">Contraste</span>
         </button>
         <button onclick="adjustFontSize(1)" class="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-[#27394d] hover:bg-[#334960] text-slate-200 border border-[#334960] transition" title="Aumentar tamanho do texto" aria-label="Aumentar texto">
           A+
@@ -241,8 +274,26 @@
           A-
         </button>
         <button onclick="openAuditTrailModal()" class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-[#c5a365]/20 hover:bg-[#c5a365]/35 text-amber-300 border border-[#c5a365]/50 transition flex items-center gap-1 shadow-2xs" title="Abrir Trilha de Auditoria Imutável com Hash SHA-256 (TCU/CGU)" aria-label="Abrir trilha de auditoria imutável">
-          <span>📜</span> <span class="hidden lg:inline">Auditoria</span>
+          <span>📜</span> <span class="hidden xl:inline">Auditoria</span>
         </button>
+
+        <!-- PERFIL DO USUÁRIO AUTENTICADO + CONTROLE DE ACESSOS -->
+        <div id="authUserControls" class="hidden flex items-center gap-1.5 pl-1.5 border-l border-slate-600/70">
+          <div id="authUserPill" class="px-2.5 py-1 rounded-lg bg-[#27394d] border border-slate-600/80 flex items-center gap-1.5 text-[11px]">
+            <span class="text-[#c5a365]">🎖️</span>
+            <span id="authUserNameLabel" class="font-bold text-white max-w-[140px] truncate">Militar</span>
+            <span id="authUserRoleBadge" class="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-400/40">CONSULTA</span>
+          </div>
+          <button id="btnAuthUsers" onclick="openGovtechUsersModal()" class="hidden px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-blue-600/25 hover:bg-blue-600/40 text-blue-200 border border-blue-400/40 transition flex items-center gap-1" title="Gerenciar Usuários e Permissões (Lista Oficial admin-cfj)">
+            <span>👥</span> <span class="hidden xl:inline">Usuários</span>
+          </button>
+          <button onclick="openGovtechChangePassModal()" class="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-[#27394d] hover:bg-[#334960] text-slate-200 border border-[#334960] transition" title="Alterar minha senha">
+            🔑
+          </button>
+          <button onclick="govtechLogout()" class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-rose-900/50 hover:bg-rose-800 text-rose-100 border border-rose-500/40 transition flex items-center gap-1" title="Encerrar sessão com segurança">
+            <span>🚪</span> <span class="hidden lg:inline">Sair</span>
+          </button>
+        </div>
       </div>
     </div>
   </header>
@@ -5995,11 +6046,13 @@
             </td>
             <td class="py-2.5 px-3 text-center">
               <input type="text" value="${it.unit || 'UN'}" onchange="updateBatchItemUnit(${idx}, this.value)"
-                class="w-16 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-center font-mono text-xs text-white" />
+                aria-label="Unidade do item ${idx + 1}"
+                class="w-16 bg-white border-2 border-slate-300 focus:border-[#c5a365] rounded-lg px-1.5 py-1 text-center font-mono text-xs font-extrabold text-slate-950 uppercase shadow-xs" />
             </td>
             <td class="py-2.5 px-3 text-center">
               <input type="number" min="1" value="${it.qty || 1}" onchange="updateBatchItemQty(${idx}, this.value)"
-                class="w-16 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-center font-mono text-xs text-white" />
+                aria-label="Quantidade do item ${idx + 1}"
+                class="w-16 bg-white border-2 border-slate-300 focus:border-[#c5a365] rounded-lg px-1.5 py-1 text-center font-mono text-xs font-extrabold text-slate-950 shadow-xs" />
             </td>
             <td class="py-2.5 px-3 text-center">
               <button onclick="removeBatchItem(${idx})" class="bg-[#9e4747] hover:bg-[#853939] text-white font-bold px-2.5 py-1 rounded text-[10px] transition">
@@ -6762,10 +6815,10 @@
       const text = document.getElementById("modalDemandRawText").value.trim();
       const out = document.getElementById("modalDemandResultsList");
       if (!text) {
-        out.innerHTML = `<div class="p-4 text-xs text-rose-600 font-bold">Cole o texto da sua demanda acima.</div>`;
+        out.innerHTML = `<div class="p-4 text-xs text-rose-600 font-bold">Cole o texto da sua demanda ou lista "catmat; quantidade" acima.</div>`;
         return;
       }
-      out.innerHTML = `<div class="p-4 text-center text-xs text-slate-500 font-bold animate-pulse">⏳ Analisando itens e consultando base CNBS...</div>`;
+      out.innerHTML = `<div class="p-4 text-center text-xs text-slate-600 font-bold animate-pulse">⏳ Analisando linhas, códigos CATMAT/CATSER, quantidades e unidades...</div>`;
       try {
         const resp = await fetch("/api/v1/catalog/parse-demand", {
           method: "POST",
@@ -6776,26 +6829,44 @@
         const items = data.parsed_items || [];
         window.lastModalParsedItems = items;
         if (items.length === 0) {
-          out.innerHTML = `<div class="p-4 text-xs text-slate-500">Nenhuma linha reconhecida. Use uma linha por item (ex.: 10 UN - Pneu 205/55 R16).</div>`;
+          out.innerHTML = `<div class="p-4 text-xs text-slate-600">Nenhuma linha reconhecida. Use uma linha por item (ex.: <code>444095; 10</code>, <code>444095; 10; PAR</code> ou <code>10 UN - Pneu 205/55 R16</code>).</div>`;
           return;
         }
-        out.innerHTML = `<p class="text-[11px] text-slate-500 px-1">Confira o código sugerido para cada linha. Escolha outro na lista ou “Ignorar”.</p>` + items.map((row, i) => {
+        out.innerHTML = `<p class="text-[11px] text-slate-600 px-1 font-medium">Confira código, quantidade e unidade identificados para cada linha. Ajuste se necessário e clique em <strong>Adicionar Itens Escolhidos ao Lote</strong>.</p>` + items.map((row, i) => {
           const opts = (row.matches || []).slice(0, 6);
+          const rawLine = row.raw_line || row.original_text || `Linha ${i + 1}`;
+          const parsedQty = Number(row.quantity ?? row.suggested_quantity ?? 1) || 1;
+          const parsedUnit = String(row.unit || row.suggested_unit || (opts[0] && opts[0].unidade) || "UN").toUpperCase();
+          const exactBadge = row.exact_code
+            ? `<span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-300 font-mono text-[10px] font-black">CATMAT ${row.exact_code}</span>`
+            : "";
           return `
-            <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1.5 text-xs">
+            <div class="bg-slate-50 p-3 rounded-xl border border-slate-300 space-y-2 text-xs">
               <div class="flex flex-wrap items-center justify-between gap-2">
-                <strong class="text-[#1e2d3d]">“${row.raw_line}”</strong>
-                <span class="font-mono text-slate-600">${row.quantity || 1} ${row.unit || 'UN'}</span>
+                <div class="flex items-center gap-1.5 min-w-0">
+                  ${exactBadge}
+                  <strong class="text-slate-900 truncate" title="${escapeHtml(rawLine)}">“${escapeHtml(rawLine)}”</strong>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <label class="flex items-center gap-1 text-[11px] font-bold text-slate-700">
+                    Qtd:
+                    <input type="number" id="parsedQty_${i}" min="1" value="${parsedQty}" class="w-16 px-1.5 py-1 bg-white border border-slate-400 rounded-lg text-center font-mono text-xs font-extrabold text-slate-950" />
+                  </label>
+                  <label class="flex items-center gap-1 text-[11px] font-bold text-slate-700">
+                    Unid:
+                    <input type="text" id="parsedUnit_${i}" value="${escapeHtml(parsedUnit)}" class="w-16 px-1.5 py-1 bg-white border border-slate-400 rounded-lg text-center font-mono text-xs font-extrabold text-slate-950 uppercase" />
+                  </label>
+                </div>
               </div>
               ${opts.length ? `
-                <select id="parsedPick_${i}" class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white">
-                  ${opts.map((m, k) => `<option value="${k}">${m.item_type === 'SERVICO' ? 'CATSER' : 'CATMAT'} ${m.codigo} — ${(m.descricao || '').slice(0, 90)}</option>`).join("")}
+                <select id="parsedPick_${i}" class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white text-slate-900 font-semibold">
+                  ${opts.map((m, k) => `<option value="${k}">${m.item_type === 'SERVICO' ? 'CATSER' : 'CATMAT'} ${m.codigo} — ${escapeHtml((m.descricao || '').slice(0, 95))}</option>`).join("")}
                   <option value="-1">— Ignorar esta linha —</option>
-                </select>` : `<div class="text-[11px] text-rose-600 font-bold">Nenhum código encontrado. Adicione manualmente em “➕ Adicionar Item”.</div>`}
+                </select>` : `<div class="text-[11px] text-rose-700 font-bold">Nenhum código encontrado. Adicione manualmente em “➕ Adicionar Item”.</div>`}
             </div>`;
         }).join("");
       } catch (err) {
-        out.innerHTML = `<div class="p-3 text-xs text-rose-600">Erro no parser: ${err.message}</div>`;
+        out.innerHTML = `<div class="p-3 text-xs text-rose-700 font-bold">Erro no parser: ${escapeHtml(err.message)}</div>`;
       }
     }
 
@@ -6808,12 +6879,16 @@
         const k = sel ? parseInt(sel.value, 10) : -1;
         const m = k >= 0 && row.matches ? row.matches[k] : null;
         if (m) {
-          await addItemToBatchTray(m.item_type || "MATERIAL", m.codigo, m.descricao, row.unit || m.unidade || "UN", row.quantity || 1);
+          const qtyInput = document.getElementById(`parsedQty_${i}`);
+          const unitInput = document.getElementById(`parsedUnit_${i}`);
+          const finalQty = Math.max(1, parseInt(qtyInput ? qtyInput.value : (row.quantity ?? row.suggested_quantity ?? 1), 10) || 1);
+          const finalUnit = String((unitInput ? unitInput.value : (row.unit || row.suggested_unit || m.unidade || "UN")) || "UN").trim().toUpperCase();
+          await addItemToBatchTray(m.item_type || "MATERIAL", m.codigo, m.descricao, finalUnit, finalQty);
           added++;
         }
       }
       closeDemandParserModal();
-      if (added) showAppNotification(`${added} item(ns) adicionados ao lote. Agora clique em “🚀 Pesquisar Preços” (passo 2).`, "success");
+      if (added) showAppNotification(`${added} item(ns) adicionados ao lote com as quantidades e unidades definidas. Agora clique em “🚀 Pesquisar Preços” (passo 2).`, "success");
     }
 
     function togglePasteBatchModal() {
@@ -6831,41 +6906,79 @@
       if (!ta) return;
       const raw = ta.value.trim();
       if (!raw) {
-        showAppNotification("Cole ao menos um código CATMAT ou CATSER.", "warn");
+        showAppNotification("Cole ao menos um código CATMAT ou CATSER (ex.: 444095; 10).", "warn");
         return;
       }
-      const matches = raw.match(/\b\d{3,8}\b/g) || [];
-      const uniqueCodes = [...new Set(matches.map(c => parseInt(c, 10)))];
-      if (uniqueCodes.length === 0) {
+
+      // Suporta "catmat; quantidade", "catmat; unidade", "catmat; quantidade; unidade" por linha ou códigos soltos
+      const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const parsedEntries = [];
+      const seen = new Set();
+
+      for (const ln of lines) {
+        if (/[;\t|]/.test(ln)) {
+          const parts = ln.split(/[;\t|]+/).map(p => p.trim()).filter(Boolean);
+          const codeMatch = (parts[0] || "").match(/\b(\d{3,8})\b/);
+          if (codeMatch) {
+            const code = parseInt(codeMatch[1], 10);
+            if (!seen.has(code)) {
+              seen.add(code);
+              let qty = 1;
+              let unit = null;
+              for (const extra of parts.slice(1)) {
+                const combo = extra.match(/^(\d+(?:[.,]\d+)?)\s*([A-Za-zÀ-ÿ/]{1,12})?$/);
+                if (combo) {
+                  qty = Math.max(1, Math.round(parseFloat(combo[1].replace(",", "."))) || 1);
+                  if (combo[2]) unit = combo[2].toUpperCase();
+                } else if (/^[A-Za-zÀ-ÿ]{1,12}$/.test(extra)) {
+                  unit = extra.toUpperCase();
+                }
+              }
+              parsedEntries.push({ code, qty, unit });
+            }
+            continue;
+          }
+        }
+        const matches = ln.match(/\b\d{3,8}\b/g) || [];
+        for (const m of matches) {
+          const code = parseInt(m, 10);
+          if (!seen.has(code)) {
+            seen.add(code);
+            parsedEntries.push({ code, qty: 1, unit: null });
+          }
+        }
+      }
+
+      if (parsedEntries.length === 0) {
         showAppNotification("Nenhum código numérico identificado no texto colado.", "warn");
         return;
       }
 
-      showAppNotification(`Analisando e incluindo ${uniqueCodes.length} item(ns) no lote...`, "info");
+      showAppNotification(`Analisando e incluindo ${parsedEntries.length} item(ns) no lote...`, "info");
       let countAdded = 0;
-      for (const code of uniqueCodes) {
+      for (const entry of parsedEntries) {
         let itType = "MATERIAL";
-        let desc = `Item Catálogo ${code}`;
-        let unit = "UN";
+        let desc = `Item Catálogo ${entry.code}`;
+        let unit = entry.unit || "UN";
         try {
-          const resp = await fetch(`/api/v1/catalog/search?q=${code}&limit=3`);
+          const resp = await fetch(`/api/v1/catalog/search?q=${entry.code}&limit=3`);
           if (resp.ok) {
             const data = await resp.json();
-            const found = (data.results || []).find(r => r.codigo === code);
+            const found = (data.results || []).find(r => r.codigo === entry.code);
             if (found) {
               itType = found.item_type || "MATERIAL";
               desc = found.descricao || desc;
-              unit = found.unidade || (itType === "SERVICO" ? "SV" : "UN");
+              if (!entry.unit) unit = found.unidade || (itType === "SERVICO" ? "SV" : "UN");
             }
           }
         } catch (e) {
           console.warn(e);
         }
-        await addItemToBatchTray(itType, code, desc, unit, 1);
+        await addItemToBatchTray(itType, entry.code, desc, unit, entry.qty);
         countAdded++;
       }
       togglePasteBatchModal();
-      showAppNotification(`✅ ${countAdded} item(ns) incluído(s) no lote com sucesso!`, "success");
+      showAppNotification(`✅ ${countAdded} item(ns) incluído(s) no lote com quantidades corretas!`, "success");
     }
 
 </script>
@@ -6944,12 +7057,12 @@
           </div>
           <div class="flex items-center gap-3">
             <div>
-              <label class="text-[10px] uppercase font-bold text-slate-400 block">Qtd:</label>
-              <input type="number" id="modalSelQty" min="1" value="1" class="w-16 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-xs font-bold text-amber-300 text-center" />
+              <label class="text-[10px] uppercase font-bold text-slate-200 block mb-0.5">Qtd:</label>
+              <input type="number" id="modalSelQty" min="1" value="1" class="w-16 px-2 py-1 bg-white border-2 border-amber-400 rounded-lg text-xs font-extrabold text-slate-950 text-center shadow-xs" />
             </div>
             <div>
-              <label class="text-[10px] uppercase font-bold text-slate-400 block">Unidade:</label>
-              <input type="text" id="modalSelUnit" value="UN" class="w-20 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-xs font-bold text-white uppercase text-center" />
+              <label class="text-[10px] uppercase font-bold text-slate-200 block mb-0.5">Unidade:</label>
+              <input type="text" id="modalSelUnit" value="UN" class="w-20 px-2 py-1 bg-white border-2 border-amber-400 rounded-lg text-xs font-extrabold text-slate-950 uppercase text-center shadow-xs" />
             </div>
           </div>
         </div>
@@ -7039,7 +7152,7 @@
           <span class="text-2xl">📋</span>
           <div>
             <h3 class="text-base font-black text-[#1e2d3d]">Importação de Demanda em Lote (DFD / TR)</h3>
-            <p class="text-xs text-slate-500">Cole a lista de itens da sua demanda para converter em CATMATs/CATSERs.</p>
+            <p class="text-xs text-slate-600">Cole códigos no formato <strong>CATMAT; Quantidade</strong> (ex.: <code>444095; 10</code> ou <code>444095; 10; PAR</code>) ou linhas livres do DFD/TR.</p>
           </div>
         </div>
         <button onclick="closeDemandParserModal()" class="text-slate-400 hover:text-slate-800 text-xl font-bold px-2">✕</button>
@@ -7048,8 +7161,8 @@
       <textarea
         id="modalDemandRawText"
         rows="5"
-        placeholder="Cole aqui as linhas da sua demanda (uma por linha). Exemplo:&#10;10 UN - Pneu automotivo radial 205/55 R16&#10;4 UN - Bateria automotiva 60Ah selada&#10;1 SERV - Manutenção preventiva de ar condicionado"
-        class="w-full border border-slate-300 rounded-2xl p-3.5 text-xs font-mono bg-white focus:outline-none focus:ring-2 focus:ring-[#1a6fab] shrink-0"
+        placeholder="Cole uma linha por item. Formatos aceitos:&#10;444095; 10&#10;619052; 5; PAR&#10;475109; 4 UN&#10;10 UN - Pneu automotivo radial 205/55 R16"
+        class="w-full border border-slate-300 rounded-2xl p-3.5 text-xs font-mono bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1a6fab] shrink-0"
       ></textarea>
 
       <div class="flex justify-end shrink-0">
@@ -8768,6 +8881,686 @@
       </div>
     </div>
   </div>
+
+  <!-- ===================================================================== -->
+  <!-- TELA DE LOGIN INSTITUCIONAL ZERO-TRUST (FIREBASE AUTH • admin-cfj)    -->
+  <!-- ===================================================================== -->
+  <div id="govtechLoginOverlay" class="fixed inset-0 z-[100] bg-slate-950 flex flex-col justify-center items-center px-4 py-8 overflow-y-auto font-sans text-slate-100 antialiased no-print">
+    <!-- Halos Militares Decorativos -->
+    <div class="fixed top-0 left-1/3 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none"></div>
+    <div class="fixed bottom-0 right-1/3 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none"></div>
+
+    <div class="max-w-md w-full relative z-10 space-y-6 my-auto">
+      <!-- Cabeçalho Institucional Oficial -->
+      <div class="text-center space-y-3">
+        <div class="inline-flex p-3 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-2xl">
+          <img
+            src="/brasao_oficial.png"
+            alt="Brasão da Marinha do Brasil"
+            class="w-16 h-16 object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)]"
+            onerror="this.src='/app_logo_transparent.png'"
+          />
+        </div>
+        <div>
+          <div class="text-xs font-bold uppercase tracking-widest text-slate-400">Marinha do Brasil</div>
+          <h1 class="text-lg font-extrabold text-white tracking-tight">CAPITANIA FLUVIAL DE JUAZEIRO</h1>
+          <div class="text-[11px] font-semibold text-[#c5a365] mt-0.5">
+            SISTEMA GOVTECH • Inteligência em Licitações &amp; Auditoria NLLC
+          </div>
+          <div class="text-[10px] text-slate-500 font-mono mt-0.5">
+            Código OM: 82340 • Unidade Gestora: 782340
+          </div>
+        </div>
+      </div>
+
+      <!-- Cartão de Autenticação -->
+      <div class="bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-5">
+        <div class="border-b border-slate-800/80 pb-3 text-center">
+          <h2 class="text-sm font-bold text-slate-100">Autenticação Institucional</h2>
+          <p class="text-[11px] text-slate-400 mt-0.5">
+            Informe seu NIP (8 dígitos) ou e-mail institucional (@marinha.mil.br)
+          </p>
+        </div>
+
+        <div id="govtechLoginError" class="hidden bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs p-3.5 rounded-xl flex items-center gap-2.5">
+          <span class="text-base shrink-0">⚠️</span>
+          <span id="govtechLoginErrorText"></span>
+        </div>
+
+        <div id="govtechLoginInfo" class="hidden bg-emerald-950/80 border border-emerald-500/50 text-emerald-200 text-xs p-3.5 rounded-xl flex items-center gap-2.5">
+          <span class="text-base shrink-0">✅</span>
+          <span id="govtechLoginInfoText"></span>
+        </div>
+
+        <form id="govtechLoginForm" onsubmit="handleGovtechLoginSubmit(event)" class="space-y-4">
+          <div class="space-y-1.5">
+            <label for="govtechLoginIdent" class="block text-xs font-bold text-slate-300">
+              NIP (8 dígitos) ou E-mail Institucional:
+            </label>
+            <input
+              id="govtechLoginIdent"
+              type="text"
+              required
+              autocomplete="username"
+              placeholder="Ex: 07364750 ou militar@marinha.mil.br"
+              class="dark-input w-full rounded-xl px-3.5 py-2.5 text-xs font-medium focus:outline-none"
+            />
+          </div>
+
+          <div class="space-y-1.5">
+            <label for="govtechLoginPass" class="block text-xs font-bold text-slate-300">
+              Senha de Acesso:
+            </label>
+            <div class="relative">
+              <input
+                id="govtechLoginPass"
+                type="password"
+                required
+                autocomplete="current-password"
+                placeholder="Digite sua senha"
+                class="dark-input w-full rounded-xl pl-3.5 pr-10 py-2.5 text-xs font-mono focus:outline-none"
+              />
+              <button
+                type="button"
+                onclick="toggleGovtechPassVisibility()"
+                id="btnToggleLoginPass"
+                title="Exibir/ocultar senha"
+                class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 text-sm cursor-pointer"
+              >👁️</button>
+            </div>
+          </div>
+
+          <button
+            id="btnGovtechLoginSubmit"
+            type="submit"
+            class="w-full mt-2 py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs shadow-lg shadow-blue-600/30 transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+          >
+            <span>Entrar no GovTech NLLC</span>
+            <span>→</span>
+          </button>
+
+          <div class="flex items-center justify-between pt-1">
+            <button
+              type="button"
+              id="btnGovtechResetPass"
+              onclick="handleGovtechPasswordReset()"
+              class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition cursor-pointer"
+            >
+              <span>🔑</span>
+              <span>Esqueci minha senha</span>
+            </button>
+            <span class="text-[10px] text-slate-500">Envio via e-mail institucional</span>
+          </div>
+        </form>
+
+        <div class="pt-3 border-t border-slate-800/80 text-center">
+          <div class="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
+            <span class="text-emerald-400">🛡️</span>
+            <span>Ambiente de acesso restrito e integrado ao ecossistema CFJ</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rodapé -->
+      <div class="text-center text-[10px] text-slate-500 space-y-0.5">
+        <div>Capitania Fluvial de Juazeiro • Marinha do Brasil</div>
+        <div>Base de Usuários e Permissões sincronizada com o Painel Administrativo CFJ</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL: GERENCIAMENTO DE USUÁRIOS E PERMISSÕES (admin-cfj)             -->
+  <!-- ===================================================================== -->
+  <div id="modalGovtechUsers" class="hidden fixed inset-0 z-[90] bg-slate-950/75 backdrop-blur-xs p-4 flex items-center justify-center no-print">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full border border-slate-200 overflow-hidden flex flex-col max-h-[88vh]">
+      <div class="px-6 py-4 bg-[#1e2d3d] text-white flex items-center justify-between">
+        <div>
+          <h3 class="text-sm font-black uppercase tracking-wide">👥 Usuários e Permissões — Ecossistema CFJ (admin-cfj)</h3>
+          <p class="text-[11px] text-slate-300 mt-0.5">Lista oficial sincronizada com o banco de usuários da Capitania Fluvial de Juazeiro.</p>
+        </div>
+        <button onclick="closeGovtechUsersModal()" class="text-slate-300 hover:text-white text-xl font-bold px-2">✕</button>
+      </div>
+      <div class="p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
+        <input
+          id="govtechUsersSearch"
+          type="text"
+          oninput="renderGovtechUsersTable()"
+          placeholder="Buscar por NIP, Nome de Guerra, Posto, Setor ou Perfil..."
+          class="flex-1 min-w-[240px] border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium bg-white text-slate-900"
+        />
+        <span id="govtechUsersCount" class="text-xs font-bold text-[#1e2d3d] px-2">0 usuários</span>
+      </div>
+      <div class="overflow-y-auto flex-1 p-4">
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr class="border-b border-slate-300 text-[11px] uppercase text-slate-700 font-black">
+              <th class="p-2">NIP</th>
+              <th class="p-2">Militar</th>
+              <th class="p-2">E-mail</th>
+              <th class="p-2">Perfil / Permissão</th>
+              <th class="p-2 text-center">Status</th>
+            </tr>
+          </thead>
+          <tbody id="govtechUsersTableBody" class="divide-y divide-slate-200">
+            <tr><td colspan="5" class="p-6 text-center text-slate-500">Carregando lista oficial de usuários...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="px-6 py-3 bg-slate-100 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-600">
+        <span>Perfis: <strong>SUPERADMIN</strong> (plenos poderes), <strong>ADMIN_AUXILIAR</strong> (gestão), <strong>GESTOR</strong> (operação completa), <strong>CONSULTA</strong> (leitura).</span>
+        <button onclick="closeGovtechUsersModal()" class="px-4 py-1.5 rounded-xl bg-[#1e2d3d] hover:bg-[#27394d] text-white font-bold text-xs">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL: ALTERAR MINHA SENHA                                            -->
+  <!-- ===================================================================== -->
+  <div id="modalGovtechChangePass" class="hidden fixed inset-0 z-[90] bg-slate-950/75 backdrop-blur-xs p-4 flex items-center justify-center no-print">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
+      <div class="px-5 py-4 bg-[#1e2d3d] text-white flex items-center justify-between">
+        <h3 class="text-sm font-black uppercase">🔑 Alterar Minha Senha</h3>
+        <button onclick="closeGovtechChangePassModal()" class="text-slate-300 hover:text-white text-lg font-bold px-1">✕</button>
+      </div>
+      <form onsubmit="handleGovtechChangePassSubmit(event)" class="p-5 space-y-3 text-xs">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Nova Senha (mín. 8 caracteres, letras e números):</label>
+          <input id="govtechNewPass1" type="password" required minlength="8" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs bg-white text-slate-900 font-mono" />
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Confirmar Nova Senha:</label>
+          <input id="govtechNewPass2" type="password" required minlength="8" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs bg-white text-slate-900 font-mono" />
+        </div>
+        <div id="govtechChangePassMsg" class="hidden p-2.5 rounded-lg text-xs font-bold"></div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeGovtechChangePassModal()" class="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold">Cancelar</button>
+          <button type="submit" class="px-4 py-2 rounded-xl bg-[#1e2d3d] hover:bg-[#27394d] text-white font-extrabold">Salvar Nova Senha</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- CONTROLADOR DE AUTENTICAÇÃO ZERO-TRUST & RBAC (IGUAL DEMAIS SISTEMAS) -->
+  <!-- ===================================================================== -->
+  <script>
+    (function () {
+      const SUPERADMIN_NIP = "07364750";
+      const PERFIS = {
+        SUPERADMIN: "SUPERADMIN",
+        ADMIN_AUXILIAR: "ADMIN_AUXILIAR",
+        GESTOR: "GESTOR",
+        CONSULTA: "CONSULTA"
+      };
+      const ROLE_STYLES = {
+        SUPERADMIN: "bg-amber-500/25 text-amber-300 border-amber-400/50",
+        ADMIN_AUXILIAR: "bg-blue-500/25 text-blue-200 border-blue-400/50",
+        GESTOR: "bg-emerald-500/25 text-emerald-200 border-emerald-400/50",
+        CONSULTA: "bg-slate-600/40 text-slate-200 border-slate-400/40"
+      };
+
+      window.govtechCurrentUser = null;
+      window.govtechUsersCache = [];
+
+      function normalizeNip(val) {
+        return String(val || "").replace(/\D/g, "");
+      }
+
+      function formatNip(nip) {
+        const d = normalizeNip(nip);
+        if (d.length !== 8) return String(nip || "");
+        return `${d.slice(0, 2)}.${d.slice(2, 6)}.${d.slice(6, 8)}`;
+      }
+
+      function isSuperAdmin(user) {
+        return !!(user && normalizeNip(user.nip) === SUPERADMIN_NIP && user.perfil === PERFIS.SUPERADMIN);
+      }
+
+      function canManageUsers(user) {
+        if (!user || user.ativo === false) return false;
+        if (isSuperAdmin(user)) return true;
+        if (user.perfil === PERFIS.ADMIN_AUXILIAR) {
+          return !!(user.permissoesAdmin && (user.permissoesAdmin.cadastrarUsuarios || user.permissoesAdmin.definirPermissoes));
+        }
+        return false;
+      }
+
+      function getFirebaseAuthAndDb() {
+        if (typeof firebase === "undefined") return { auth: null, db: null };
+        try {
+          const auth = firebase.auth();
+          const db = firebase.firestore();
+          return { auth, db };
+        } catch (e) {
+          console.error("[GovTechAuth] Erro ao obter Firebase Auth/Firestore:", e);
+          return { auth: null, db: null };
+        }
+      }
+
+      function showLoginFeedback(kind, msg) {
+        const errBox = document.getElementById("govtechLoginError");
+        const errTxt = document.getElementById("govtechLoginErrorText");
+        const infBox = document.getElementById("govtechLoginInfo");
+        const infTxt = document.getElementById("govtechLoginInfoText");
+        if (errBox) errBox.classList.add("hidden");
+        if (infBox) infBox.classList.add("hidden");
+        if (!msg) return;
+        if (kind === "error" && errBox && errTxt) {
+          errTxt.textContent = msg;
+          errBox.classList.remove("hidden");
+        } else if (kind === "info" && infBox && infTxt) {
+          infTxt.textContent = msg;
+          infBox.classList.remove("hidden");
+        }
+      }
+
+      async function resolveSessionProfile(firebaseUser) {
+        if (!firebaseUser) return null;
+        const { auth, db } = getFirebaseAuthAndDb();
+        let claims = {};
+        try {
+          const tokenRes = await firebaseUser.getIdTokenResult();
+          claims = tokenRes?.claims || {};
+        } catch (_) {}
+
+        let prof = null;
+        try {
+          const snapUid = await db.collection("usuarios").doc(firebaseUser.uid).get();
+          if (snapUid.exists) {
+            prof = { ...snapUid.data(), uid: firebaseUser.uid };
+          } else if (claims.nip) {
+            const snapNip = await db.collection("usuarios").doc(normalizeNip(claims.nip)).get();
+            if (snapNip.exists) prof = { ...snapNip.data(), uid: firebaseUser.uid };
+          }
+        } catch (e) {
+          console.warn("[GovTechAuth] Aviso ao ler perfil no Firestore:", e.message);
+        }
+
+        const cleanNip = normalizeNip(prof?.nip || claims.nip || "");
+        const ativo = (prof?.ativo === false || claims.ativo === false || String(prof?.status || "").toUpperCase() === "INATIVO")
+          ? false
+          : true;
+
+        if (!ativo) {
+          if (auth) await auth.signOut();
+          return null;
+        }
+
+        const perfil = (prof?.perfil || claims.perfil || PERFIS.CONSULTA).toUpperCase();
+        const permissoesAdmin = prof?.permissoesAdmin || (
+          claims.cadastrarUsuarios !== undefined ? {
+            cadastrarUsuarios: !!claims.cadastrarUsuarios,
+            vincularGestores: !!claims.vincularGestores,
+            alterarRegistrosFinanceiros: !!claims.alterarRegistrosFinanceiros
+          } : undefined
+        );
+
+        return {
+          uid: firebaseUser.uid,
+          nip: cleanNip,
+          nipFormatado: formatNip(cleanNip),
+          email: firebaseUser.email || prof?.email || "",
+          nome: prof?.nome || prof?.nomeCompleto || firebaseUser.displayName || "",
+          nomeGuerra: prof?.nomeGuerra || firebaseUser.displayName || firebaseUser.email || "Militar",
+          posto: prof?.posto || "",
+          setor: prof?.setor || "CFJ",
+          perfil,
+          ativo: true,
+          permissoesAdmin
+        };
+      }
+
+      function applyRbacToUI(sessao) {
+        window.govtechCurrentUser = sessao;
+        const overlay = document.getElementById("govtechLoginOverlay");
+        const controls = document.getElementById("authUserControls");
+        const nameEl = document.getElementById("authUserNameLabel");
+        const roleEl = document.getElementById("authUserRoleBadge");
+        const btnUsers = document.getElementById("btnAuthUsers");
+        const orgInput = document.getElementById("userGlobalOrgName");
+
+        if (!sessao) {
+          if (overlay) overlay.classList.remove("hidden");
+          if (controls) controls.classList.add("hidden");
+          document.body.classList.add("overflow-hidden");
+          return;
+        }
+
+        if (overlay) overlay.classList.add("hidden");
+        document.body.classList.remove("overflow-hidden");
+        if (controls) controls.classList.remove("hidden");
+
+        const labelText = `${sessao.posto ? sessao.posto + " " : ""}${sessao.nomeGuerra || sessao.nome}`.trim();
+        if (nameEl) {
+          nameEl.textContent = labelText;
+          nameEl.title = `${labelText} • NIP ${sessao.nipFormatado} • ${sessao.email}`;
+        }
+        if (roleEl) {
+          roleEl.textContent = sessao.perfil.replace("_", " ");
+          roleEl.className = `px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${ROLE_STYLES[sessao.perfil] || ROLE_STYLES.CONSULTA}`;
+        }
+        if (btnUsers) {
+          if (canManageUsers(sessao)) btnUsers.classList.remove("hidden");
+          else btnUsers.classList.add("hidden");
+        }
+
+        // Restrição suave para perfil CONSULTA (somente leitura)
+        const isConsulta = sessao.perfil === PERFIS.CONSULTA;
+        if (orgInput) {
+          orgInput.readOnly = isConsulta;
+          orgInput.title = isConsulta
+            ? "Perfil CONSULTA (somente leitura) não altera o cabeçalho institucional."
+            : "Digite a sua OM para ser aplicada automaticamente em todos os relatórios em Word, PDF e Excel";
+        }
+      }
+
+      window.toggleGovtechPassVisibility = function () {
+        const inp = document.getElementById("govtechLoginPass");
+        const btn = document.getElementById("btnToggleLoginPass");
+        if (!inp) return;
+        const showing = inp.type === "text";
+        inp.type = showing ? "password" : "text";
+        if (btn) btn.textContent = showing ? "👁️" : "🙈";
+      };
+
+      window.handleGovtechLoginSubmit = async function (e) {
+        if (e) e.preventDefault();
+        showLoginFeedback(null, "");
+        const identEl = document.getElementById("govtechLoginIdent");
+        const passEl = document.getElementById("govtechLoginPass");
+        const btn = document.getElementById("btnGovtechLoginSubmit");
+        const termo = (identEl?.value || "").trim();
+        const senha = passEl?.value || "";
+
+        if (!termo) { showLoginFeedback("error", "Informe seu NIP (8 dígitos) ou E-mail Institucional."); return; }
+        if (!senha) { showLoginFeedback("error", "Digite sua senha de acesso."); return; }
+
+        const { auth, db } = getFirebaseAuthAndDb();
+        if (!auth || !db) {
+          showLoginFeedback("error", "Serviço de autenticação Firebase indisponível. Recarregue a página.");
+          return;
+        }
+
+        if (btn) { btn.disabled = true; btn.innerHTML = `<span>⏳ Autenticando...</span>`; }
+        try {
+          let emailLogin = "";
+          if (termo.includes("@")) {
+            emailLogin = termo.toLowerCase();
+          } else {
+            const cleanNip = normalizeNip(termo);
+            if (cleanNip.length !== 8) {
+              throw new Error("Informe um NIP válido (8 dígitos) ou seu e-mail institucional (@marinha.mil.br).");
+            }
+            const lookupSnap = await db.collection("authLookup").doc(cleanNip).get();
+            if (!lookupSnap.exists || !lookupSnap.data()?.email) {
+              throw new Error("NIP não localizado na base oficial de autenticação (admin-cfj). Tente entrar com seu e-mail @marinha.mil.br.");
+            }
+            emailLogin = String(lookupSnap.data().email).trim().toLowerCase();
+          }
+
+          let cred;
+          try {
+            cred = await auth.signInWithEmailAndPassword(emailLogin, senha);
+          } catch (authErr) {
+            if (senha.trim() !== senha && (authErr?.code === "auth/wrong-password" || authErr?.code === "auth/invalid-credential")) {
+              cred = await auth.signInWithEmailAndPassword(emailLogin, senha.trim());
+            } else {
+              throw authErr;
+            }
+          }
+
+          const sessao = await resolveSessionProfile(cred.user);
+          if (!sessao) {
+            throw new Error("Conta institucional desativada ou bloqueada. Procure o Encarregado da SECOM.");
+          }
+          if (passEl) passEl.value = "";
+          applyRbacToUI(sessao);
+          if (typeof showAppNotification === "function") {
+            showAppNotification(`Bem-vindo(a), ${sessao.posto} ${sessao.nomeGuerra} (${sessao.perfil}).`, "success");
+          }
+        } catch (err) {
+          const code = err?.code || "";
+          let msg = err?.message || "Erro ao autenticar.";
+          if (code === "auth/wrong-password" || code === "auth/invalid-credential" || code === "auth/user-not-found") {
+            msg = "Credenciais inválidas. Verifique seu NIP/e-mail e senha.";
+          } else if (code === "auth/user-disabled") {
+            msg = "Conta institucional desativada. Procure o Administrador Geral.";
+          } else if (code === "auth/too-many-requests") {
+            msg = "Muitas tentativas inválidas consecutivas. Aguarde alguns minutos e tente novamente.";
+          } else if (code === "auth/network-request-failed") {
+            msg = "Falha de conexão com o servidor de autenticação. Verifique sua internet.";
+          }
+          showLoginFeedback("error", msg);
+        } finally {
+          if (btn) { btn.disabled = false; btn.innerHTML = `<span>Entrar no GovTech NLLC</span><span>→</span>`; }
+        }
+      };
+
+      window.handleGovtechPasswordReset = async function () {
+        showLoginFeedback(null, "");
+        const termo = (document.getElementById("govtechLoginIdent")?.value || "").trim();
+        if (!termo) {
+          showLoginFeedback("error", "Informe seu NIP (8 dígitos) ou E-mail Institucional acima antes de solicitar a redefinição de senha.");
+          return;
+        }
+        const { auth, db } = getFirebaseAuthAndDb();
+        if (!auth || !db) return;
+        try {
+          let email = termo.includes("@") ? termo.toLowerCase() : "";
+          if (!email) {
+            const cleanNip = normalizeNip(termo);
+            if (cleanNip.length !== 8) throw new Error("NIP inválido (informe 8 dígitos).");
+            const snap = await db.collection("authLookup").doc(cleanNip).get();
+            if (!snap.exists || !snap.data()?.email) throw new Error("NIP não encontrado na base oficial.");
+            email = String(snap.data().email).trim().toLowerCase();
+          }
+          await auth.sendPasswordResetEmail(email);
+          showLoginFeedback("info", `Link de redefinição enviado para ${email}. Verifique sua caixa de entrada ou spam.`);
+        } catch (err) {
+          showLoginFeedback("error", err?.message || "Não foi possível enviar o e-mail de redefinição.");
+        }
+      };
+
+      window.govtechLogout = async function () {
+        const { auth } = getFirebaseAuthAndDb();
+        if (auth) await auth.signOut();
+        applyRbacToUI(null);
+      };
+
+      // Modal Usuários e Permissões
+      window.openGovtechUsersModal = async function () {
+        if (!canManageUsers(window.govtechCurrentUser)) {
+          if (typeof showAppNotification === "function") showAppNotification("Acesso restrito a Administradores.", "warn");
+          return;
+        }
+        document.getElementById("modalGovtechUsers")?.classList.remove("hidden");
+        const { db } = getFirebaseAuthAndDb();
+        if (!db) return;
+        try {
+          const snap = await db.collection("usuarios").get();
+          const byNip = new Map();
+          snap.docs.forEach(d => {
+            const x = d.data() || {};
+            const cleanNip = normalizeNip(x.nip || d.id);
+            if (cleanNip.length !== 8) return;
+            const isUid = !!(x.uid && d.id === x.uid);
+            const prev = byNip.get(cleanNip);
+            if (!prev || isUid) {
+              byNip.set(cleanNip, {
+                docId: d.id,
+                uid: x.uid || prev?.uid || null,
+                nip: cleanNip,
+                nipFormatado: formatNip(cleanNip),
+                posto: x.posto || prev?.posto || "",
+                nomeGuerra: x.nomeGuerra || prev?.nomeGuerra || "",
+                nome: x.nome || x.nomeCompleto || prev?.nome || "",
+                email: x.email || prev?.email || "",
+                setor: x.setor || prev?.setor || "CFJ",
+                perfil: (x.perfil || prev?.perfil || PERFIS.CONSULTA).toUpperCase(),
+                ativo: (x.ativo === false || String(x.status || "").toUpperCase() === "INATIVO") ? false : true
+              });
+            }
+          });
+          window.govtechUsersCache = Array.from(byNip.values()).sort((a, b) =>
+            (a.nomeGuerra || a.nome).localeCompare(b.nomeGuerra || b.nome, "pt-BR")
+          );
+          renderGovtechUsersTable();
+        } catch (err) {
+          const tb = document.getElementById("govtechUsersTableBody");
+          if (tb) tb.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-rose-600 font-bold">Erro ao carregar usuários: ${escapeHtml(err.message)}</td></tr>`;
+        }
+      };
+
+      window.closeGovtechUsersModal = function () {
+        document.getElementById("modalGovtechUsers")?.classList.add("hidden");
+      };
+
+      window.renderGovtechUsersTable = function () {
+        const tb = document.getElementById("govtechUsersTableBody");
+        const cnt = document.getElementById("govtechUsersCount");
+        const q = (document.getElementById("govtechUsersSearch")?.value || "").trim().toLowerCase();
+        if (!tb) return;
+
+        const filtered = (window.govtechUsersCache || []).filter(u => {
+          if (!q) return true;
+          return `${u.nip} ${u.posto} ${u.nomeGuerra} ${u.nome} ${u.email} ${u.setor} ${u.perfil}`.toLowerCase().includes(q);
+        });
+        if (cnt) cnt.textContent = `${filtered.length} usuário(s)`;
+
+        const superAdmin = isSuperAdmin(window.govtechCurrentUser);
+        tb.innerHTML = filtered.map(u => {
+          const isTargetSuper = u.nip === SUPERADMIN_NIP;
+          const roleControl = (superAdmin && !isTargetSuper && u.uid)
+            ? `<select onchange="updateGovtechUserRole('${u.uid}', '${u.nip}', this.value)" class="border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold bg-white text-slate-900">
+                 <option value="ADMIN_AUXILIAR" ${u.perfil === 'ADMIN_AUXILIAR' ? 'selected' : ''}>ADMIN_AUXILIAR</option>
+                 <option value="GESTOR" ${u.perfil === 'GESTOR' ? 'selected' : ''}>GESTOR</option>
+                 <option value="CONSULTA" ${u.perfil === 'CONSULTA' ? 'selected' : ''}>CONSULTA</option>
+               </select>`
+            : `<span class="px-2 py-0.5 rounded font-black text-[10px] ${u.perfil === 'SUPERADMIN' ? 'bg-amber-100 text-amber-900' : 'bg-slate-200 text-slate-800'}">${escapeHtml(u.perfil)}</span>`;
+
+          const statusBtn = (superAdmin && !isTargetSuper && u.uid)
+            ? `<button onclick="toggleGovtechUserActive('${u.uid}', '${u.nip}', ${!u.ativo})" class="px-2.5 py-1 rounded-lg text-[10px] font-black ${u.ativo ? 'bg-emerald-100 text-emerald-800 hover:bg-rose-100 hover:text-rose-800' : 'bg-rose-100 text-rose-800 hover:bg-emerald-100 hover:text-emerald-800'} transition">
+                 ${u.ativo ? '✅ ATIVO' : '🚫 INATIVO'}
+               </button>`
+            : `<span class="px-2 py-0.5 rounded text-[10px] font-bold ${u.ativo ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${u.ativo ? 'ATIVO' : 'INATIVO'}</span>`;
+
+          return `
+            <tr class="hover:bg-slate-50">
+              <td class="p-2 font-mono font-bold text-[#1e2d3d] whitespace-nowrap">${escapeHtml(u.nipFormatado)}</td>
+              <td class="p-2">
+                <div class="font-bold text-slate-900">${escapeHtml((u.posto + " " + (u.nomeGuerra || u.nome)).trim())}</div>
+                <div class="text-[10px] text-slate-500">${escapeHtml(u.setor || "CFJ")}</div>
+              </td>
+              <td class="p-2 font-mono text-[11px] text-slate-700">${escapeHtml(u.email)}</td>
+              <td class="p-2">${roleControl}</td>
+              <td class="p-2 text-center">${statusBtn}</td>
+            </tr>
+          `;
+        }).join("") || `<tr><td colspan="5" class="p-6 text-center text-slate-500">Nenhum usuário encontrado.</td></tr>`;
+      };
+
+      window.updateGovtechUserRole = async function (uid, nip, novoPerfil) {
+        if (!isSuperAdmin(window.govtechCurrentUser)) return;
+        const { db } = getFirebaseAuthAndDb();
+        try {
+          await db.collection("usuarios").doc(uid).set({ perfil: novoPerfil, atualizadoEm: new Date().toISOString() }, { merge: true });
+          const item = (window.govtechUsersCache || []).find(u => u.nip === nip);
+          if (item) item.perfil = novoPerfil;
+          if (typeof showAppNotification === "function") showAppNotification(`Permissão atualizada para ${novoPerfil}.`, "success");
+        } catch (err) {
+          if (typeof showAppNotification === "function") showAppNotification("Erro ao atualizar permissão: " + err.message, "error");
+        }
+      };
+
+      window.toggleGovtechUserActive = async function (uid, nip, novoAtivo) {
+        if (!isSuperAdmin(window.govtechCurrentUser)) return;
+        const { db } = getFirebaseAuthAndDb();
+        try {
+          await db.collection("usuarios").doc(uid).set({ ativo: novoAtivo, status: novoAtivo ? "ATIVO" : "INATIVO", atualizadoEm: new Date().toISOString() }, { merge: true });
+          const item = (window.govtechUsersCache || []).find(u => u.nip === nip);
+          if (item) item.ativo = novoAtivo;
+          renderGovtechUsersTable();
+          if (typeof showAppNotification === "function") showAppNotification(`Status atualizado para ${novoAtivo ? 'ATIVO' : 'INATIVO'}.`, "success");
+        } catch (err) {
+          if (typeof showAppNotification === "function") showAppNotification("Erro ao atualizar status: " + err.message, "error");
+        }
+      };
+
+      // Modal Alterar Senha
+      window.openGovtechChangePassModal = function () {
+        const m = document.getElementById("modalGovtechChangePass");
+        const msg = document.getElementById("govtechChangePassMsg");
+        if (msg) msg.classList.add("hidden");
+        const p1 = document.getElementById("govtechNewPass1");
+        const p2 = document.getElementById("govtechNewPass2");
+        if (p1) p1.value = "";
+        if (p2) p2.value = "";
+        if (m) m.classList.remove("hidden");
+      };
+
+      window.closeGovtechChangePassModal = function () {
+        document.getElementById("modalGovtechChangePass")?.classList.add("hidden");
+      };
+
+      window.handleGovtechChangePassSubmit = async function (e) {
+        if (e) e.preventDefault();
+        const p1 = document.getElementById("govtechNewPass1")?.value || "";
+        const p2 = document.getElementById("govtechNewPass2")?.value || "";
+        const msg = document.getElementById("govtechChangePassMsg");
+        const showMsg = (ok, txt) => {
+          if (!msg) return;
+          msg.className = `p-2.5 rounded-lg text-xs font-bold ${ok ? 'bg-emerald-50 text-emerald-800 border border-emerald-300' : 'bg-rose-50 text-rose-800 border border-rose-300'}`;
+          msg.textContent = txt;
+          msg.classList.remove("hidden");
+        };
+        if (p1.length < 8 || !/[A-Za-z]/.test(p1) || !/[0-9]/.test(p1)) {
+          showMsg(false, "A senha deve ter ao menos 8 caracteres combinando letras e números.");
+          return;
+        }
+        if (p1 !== p2) {
+          showMsg(false, "As senhas digitadas não coincidem.");
+          return;
+        }
+        const { auth } = getFirebaseAuthAndDb();
+        if (!auth?.currentUser) { showMsg(false, "Sessão expirada. Faça login novamente."); return; }
+        try {
+          await auth.currentUser.updatePassword(p1);
+          showMsg(true, "Senha alterada com sucesso!");
+          setTimeout(() => closeGovtechChangePassModal(), 1500);
+        } catch (err) {
+          if (err?.code === "auth/requires-recent-login") {
+            showMsg(false, "Por segurança, saia e entre novamente antes de alterar a senha.");
+          } else {
+            showMsg(false, err?.message || "Erro ao alterar senha.");
+          }
+        }
+      };
+
+      // Inicializa observador de autenticação Firebase Auth
+      function initGovtechAuthObserver() {
+        const { auth } = getFirebaseAuthAndDb();
+        if (!auth) {
+          setTimeout(initGovtechAuthObserver, 300);
+          return;
+        }
+        auth.onAuthStateChanged(async (fbUser) => {
+          if (!fbUser) {
+            applyRbacToUI(null);
+            return;
+          }
+          const sessao = await resolveSessionProfile(fbUser);
+          applyRbacToUI(sessao);
+        });
+      }
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", initGovtechAuthObserver);
+      } else {
+        initGovtechAuthObserver();
+      }
+    })();
+  </script>
 
 </body>
 </html>

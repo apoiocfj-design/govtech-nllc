@@ -421,41 +421,128 @@ class CNBSCatalogEngine:
     def parse_free_demand_text(self, raw_text: str) -> List[Dict[str, Any]]:
         """
         Recebe um texto livre colado pelo usuário (ex: lista de itens de um DFD/TR)
-        e extrai automaticamente cada linha, identificando palavras-chave, unidade,
-        quantidade estimada e sugerindo os códigos CATMAT/CATSER correspondentes.
+        ou lista estruturada no formato:
+          - "CATMAT; QUANTIDADE"           (ex: "444095; 10")
+          - "CATMAT; QUANTIDADE UNIDADE"   (ex: "444095; 10 PAR")
+          - "CATMAT; QUANTIDADE; UNIDADE"  (ex: "444095; 10; CX")
+          - "CATMAT; UNIDADE; QUANTIDADE"  (ex: "444095; PAR; 10")
+          - "CATMAT; UNIDADE"              (ex: "444095; PAR")
+          - "10 UN - Pneu automotivo..."   (texto livre DFD/TR)
+        Extrai código exato (quando informado), quantidade, unidade e sugere os
+        códigos CATMAT/CATSER correspondentes.
         """
-        lines = [ln.strip() for ln in (raw_text or "").splitlines() if len(ln.strip()) >= 3]
+        lines = [ln.strip() for ln in (raw_text or "").splitlines() if len(ln.strip()) >= 2]
         parsed_items: List[Dict[str, Any]] = []
+        unit_regex = re.compile(
+            r"^(UN|UND|UNID|UNIDADE|PAR|PARES|CX|CAIXA|PCT|PACOTE|KG|G|M|MT|M2|M3|L|LT|LITRO|FR|FRASCO|GL|GALAO|RL|ROLO|JG|JOGO|KIT|CJ|CONJ|CONJUNTO|SERV|SV|MES|MESES|HR|HORA|DIARIA|PCTE|FD|FARDO|SC|SACO|TB|TUBO|BD|BALDE|LTDA|EMB|EMBALAGEM|BL|BLOCO|RESMA|FL|FOLHA)$",
+            re.IGNORECASE,
+        )
 
         for idx, line in enumerate(lines, start=1):
-            # Extrai quantidade se houver (ex: "800 UN - Bocal..." ou "15 pares Luva...")
-            qty_match = re.search(
-                r"\b(\d+(?:[\.,]\d+)?)\s*(UN|UND|UNID|PAR|PARES|CX|CAIXA|PCT|KG|M|L|SERV|MES|MESES)?\b",
-                line,
-                re.IGNORECASE,
-            )
             qty = 1
             unit = "UN"
+            explicit_unit = False
+            exact_code: Optional[int] = None
             cleaned_desc = line
-            if qty_match:
-                try:
-                    qty = max(1, int(float(qty_match.group(1).replace(",", "."))))
-                except ValueError:
-                    qty = 1
-                if qty_match.group(2):
-                    unit = qty_match.group(2).upper()
-                # Remove numeração inicial de lista tipo "1." ou "Item 01 -"
-                cleaned_desc = re.sub(r"^(?:item\s*)?\d+[\.\)\-\s]+", "", line, flags=re.IGNORECASE).strip()
 
-            search_res = self.search(cleaned_desc, item_type="ALL", limit=5)
+            # 1) Detecção prioritária de formato delimitado: "catmat; qtd", "catmat; unidade", "catmat; qtd; un", "catmat\tqtd"
+            if any(sep in line for sep in (";", "\t", "|")):
+                parts = [p.strip() for p in re.split(r"[;\t|]+", line) if p.strip()]
+                if parts:
+                    # Verifica se a primeira coluna é um código CATMAT/CATSER (3 a 8 dígitos, opcionalmente precedido por CATMAT/CATSER)
+                    code_match = re.match(r"^(?:catmat|catser|cod\.?|c[oó]digo)?\s*[:#-]?\s*(\d{3,8})$", parts[0], re.IGNORECASE)
+                    if code_match:
+                        exact_code = int(code_match.group(1))
+                        cleaned_desc = str(exact_code)
+                        for extra in parts[1:]:
+                            # Ex: "10 PAR" ou "10 UN" ou "10,5 CX"
+                            combo = re.match(r"^(\d+(?:[\.,]\d+)?)\s*([a-zA-ZÀ-ÿ0-9/]{1,15})?$", extra)
+                            if combo:
+                                try:
+                                    qty = max(1, int(round(float(combo.group(1).replace(",", ".")))))
+                                except ValueError:
+                                    qty = 1
+                                if combo.group(2):
+                                    unit = combo.group(2).strip().upper()[:12]
+                                    explicit_unit = True
+                                continue
+                            # Ex: "PAR 10" ou "UN 5"
+                            combo_rev = re.match(r"^([a-zA-ZÀ-ÿ]{1,12})\s+(\d+(?:[\.,]\d+)?)$", extra)
+                            if combo_rev:
+                                unit = combo_rev.group(1).strip().upper()[:12]
+                                explicit_unit = True
+                                try:
+                                    qty = max(1, int(round(float(combo_rev.group(2).replace(",", ".")))))
+                                except ValueError:
+                                    qty = 1
+                                continue
+                            # Ex: apenas unidade ("PAR", "CX", "UN", "FRASCO")
+                            if unit_regex.match(extra) or (len(extra) <= 10 and re.match(r"^[A-Za-zÀ-ÿ]+$", extra)):
+                                unit = extra.strip().upper()[:12]
+                                explicit_unit = True
+                                continue
+
+            # 2) Se não for código delimitado, faz a extração livre (ex: "800 UN - Bocal..." ou "15 pares Luva...")
+            if exact_code is None:
+                # Também suporta linha contendo apenas um código CATMAT/CATSER isolado (ex: "444095")
+                solo_code = re.match(r"^(?:catmat|catser|cod\.?)?\s*[:#-]?\s*(\d{4,8})$", line, re.IGNORECASE)
+                if solo_code:
+                    exact_code = int(solo_code.group(1))
+                    cleaned_desc = str(exact_code)
+                else:
+                    qty_match = re.search(
+                        r"\b(\d+(?:[\.,]\d+)?)\s*(UN|UND|UNID|PAR|PARES|CX|CAIXA|PCT|KG|M|L|SERV|SV|MES|MESES|KIT|JG|RL|FR|GL)?\b",
+                        line,
+                        re.IGNORECASE,
+                    )
+                    if qty_match:
+                        raw_num = qty_match.group(1).replace(",", ".")
+                        # Evita confundir código CATMAT de 5+ dígitos com quantidade
+                        if len(raw_num.split(".")[0]) <= 4:
+                            try:
+                                qty = max(1, int(float(raw_num)))
+                            except ValueError:
+                                qty = 1
+                        if qty_match.group(2):
+                            unit = qty_match.group(2).upper()
+                            explicit_unit = True
+                        cleaned_desc = re.sub(r"^(?:item\s*)?\d+[\.\)\-\s]+", "", line, flags=re.IGNORECASE).strip()
+
+            search_res = self.search(cleaned_desc, item_type="ALL", limit=6)
+            matches = list(search_res.get("results", []))
+
+            # Prioriza correspondência exata do código CATMAT/CATSER no topo da lista
+            if exact_code is not None:
+                exact_hits = [m for m in matches if int(m.get("codigo") or 0) == exact_code]
+                other_hits = [m for m in matches if int(m.get("codigo") or 0) != exact_code]
+                if exact_hits:
+                    matches = exact_hits + other_hits
+                    if not explicit_unit and exact_hits[0].get("unidade"):
+                        unit = str(exact_hits[0].get("unidade")).strip().upper()
+                else:
+                    # Fallback direto caso o código ainda não esteja no cache local
+                    matches.insert(
+                        0,
+                        {
+                            "codigo": exact_code,
+                            "item_type": "MATERIAL",
+                            "descricao": f"Item Catálogo CATMAT/CATSER {exact_code}",
+                            "unidade": unit,
+                        },
+                    )
+
             parsed_items.append(
                 {
                     "line_number": idx,
+                    "raw_line": line,
                     "original_text": line,
+                    "exact_code": exact_code,
                     "extracted_keywords": search_res.get("tokens_parsed", []),
+                    "quantity": qty,
                     "suggested_quantity": qty,
+                    "unit": unit,
                     "suggested_unit": unit,
-                    "matches": search_res.get("results", []),
+                    "matches": matches,
                 }
             )
 
