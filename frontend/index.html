@@ -499,79 +499,91 @@
   </aside>
 
   <!-- ===================================================================== -->
-  <!-- BARRA SUPERIOR DO APLICATIVO (MENU UNIFICADO + LINK COMPARTILHÁVEL)    -->
+  <!-- BARRA SUPERIOR EXECUTIVA EM 2 NÍVEIS (IDENTIDADE/SESSÃO + NAVEGAÇÃO)  -->
   <!-- ===================================================================== -->
-  <header class="bg-[#1e2d3d]/95 backdrop-blur-md text-white px-4 sm:px-6 py-2.5 shadow-md border-b border-[#27394d] sticky top-0 z-40 no-print">
-    <div class="max-w-[1720px] mx-auto flex flex-wrap items-center justify-between gap-3">
-      <div class="flex items-center gap-3">
-        <img src="/app_logo_transparent.png" alt="Sistema GovTech" class="w-11 h-11 md:w-12 md:h-12 object-contain drop-shadow-md shrink-0" />
-        <div>
-          <span class="font-black tracking-tight text-sm md:text-base block text-white uppercase leading-tight">SISTEMA GOVTECH • INTELIGÊNCIA EM LICITAÇÕES</span>
-          <div class="flex flex-wrap items-center gap-1.5 text-xs text-slate-300 mt-0.5">
-            <span class="text-[10px] text-[#c5a365] font-black uppercase tracking-wider">OM / Órgão:</span>
+  <header class="bg-[#0e1a2b] text-white shadow-lg border-b border-[#c5a365]/25 sticky top-0 z-40 no-print">
+    <!-- NÍVEL 1: IDENTIDADE, OM/ÓRGÃO E CONTROLES DE SESSÃO -->
+    <div class="max-w-[1720px] mx-auto px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3">
+      <!-- ESQUERDA: LOGO + TÍTULO + OM/ÓRGÃO -->
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="w-10 h-10 rounded-xl bg-white/[0.05] border border-[#c5a365]/40 p-1 flex items-center justify-center shrink-0 shadow-sm">
+          <img src="/app_logo_transparent.png" alt="Sistema GovTech" class="w-full h-full object-contain" />
+        </div>
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <span class="font-black tracking-wide text-sm md:text-[15px] text-white uppercase leading-none truncate">SISTEMA GOVTECH</span>
+            <span class="hidden sm:inline-block px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-[#c5a365]/20 text-[#e5cfa0] border border-[#c5a365]/40">Lei 14.133</span>
+          </div>
+          <div class="flex items-center gap-1.5 mt-1">
+            <span class="text-[10px] text-[#c5a365] font-extrabold uppercase tracking-wider shrink-0">OM / Órgão:</span>
             <input
               id="userGlobalOrgName"
               type="text"
-              placeholder="Digite a sua OM ou Órgão..."
+              placeholder="Capitania Fluvial de Juazeiro (UASG 782340)"
               oninput="updateGlobalOrgName(this.value)"
-              class="dark-input bg-[#27394d] border border-[#334960] hover:border-[#c5a365] focus:border-[#c5a365] rounded-lg px-2 py-0.5 text-[11px] text-white placeholder-slate-400 font-bold w-56 md:w-72 outline-none transition"
+              class="dark-input rounded-lg px-2.5 py-0.5 text-[11px] font-semibold w-52 sm:w-64 md:w-72 outline-none transition"
               title="Digite a sua OM para ser aplicada automaticamente em todos os relatórios em Word, PDF e Excel"
             />
           </div>
         </div>
       </div>
 
-      <!-- ABAS DO APP (SEGMENTED CONTROL LIMPO COM CONTADOR DO LOTE) -->
-      <div class="flex flex-wrap items-center gap-1 bg-[#27394d] p-1 rounded-xl border border-[#334960]/70 shadow-inner">
-        <button id="tabBtnPrices" onclick="openTab('PRICES')" class="px-3 py-1.5 rounded-lg text-xs font-black bg-[#c5a365] text-[#1e2d3d] shadow border border-[#c9962b] transition flex items-center gap-1.5">
-          <span>🔍 1. Pesquisa de Preços</span>
-          <span id="headerBatchBadge" class="hidden px-1.5 py-0.2 rounded-full text-[10px] font-black bg-[#1e2d3d] text-amber-300 tabular-nums">0</span>
-        </button>
-        <button id="tabBtnRAG" onclick="openTab('RAG')" class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-[#334960] transition">
-          ⚖️ 2. Minutas & Auditoria
-        </button>
-        <button id="tabBtnLinks" onclick="openTab('LINKS')" class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-[#334960] transition">
-          🏛️ 3. Consulta & Certidões
-        </button>
-        <button id="tabBtnIRP" onclick="openTab('IRP')" class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-[#334960] transition">
-          📡 4. Radar IRP & SRP
-        </button>
-      </div>
+      <!-- DIREITA: ACESSIBILIDADE + AUDITORIA + CÁPSULA DO MILITAR -->
+      <div class="flex items-center gap-2.5 flex-wrap">
+        <!-- Grupo Compacto de Acessibilidade (eMAG) -->
+        <div class="flex items-center bg-white/[0.05] border border-white/10 rounded-xl p-0.5">
+          <button onclick="toggleHighContrast()" id="btnHighContrast" class="px-2 py-1 rounded-lg text-[11px] font-bold text-slate-300 hover:text-white hover:bg-white/10 transition" title="Alto contraste (eMAG / WCAG 2.1)" aria-label="Alternar modo de alto contraste">👁️</button>
+          <button onclick="adjustFontSize(-1)" class="px-2 py-1 rounded-lg text-[11px] font-bold text-slate-300 hover:text-white hover:bg-white/10 transition" title="Diminuir fonte" aria-label="Diminuir texto">A-</button>
+          <button onclick="adjustFontSize(1)" class="px-2 py-1 rounded-lg text-[11px] font-bold text-slate-300 hover:text-white hover:bg-white/10 transition" title="Aumentar fonte" aria-label="Aumentar texto">A+</button>
+        </div>
 
-      <!-- BOTÕES DE ACESSIBILIDADE, AUDITORIA E SESSÃO DO MILITAR (RBAC) -->
-      <div class="flex flex-wrap items-center gap-1.5">
-        <button onclick="toggleHighContrast()" id="btnHighContrast" class="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-[#27394d] hover:bg-[#334960] text-slate-200 border border-[#334960] transition flex items-center gap-1" title="Ativar/desativar modo de alto contraste (Acessibilidade eMAG / WCAG 2.1)" aria-label="Alternar modo de alto contraste">
-          <span>👁️</span> <span class="hidden 2xl:inline">Contraste</span>
-        </button>
-        <button onclick="adjustFontSize(1)" class="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-[#27394d] hover:bg-[#334960] text-slate-200 border border-[#334960] transition" title="Aumentar tamanho do texto" aria-label="Aumentar texto">
-          A+
-        </button>
-        <button onclick="adjustFontSize(-1)" class="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-[#27394d] hover:bg-[#334960] text-slate-200 border border-[#334960] transition" title="Diminuir tamanho do texto" aria-label="Diminuir texto">
-          A-
-        </button>
-        <button onclick="openAuditTrailModal()" class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-[#c5a365]/20 hover:bg-[#c5a365]/35 text-amber-300 border border-[#c5a365]/50 transition flex items-center gap-1 shadow-2xs" title="Abrir Trilha de Auditoria Imutável com Hash SHA-256 (TCU/CGU)" aria-label="Abrir trilha de auditoria imutável">
-          <span>📜</span> <span class="hidden xl:inline">Auditoria</span>
+        <!-- Botão Trilha de Auditoria SHA-256 -->
+        <button onclick="openAuditTrailModal()" class="h-8 px-3 rounded-xl text-[11px] font-bold bg-[#c5a365]/15 hover:bg-[#c5a365]/25 text-[#f0d99e] border border-[#c5a365]/40 transition flex items-center gap-1.5" title="Abrir Trilha de Auditoria Imutável SHA-256 (TCU/CGU)" aria-label="Abrir trilha de auditoria imutável">
+          <span>📜</span>
+          <span>Auditoria</span>
         </button>
 
-        <!-- PERFIL DO USUÁRIO AUTENTICADO + CONTROLE DE ACESSOS -->
-        <div id="authUserControls" class="hidden flex items-center gap-1.5 pl-1.5 border-l border-slate-600/70">
-          <div id="authUserPill" class="px-2.5 py-1 rounded-lg bg-[#27394d] border border-slate-600/80 flex items-center gap-1.5 text-[11px]">
+        <!-- Cápsula Unificada do Militar Autenticado -->
+        <div id="authUserControls" class="hidden flex items-center gap-2 bg-white/[0.06] border border-white/15 rounded-xl px-2.5 py-1">
+          <div id="authUserPill" class="flex items-center gap-1.5 text-[11px]">
             <span class="text-[#c5a365]">🎖️</span>
-            <span id="authUserNameLabel" class="font-bold text-white max-w-[140px] truncate">Militar</span>
+            <span id="authUserNameLabel" class="font-extrabold text-white max-w-[140px] truncate">Militar</span>
             <span id="authUserRoleBadge" class="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-400/40">CONSULTA</span>
           </div>
-          <button id="btnAuthUsers" onclick="openGovtechUsersModal()" class="hidden px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-blue-600/25 hover:bg-blue-600/40 text-blue-200 border border-blue-400/40 transition flex items-center gap-1" title="Gerenciar Usuários e Permissões (Lista Oficial admin-cfj)">
-            <span>👥</span> <span class="hidden xl:inline">Usuários</span>
-          </button>
-          <button onclick="openGovtechChangePassModal()" class="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-[#27394d] hover:bg-[#334960] text-slate-200 border border-[#334960] transition" title="Alterar minha senha">
-            🔑
-          </button>
-          <button onclick="govtechLogout()" class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-rose-900/50 hover:bg-rose-800 text-rose-100 border border-rose-500/40 transition flex items-center gap-1" title="Encerrar sessão com segurança">
-            <span>🚪</span> <span class="hidden lg:inline">Sair</span>
-          </button>
+          <span class="w-px h-4 bg-white/15"></span>
+          <div class="flex items-center gap-1">
+            <button id="btnAuthUsers" onclick="openGovtechUsersModal()" class="hidden px-2 py-1 rounded-lg text-[11px] font-bold text-sky-200 hover:text-white hover:bg-sky-500/20 transition flex items-center gap-1" title="Gerenciar Usuários e Permissões (admin-cfj)">
+              <span>👥</span> <span class="hidden md:inline">Usuários</span>
+            </button>
+            <button onclick="openGovtechChangePassModal()" class="px-2 py-1 rounded-lg text-[11px] font-bold text-slate-300 hover:text-white hover:bg-white/10 transition" title="Alterar minha senha">
+              🔑
+            </button>
+            <button onclick="govtechLogout()" class="px-2 py-1 rounded-lg text-[11px] font-bold text-rose-300 hover:text-white hover:bg-rose-600/40 transition flex items-center gap-1" title="Encerrar sessão">
+              <span>🚪</span> <span class="hidden sm:inline">Sair</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
+
+    <!-- NÍVEL 2: BARRA DEDICADA DE NAVEGAÇÃO ENTRE MÓDULOS -->
+    <nav class="bg-[#16263b] border-t border-white/10">
+      <div class="max-w-[1720px] mx-auto px-4 sm:px-6 py-1.5 flex items-center gap-1.5 overflow-x-auto custom-scrollbar">
+        <button id="tabBtnPrices" onclick="openTab('PRICES')" class="px-3.5 py-1.5 rounded-lg text-xs font-black bg-[#c5a365] text-[#0e1a2b] shadow-sm border border-[#d6b676] transition flex items-center gap-1.5 whitespace-nowrap">
+          <span>🔍 1. Pesquisa de Preços</span>
+          <span id="headerBatchBadge" class="hidden px-1.5 py-0.2 rounded-full text-[10px] font-black bg-[#0e1a2b] text-amber-300 tabular-nums">0</span>
+        </button>
+        <button id="tabBtnRAG" onclick="openTab('RAG')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-white/10 transition whitespace-nowrap">
+          ⚖️ 2. Minutas &amp; Auditoria
+        </button>
+        <button id="tabBtnLinks" onclick="openTab('LINKS')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-white/10 transition whitespace-nowrap">
+          🏛️ 3. Consulta &amp; Certidões
+        </button>
+        <button id="tabBtnIRP" onclick="openTab('IRP')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-white/10 transition whitespace-nowrap">
+          📡 4. Radar IRP &amp; SRP
+        </button>
+      </div>
+    </nav>
   </header>
 
   <!-- ===================================================================== -->
@@ -2293,10 +2305,10 @@
         <!-- STATUS DE INTEGRIDADE CRIPTOGRÁFICA -->
         <div id="auditIntegrityBadge" class="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 flex items-center justify-between flex-wrap gap-3">
           <div class="flex items-center gap-3">
-            <span class="text-2xl text-emerald-600">🛡️</span>
+            <span id="auditIntegrityIcon" class="text-2xl text-emerald-600">🛡️</span>
             <div>
-              <strong class="text-xs font-black uppercase text-emerald-950 block">Cadeia Criptográfica Íntegra e Autêntica</strong>
-              <span id="auditIntegrityDesc" class="text-[11px] text-emerald-800">Todos os blocos de auditoria conferem perfeitamente com os hashes SHA-256 encadeados.</span>
+              <strong id="auditIntegrityTitle" class="text-xs font-black uppercase text-emerald-950 block">Cadeia Criptográfica Íntegra e Autêntica</strong>
+              <span id="auditIntegrityDesc" class="text-[11px] text-emerald-800">Verificando integridade dos blocos encadeados SHA-256...</span>
             </div>
           </div>
           <button onclick="downloadAuditCertificatePdf()" class="h-9 px-4 rounded-xl text-xs font-black bg-[#1e2d3d] hover:bg-[#27394d] text-white shadow-sm flex items-center gap-1.5 transition">
@@ -8504,18 +8516,26 @@
     // =========================================================================
     // CAMADA 3: TRILHA DE AUDITORIA IMUTÁVEL (SHA-256) E CERTIFICADO TCU/CGU
     // =========================================================================
+    function getAuditOperatorLabel() {
+      const u = window.govtechCurrentUser;
+      if (u) {
+        const nome = `${u.posto ? u.posto + " " : ""}${u.nomeGuerra || u.nome || "Militar"}`.trim();
+        return u.nipFormatado ? `${nome} (NIP ${u.nipFormatado})` : nome;
+      }
+      return "OPERADOR DO SISTEMA";
+    }
+
     async function logAuditEvent(action, target, details, legalBasis) {
       try {
         await fetch("/api/v1/audit/log", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            user: getAuditOperatorLabel(),
             action: action || "OPERACAO_SISTEMA",
-            target: target || "Geral",
-            details: details || "Operação realizada pelo usuário",
-            legal_basis: legalBasis || "Lei nº 14.133/2021",
-            operator_id: "Operador de Licitações (CPF protegido)",
-            uasg_code: "160016"
+            target_item: target || "Geral",
+            details: details || "Operação realizada pelo operador",
+            legal_basis: legalBasis || "Lei nº 14.133/2021"
           })
         });
       } catch (e) {
@@ -8538,7 +8558,10 @@
 
     async function loadAuditTrailData() {
       const tbody = document.getElementById("auditTrailTbody");
+      const badgeBox = document.getElementById("auditIntegrityBadge");
+      const badgeTitle = document.getElementById("auditIntegrityTitle");
       const badgeDesc = document.getElementById("auditIntegrityDesc");
+      const badgeIcon = document.getElementById("auditIntegrityIcon");
       if (!tbody) return;
 
       tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-400 italic">Consultando cadeia criptográfica SHA-256...</td></tr>`;
@@ -8548,39 +8571,63 @@
         if (!resp.ok) throw new Error(`Falha ${resp.status}`);
         const data = await resp.json();
 
-        if (badgeDesc) {
-          badgeDesc.textContent = data.is_valid
-            ? `Cadeia íntegra de ${data.total_entries || 0} blocos encadeados. Nenhuma alteração espúria ou deleção detectada.`
-            : "ALERTA: Inconsistência de integridade detectada na cadeia de logs.";
+        const integrity = data.integrity || {};
+        const isValid = integrity.valid !== undefined ? Boolean(integrity.valid) : Boolean(data.is_valid);
+        const entries = Array.isArray(data.entries) ? data.entries : (Array.isArray(data.trail) ? data.trail : []);
+        const totalBlocks = integrity.total_entries !== undefined ? integrity.total_entries : entries.length;
+
+        if (badgeBox && badgeTitle && badgeDesc) {
+          if (isValid) {
+            badgeBox.className = "p-4 rounded-2xl bg-emerald-50 border border-emerald-300 flex items-center justify-between flex-wrap gap-3";
+            badgeTitle.className = "text-xs font-black uppercase text-emerald-950 block";
+            badgeTitle.textContent = "Cadeia Criptográfica Íntegra e Autêntica";
+            badgeDesc.className = "text-[11px] text-emerald-800";
+            badgeDesc.textContent = totalBlocks > 0
+              ? `Cadeia íntegra de ${totalBlocks} bloco(s) encadeado(s) em SHA-256. Nenhuma alteração espúria ou deleção detectada.`
+              : "Cadeia íntegra e pronta para registrar eventos criptografados desta sessão (pesquisas, auditorias e exportações).";
+            if (badgeIcon) badgeIcon.textContent = "🛡️";
+          } else {
+            badgeBox.className = "p-4 rounded-2xl bg-rose-50 border border-rose-300 flex items-center justify-between flex-wrap gap-3";
+            badgeTitle.className = "text-xs font-black uppercase text-rose-950 block";
+            badgeTitle.textContent = "Alerta de Integridade na Cadeia";
+            badgeDesc.className = "text-[11px] text-rose-800";
+            badgeDesc.textContent = integrity.message || "Inconsistência de integridade detectada na cadeia de logs.";
+            if (badgeIcon) badgeIcon.textContent = "🚨";
+          }
         }
 
-        const entries = data.trail || [];
         if (entries.length === 0) {
-          tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-400 italic">Nenhum evento registrado ainda na trilha deste processo.</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-500 italic">Nenhum evento registrado ainda nesta sessão. Pesquisas de preços, auditorias de minutas e emissões de documentos serão gravadas automaticamente com hash SHA-256.</td></tr>`;
           return;
         }
 
-        tbody.innerHTML = entries.slice().reverse().map(ev => {
-          const shortHash = (ev.hash || "").slice(0, 12) + "...";
+        tbody.innerHTML = entries.map(ev => {
+          const rawHash = ev.sha256_hash || ev.hash || "";
+          const shortHash = rawHash ? (rawHash.slice(0, 14) + "...") : "—";
           const d = new Date(ev.timestamp);
           const timeStr = !isNaN(d.getTime())
             ? d.toLocaleString("pt-BR", { hour12: false })
-            : ev.timestamp;
+            : (ev.timestamp || "—");
+          const targetTxt = ev.target_item || ev.target || "Geral";
+          const detailsTxt = typeof ev.details === "object" && ev.details !== null
+            ? JSON.stringify(ev.details)
+            : String(ev.details || "");
+          const userTag = ev.user ? `<div class="text-[10px] text-slate-400 font-semibold mt-0.5">${escapeHtml(ev.user)}</div>` : "";
 
           return `
             <tr class="hover:bg-slate-50 transition font-sans">
-              <td class="p-2.5 font-mono text-[10px] text-slate-500 whitespace-nowrap">${timeStr}</td>
-              <td class="p-2.5 font-bold text-slate-900">${escapeHtml(ev.action)}</td>
-              <td class="p-2.5 font-semibold text-sky-800">${escapeHtml(ev.target)}</td>
-              <td class="p-2.5 text-slate-600 leading-snug">${escapeHtml(ev.details)}</td>
-              <td class="p-2.5 font-bold text-slate-500 text-[10px]">${escapeHtml(ev.legal_basis || "Lei 14.133/2021")}</td>
-              <td class="p-2.5 font-mono text-emerald-800 font-bold text-[10px]" title="${escapeHtml(ev.hash)}">${shortHash}</td>
+              <td class="p-2.5 font-mono text-[10px] text-slate-600 whitespace-nowrap">${escapeHtml(timeStr)}</td>
+              <td class="p-2.5 font-bold text-slate-900">${escapeHtml(ev.action || "EVENTO")}${userTag}</td>
+              <td class="p-2.5 font-semibold text-sky-800">${escapeHtml(targetTxt)}</td>
+              <td class="p-2.5 text-slate-700 leading-snug">${escapeHtml(detailsTxt)}</td>
+              <td class="p-2.5 font-bold text-slate-600 text-[10px]">${escapeHtml(ev.legal_basis || "Lei nº 14.133/2021")}</td>
+              <td class="p-2.5 font-mono text-emerald-800 font-bold text-[10px]" title="${escapeHtml(rawHash)}">${escapeHtml(shortHash)}</td>
             </tr>
           `;
         }).join("");
 
       } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-rose-600">Erro ao carregar trilha: ${escapeHtml(err.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-rose-600 font-bold">Erro ao carregar trilha: ${escapeHtml(err.message)}</td></tr>`;
       }
     }
 
@@ -8591,8 +8638,8 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            process_title: "Pesquisa de Preços e Processo de Aquisição",
-            operator_name: "Operador de Contratações Públicas"
+            process_title: (document.getElementById("userGlobalOrgName")?.value || "Capitania Fluvial de Juazeiro — Pesquisa de Preços e Licitações").trim(),
+            operator_name: getAuditOperatorLabel()
           })
         });
 
@@ -9622,6 +9669,9 @@
           }
           if (passEl) passEl.value = "";
           applyRbacToUI(sessao);
+          if (typeof logAuditEvent === "function") {
+            logAuditEvent("LOGIN_INSTITUCIONAL", "Autenticação CFJ", `Acesso autenticado via Firebase Auth (${sessao.perfil})`, "Art. 12 da Lei nº 14.133/2021");
+          }
           if (typeof showAppNotification === "function") {
             showAppNotification(`Bem-vindo(a), ${sessao.posto} ${sessao.nomeGuerra} (${sessao.perfil}).`, "success");
           }
