@@ -13,6 +13,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
   <title>GovTech NLLC • Sistema Unificado de Compras Públicas & Auditoria</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     html, body { overflow-x: hidden !important; max-width: 100vw !important; }
     /* Rolagem suave e elegante para painéis independentes */
@@ -532,34 +533,34 @@
       <div class="flex items-center gap-2.5 flex-wrap">
         <!-- Grupo Compacto de Acessibilidade (eMAG) -->
         <div class="flex items-center bg-white/[0.05] border border-white/10 rounded-xl p-0.5">
-          <button onclick="toggleHighContrast()" id="btnHighContrast" class="px-2 py-1 rounded-lg text-[11px] font-bold text-slate-300 hover:text-white hover:bg-white/10 transition" title="Alto contraste (eMAG / WCAG 2.1)" aria-label="Alternar modo de alto contraste">👁️</button>
+          <button onclick="toggleHighContrast()" id="btnHighContrast" class="px-2 py-1 rounded-lg text-[11px] font-bold text-slate-300 hover:text-white hover:bg-white/10 transition flex items-center" title="Alto contraste (eMAG / WCAG 2.1)" aria-label="Alternar modo de alto contraste"><i data-lucide="contrast" class="w-3.5 h-3.5"></i></button>
           <button onclick="adjustFontSize(-1)" class="px-2 py-1 rounded-lg text-[11px] font-bold text-slate-300 hover:text-white hover:bg-white/10 transition" title="Diminuir fonte" aria-label="Diminuir texto">A-</button>
           <button onclick="adjustFontSize(1)" class="px-2 py-1 rounded-lg text-[11px] font-bold text-slate-300 hover:text-white hover:bg-white/10 transition" title="Aumentar fonte" aria-label="Aumentar texto">A+</button>
         </div>
 
         <!-- Botão Trilha de Auditoria SHA-256 -->
         <button onclick="openAuditTrailModal()" class="h-8 px-3 rounded-xl text-[11px] font-bold bg-[#c5a365]/15 hover:bg-[#c5a365]/25 text-[#f0d99e] border border-[#c5a365]/40 transition flex items-center gap-1.5" title="Abrir Trilha de Auditoria Imutável SHA-256 (TCU/CGU)" aria-label="Abrir trilha de auditoria imutável">
-          <span>📜</span>
+          <i data-lucide="scroll-text" class="w-3.5 h-3.5"></i>
           <span>Auditoria</span>
         </button>
 
         <!-- Cápsula Unificada do Militar Autenticado -->
         <div id="authUserControls" class="hidden flex items-center gap-2 bg-white/[0.06] border border-white/15 rounded-xl px-2.5 py-1">
           <div id="authUserPill" class="flex items-center gap-1.5 text-[11px]">
-            <span class="text-[#c5a365]">🎖️</span>
+            <i data-lucide="shield-check" class="w-3.5 h-3.5 text-[#c5a365]"></i>
             <span id="authUserNameLabel" class="font-extrabold text-white max-w-[140px] truncate">Militar</span>
             <span id="authUserRoleBadge" class="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-400/40">CONSULTA</span>
           </div>
           <span class="w-px h-4 bg-white/15"></span>
           <div class="flex items-center gap-1">
-            <button id="btnAuthUsers" onclick="openGovtechUsersModal()" class="hidden px-2 py-1 rounded-lg text-[11px] font-bold text-sky-200 hover:text-white hover:bg-sky-500/20 transition flex items-center gap-1" title="Gerenciar Usuários e Permissões (admin-cfj)">
-              <span>👥</span> <span class="hidden md:inline">Usuários</span>
+            <button id="btnAuthUsers" onclick="openTab('USERS')" class="hidden px-2 py-1 rounded-lg text-[11px] font-bold text-sky-200 hover:text-white hover:bg-sky-500/20 transition flex items-center gap-1" title="Gerenciar Usuários e Permissões (admin-cfj)">
+              <i data-lucide="users" class="w-3.5 h-3.5"></i> <span class="hidden md:inline">Usuários</span>
             </button>
-            <button onclick="openGovtechChangePassModal()" class="px-2 py-1 rounded-lg text-[11px] font-bold text-slate-300 hover:text-white hover:bg-white/10 transition" title="Alterar minha senha">
-              🔑
+            <button onclick="openGovtechChangePassModal()" class="px-2 py-1 rounded-lg text-[11px] font-bold text-slate-300 hover:text-white hover:bg-white/10 transition flex items-center" title="Alterar minha senha">
+              <i data-lucide="key-round" class="w-3.5 h-3.5"></i>
             </button>
             <button onclick="govtechLogout()" class="px-2 py-1 rounded-lg text-[11px] font-bold text-rose-300 hover:text-white hover:bg-rose-600/40 transition flex items-center gap-1" title="Encerrar sessão">
-              <span>🚪</span> <span class="hidden sm:inline">Sair</span>
+              <i data-lucide="log-out" class="w-3.5 h-3.5"></i> <span class="hidden sm:inline">Sair</span>
             </button>
           </div>
         </div>
@@ -570,17 +571,25 @@
     <nav class="bg-[#16263b] border-t border-white/10">
       <div class="max-w-[1720px] mx-auto px-4 sm:px-6 py-1.5 flex items-center gap-1.5 overflow-x-auto custom-scrollbar">
         <button id="tabBtnPrices" onclick="openTab('PRICES')" class="px-3.5 py-1.5 rounded-lg text-xs font-black bg-[#c5a365] text-[#0e1a2b] shadow-sm border border-[#d6b676] transition flex items-center gap-1.5 whitespace-nowrap">
-          <span>🔍 1. Pesquisa de Preços</span>
+          <i data-lucide="search" class="w-3.5 h-3.5"></i>
+          <span>1. Pesquisa de Preços</span>
           <span id="headerBatchBadge" class="hidden px-1.5 py-0.2 rounded-full text-[10px] font-black bg-[#0e1a2b] text-amber-300 tabular-nums">0</span>
         </button>
-        <button id="tabBtnRAG" onclick="openTab('RAG')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-white/10 transition whitespace-nowrap">
-          ⚖️ 2. Minutas &amp; Auditoria
+        <button id="tabBtnRAG" onclick="openTab('RAG')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-white/10 transition flex items-center gap-1.5 whitespace-nowrap">
+          <i data-lucide="scale" class="w-3.5 h-3.5"></i>
+          <span>2. Minutas &amp; Auditoria</span>
         </button>
-        <button id="tabBtnLinks" onclick="openTab('LINKS')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-white/10 transition whitespace-nowrap">
-          🏛️ 3. Consulta &amp; Certidões
+        <button id="tabBtnLinks" onclick="openTab('LINKS')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-white/10 transition flex items-center gap-1.5 whitespace-nowrap">
+          <i data-lucide="landmark" class="w-3.5 h-3.5"></i>
+          <span>3. Consulta &amp; Certidões</span>
         </button>
-        <button id="tabBtnIRP" onclick="openTab('IRP')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-white/10 transition whitespace-nowrap">
-          📡 4. Radar IRP &amp; SRP
+        <button id="tabBtnIRP" onclick="openTab('IRP')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-white/10 transition flex items-center gap-1.5 whitespace-nowrap">
+          <i data-lucide="radar" class="w-3.5 h-3.5"></i>
+          <span>4. Radar IRP &amp; SRP</span>
+        </button>
+        <button id="tabBtnUsers" onclick="openTab('USERS')" class="hidden px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-white/10 transition flex items-center gap-1.5 whitespace-nowrap">
+          <i data-lucide="users" class="w-3.5 h-3.5"></i>
+          <span>5. Usuários &amp; Acessos</span>
         </button>
       </div>
     </nav>
@@ -596,7 +605,7 @@
       <div class="flex flex-wrap items-end justify-between gap-2 border-b border-slate-100 pb-3">
         <div>
           <h2 class="text-lg font-extrabold text-[#1e2d3d] flex items-center gap-2">
-            <span>💼</span> Pesquisa de Preços em Lote — IN SEGES/ME nº 65/2021
+            <i data-lucide="briefcase" class="w-5 h-5 text-[#1e2d3d]"></i> Pesquisa de Preços em Lote — IN SEGES/ME nº 65/2021
           </h2>
           <p class="text-xs text-slate-500 mt-0.5">
             Fonte única dos preços: <strong>compras homologadas no Compras.gov.br (dados abertos oficiais)</strong> dos últimos 12 meses, com links de auditoria no PNCP.
@@ -619,14 +628,14 @@
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-auto">
             <button onclick="openCatalogSearchModal()" class="h-10 bg-[#c5a365] hover:bg-[#b39050] text-[#1e2d3d] font-black px-3 rounded-xl text-xs shadow-sm border border-[#c9962b] transition flex items-center justify-center gap-1.5" aria-label="Adicionar item manualmente por código ou catálogo">
-              <span>➕</span> Adicionar Item
+              <i data-lucide="plus-circle" class="w-4 h-4"></i> Adicionar Item
             </button>
             <button onclick="openDemandParserModal()" class="h-10 bg-[#27394d] hover:bg-[#334960] text-white font-bold px-3 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5" aria-label="Colar lista de itens do DFD ou Termo de Referência">
-              <span>📋</span> Colar Lista (DFD/TR)
+              <i data-lucide="clipboard-list" class="w-4 h-4"></i> Colar Lista (DFD/TR)
             </button>
           </div>
           <button onclick="openSemanticAiModal()" class="w-full h-8.5 bg-gradient-to-r from-[#1e2d3d] via-[#27394d] to-[#1e2d3d] hover:brightness-110 text-white font-bold px-2 rounded-xl text-[11px] shadow-sm transition flex items-center justify-center gap-1.5 border border-[#c5a365]/40" aria-label="Abrir assistente de inteligência artificial em linguagem natural">
-            <span>✨</span> <span>Assistente IA: Demanda em Linguagem Natural</span>
+            <i data-lucide="sparkles" class="w-3.5 h-3.5 text-[#c5a365]"></i> <span>Assistente IA: Demanda em Linguagem Natural</span>
           </button>
           <span id="step1Status" class="text-[11px] font-bold text-slate-600" aria-live="polite">Lote vazio.</span>
         </div>
@@ -641,7 +650,7 @@
             </div>
           </div>
           <button id="btnProcessBatch" onclick="processBatchResearch()" class="mt-auto h-10 bg-[#3b6e5c] hover:bg-[#2d5849] disabled:opacity-40 disabled:cursor-not-allowed text-white font-black px-3 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5 border border-[#4d8571]/50">
-            <span>🚀</span> <span id="btnProcessBatchLabel">Pesquisar Preços no Compras.gov.br</span>
+            <i data-lucide="rocket" class="w-4 h-4"></i> <span id="btnProcessBatchLabel">Pesquisar Preços no Compras.gov.br</span>
           </button>
           <span id="step2Status" class="text-[11px] font-bold text-slate-500">Adicione itens no passo 1.</span>
         </div>
@@ -1260,18 +1269,18 @@
       </div>
       <div id="ragTopActions" class="hidden flex flex-wrap items-center gap-2.5">
         <button id="btnDownloadRelatorioTop" onclick="downloadDespachoSaneamentoBoth()" class="bg-[#1b365d] hover:bg-[#152840] text-white font-black px-4 py-2.5 rounded-xl text-xs shadow-md transition flex items-center gap-2 border border-[#c5a365]/50">
-          <span>✨</span> Baixar Documento Corrigido (.DOCX) + Nota Técnica e Parecer (.PDF)
+          <i data-lucide="download" class="w-4 h-4 text-[#c5a365]"></i> Baixar Documento Corrigido (.DOCX) + Nota Técnica e Parecer (.PDF)
         </button>
         <button onclick="resetRAGUpload()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3.5 py-2.5 rounded-xl text-xs border border-slate-300 transition flex items-center gap-1.5">
-          <span>🔄</span> Novo Arquivo
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Novo Arquivo
         </button>
       </div>
     </div>
 
     <!-- ESTADO VAZIO: DROPZONE PARA ANEXAR ARQUIVO (SÓ APARECE QUANDO NÃO TEM ARQUIVO) -->
     <div id="ragUploadDropzone" class="bg-white p-10 md:p-14 rounded-2xl border-2 border-dashed border-[#334960]/40 hover:border-[#c5a365] text-center space-y-4 transition shadow-sm">
-      <div class="w-16 h-16 mx-auto rounded-2xl bg-indigo-50 flex items-center justify-center text-3xl">
-        📁
+      <div class="w-16 h-16 mx-auto rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-[#1b365d]">
+        <i data-lucide="folder-up" class="w-8 h-8"></i>
       </div>
       <div>
         <h3 class="text-base font-extrabold text-slate-800">Anexe o Arquivo da Minuta para Iniciar a Auditoria Jurídica</h3>
@@ -1662,6 +1671,181 @@
         </div>
       </div>
     </div>
+  </main>
+
+  <!-- ===================================================================== -->
+  <!-- ABA 5: GESTÃO DE USUÁRIOS E PERMISSÕES (MESMO LAYOUT DO APP)          -->
+  <!-- ===================================================================== -->
+  <main id="viewUsers" class="w-full max-w-[1720px] mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-5 flex-1 hidden no-print">
+    <!-- Cabeçalho da Aba 5 -->
+    <section class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 rounded-2xl bg-[#0e1a2b] text-[#c5a365] flex items-center justify-center shrink-0 shadow-sm">
+          <i data-lucide="users" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h2 class="text-lg font-extrabold text-[#1e2d3d]">Gestão de Usuários e Permissões — Ecossistema CFJ (admin-cfj)</h2>
+          <p class="text-xs text-slate-500 mt-0.5">
+            Cadastre novos militares, edite perfis RBAC, dispare redefinição de senha via Firebase Auth ou remova acessos com registro automático na Trilha SHA-256.
+          </p>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <button type="button" onclick="openGovtechUsersModal()" class="h-10 px-3.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-300 transition flex items-center gap-1.5">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Atualizar
+        </button>
+        <button type="button" onclick="openGovtechUserForm(null)" class="h-10 px-4 rounded-xl bg-[#0e1a2b] hover:bg-[#1e2d3d] text-white font-black text-xs shadow-sm border border-[#c5a365]/40 transition flex items-center gap-1.5">
+          <i data-lucide="user-plus" class="w-4 h-4 text-[#c5a365]"></i> Novo Usuário
+        </button>
+      </div>
+    </section>
+
+    <!-- Cards de Resumo (KPIs) -->
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-slate-100 text-[#1e2d3d] flex items-center justify-center shrink-0">
+          <i data-lucide="users" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <span class="text-[10px] font-black uppercase text-slate-500 block">Total Cadastrados</span>
+          <strong id="usersKpiTotal" class="text-xl font-black text-[#0e1a2b] tabular-nums">0</strong>
+        </div>
+      </div>
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
+          <i data-lucide="user-check" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <span class="text-[10px] font-black uppercase text-slate-500 block">Contas Ativas</span>
+          <strong id="usersKpiActive" class="text-xl font-black text-emerald-700 tabular-nums">0</strong>
+        </div>
+      </div>
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
+          <i data-lucide="shield" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <span class="text-[10px] font-black uppercase text-slate-500 block">Admins &amp; Gestores</span>
+          <strong id="usersKpiManagers" class="text-xl font-black text-[#1e2d3d] tabular-nums">0</strong>
+        </div>
+      </div>
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-sky-50 text-sky-700 flex items-center justify-center shrink-0">
+          <i data-lucide="eye" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <span class="text-[10px] font-black uppercase text-slate-500 block">Perfil Consulta</span>
+          <strong id="usersKpiConsulta" class="text-xl font-black text-sky-800 tabular-nums">0</strong>
+        </div>
+      </div>
+    </section>
+
+    <!-- Formulário Expansível: Cadastro / Edição de Militar -->
+    <section id="govtechUserFormBox" class="hidden bg-white rounded-2xl shadow-sm border-2 border-[#c5a365]/60 overflow-hidden">
+      <div class="px-5 py-3 bg-[#0e1a2b] text-white flex items-center justify-between">
+        <h3 id="govtechUserFormTitle" class="text-xs font-black uppercase tracking-wide flex items-center gap-2">
+          <i data-lucide="user-plus" class="w-4 h-4 text-[#c5a365]"></i>
+          <span>Cadastrar Novo Militar</span>
+        </h3>
+        <button type="button" onclick="closeGovtechUserForm()" class="text-xs font-bold text-slate-300 hover:text-white flex items-center gap-1">
+          <i data-lucide="x" class="w-4 h-4"></i> Fechar
+        </button>
+      </div>
+      <div class="p-5 space-y-3">
+        <form id="govtechUserForm" onsubmit="handleGovtechUserSave(event)" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+          <input type="hidden" id="ufEditUid" />
+          <input type="hidden" id="ufEditDocId" />
+          <div>
+            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">NIP (8 dígitos) *</label>
+            <input id="ufNip" type="text" required placeholder="Ex: 00.0000.00" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono bg-white text-slate-900" />
+          </div>
+          <div>
+            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">Posto / Graduação *</label>
+            <input id="ufPosto" type="text" required placeholder="Ex: 2º SG, 3º SG, CB, 1º TEN" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs bg-white text-slate-900 uppercase" />
+          </div>
+          <div>
+            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">Nome de Guerra *</label>
+            <input id="ufNomeGuerra" type="text" required placeholder="Ex: SILVA" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs bg-white text-slate-900 uppercase" />
+          </div>
+          <div>
+            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">Nome Completo</label>
+            <input id="ufNomeCompleto" type="text" placeholder="Nome completo do militar" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs bg-white text-slate-900" />
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">E-mail Institucional *</label>
+            <input id="ufEmail" type="email" required placeholder="militar@marinha.mil.br" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono bg-white text-slate-900" />
+          </div>
+          <div>
+            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">Setor / Divisão</label>
+            <input id="ufSetor" type="text" value="CFJ" placeholder="Ex: SECOM, CFJ-32.3" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs bg-white text-slate-900" />
+          </div>
+          <div>
+            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">Perfil / Permissão *</label>
+            <select id="ufPerfil" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold bg-white text-slate-900">
+              <option value="CONSULTA">CONSULTA (Leitura)</option>
+              <option value="GESTOR">GESTOR (Operação Completa)</option>
+              <option value="ADMIN_AUXILIAR">ADMIN_AUXILIAR (Gestão)</option>
+            </select>
+          </div>
+          <div id="ufPassContainer" class="sm:col-span-2">
+            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">Senha Inicial (mín. 8 caracteres, letras e números) *</label>
+            <input id="ufSenhaInicial" type="password" minlength="8" placeholder="Ex: Marinh@2026" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono bg-white text-slate-900" />
+          </div>
+          <div class="sm:col-span-2 flex items-end justify-end gap-2">
+            <button type="button" onclick="closeGovtechUserForm()" class="h-9 px-4 rounded-xl bg-slate-100 border border-slate-300 hover:bg-slate-200 text-slate-700 font-bold text-xs">Cancelar</button>
+            <button id="btnUfSave" type="submit" class="h-9 px-5 rounded-xl bg-[#0e1a2b] hover:bg-[#1e2d3d] text-white font-extrabold text-xs shadow-sm flex items-center gap-1.5">
+              <i data-lucide="save" class="w-3.5 h-3.5 text-[#c5a365]"></i> Salvar Usuário
+            </button>
+          </div>
+        </form>
+        <div id="govtechUserFormFeedback" class="hidden p-3 rounded-xl text-xs font-bold"></div>
+      </div>
+    </section>
+
+    <!-- Barra de Busca/Filtro + Tabela de Usuários -->
+    <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+      <div class="p-4 border-b border-slate-200 bg-slate-50/80 flex flex-wrap items-center justify-between gap-3">
+        <div class="relative flex-1 min-w-[240px]">
+          <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+          <input
+            id="govtechUsersSearch"
+            type="text"
+            oninput="renderGovtechUsersTable()"
+            placeholder="Buscar por NIP, Nome de Guerra, Posto, Setor ou E-mail..."
+            class="w-full border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs font-medium bg-white text-slate-900"
+          />
+        </div>
+        <select id="govtechUsersRoleFilter" onchange="renderGovtechUsersTable()" class="border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold bg-white text-slate-800">
+          <option value="ALL">Todos os Perfis</option>
+          <option value="SUPERADMIN">SUPERADMIN</option>
+          <option value="ADMIN_AUXILIAR">ADMIN_AUXILIAR</option>
+          <option value="GESTOR">GESTOR</option>
+          <option value="CONSULTA">CONSULTA</option>
+        </select>
+        <span id="govtechUsersCount" class="text-xs font-black text-[#1e2d3d] bg-slate-200/70 px-3 py-1.5 rounded-lg tabular-nums">0 usuário(s)</span>
+      </div>
+      <div class="overflow-x-auto custom-scrollbar">
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr class="border-b border-slate-200 text-[11px] uppercase text-slate-600 font-black">
+              <th class="p-3">NIP</th>
+              <th class="p-3">Militar / Setor</th>
+              <th class="p-3">E-mail Institucional</th>
+              <th class="p-3">Perfil / Permissão</th>
+              <th class="p-3 text-center">Status</th>
+              <th class="p-3 text-center">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="govtechUsersTableBody" class="divide-y divide-slate-200">
+            <tr><td colspan="6" class="p-8 text-center text-slate-500">Carregando lista oficial de usuários...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="px-5 py-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+        <span>Perfis: <strong>SUPERADMIN</strong> (plenos poderes), <strong>ADMIN_AUXILIAR</strong> (gestão de acessos), <strong>GESTOR</strong> (operação completa), <strong>CONSULTA</strong> (leitura).</span>
+        <span class="font-mono text-[10px]">Base sincronizada: admin-cfj / usuarios</span>
+      </div>
+    </section>
   </main>
 
   <!-- ===================================================================== -->
@@ -2640,21 +2824,34 @@
     // NAVEGAÇÃO ENTRE ABAS DO APLICATIVO
     // =========================================================================
     function openTab(tab) {
-      document.getElementById("viewPrices").classList.toggle("hidden", tab !== "PRICES");
-      document.getElementById("viewRAG").classList.toggle("hidden", tab !== "RAG");
-      document.getElementById("viewLinks").classList.toggle("hidden", tab !== "LINKS");
-      document.getElementById("viewIRP").classList.toggle("hidden", tab !== "IRP");
+      document.getElementById("viewPrices")?.classList.toggle("hidden", tab !== "PRICES");
+      document.getElementById("viewRAG")?.classList.toggle("hidden", tab !== "RAG");
+      document.getElementById("viewLinks")?.classList.toggle("hidden", tab !== "LINKS");
+      document.getElementById("viewIRP")?.classList.toggle("hidden", tab !== "IRP");
+      document.getElementById("viewUsers")?.classList.toggle("hidden", tab !== "USERS");
 
-      const baseCls = "px-3.5 py-2 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-[#334960] transition";
-      const activeCls = "px-3.5 py-2 rounded-lg text-xs font-black bg-[#c5a365] text-[#1e2d3d] shadow border border-[#c9962b] transition";
-      document.getElementById("tabBtnPrices").className = tab === "PRICES" ? activeCls : baseCls;
-      document.getElementById("tabBtnRAG").className = tab === "RAG" ? activeCls : baseCls;
-      document.getElementById("tabBtnLinks").className = tab === "LINKS" ? activeCls : baseCls;
-      document.getElementById("tabBtnIRP").className = tab === "IRP" ? activeCls : baseCls;
+      const baseCls = "px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:text-white hover:bg-white/10 transition flex items-center gap-1.5 whitespace-nowrap";
+      const activeCls = "px-3.5 py-1.5 rounded-lg text-xs font-black bg-[#c5a365] text-[#0e1a2b] shadow-sm border border-[#d6b676] transition flex items-center gap-1.5 whitespace-nowrap";
+      const btnPrices = document.getElementById("tabBtnPrices");
+      const btnRAG = document.getElementById("tabBtnRAG");
+      const btnLinks = document.getElementById("tabBtnLinks");
+      const btnIRP = document.getElementById("tabBtnIRP");
+      const btnUsers = document.getElementById("tabBtnUsers");
+      if (btnPrices) btnPrices.className = tab === "PRICES" ? activeCls : baseCls;
+      if (btnRAG) btnRAG.className = tab === "RAG" ? activeCls : baseCls;
+      if (btnLinks) btnLinks.className = tab === "LINKS" ? activeCls : baseCls;
+      if (btnIRP) btnIRP.className = tab === "IRP" ? activeCls : baseCls;
+      if (btnUsers && !btnUsers.classList.contains("hidden")) {
+        btnUsers.className = tab === "USERS" ? activeCls : baseCls;
+      }
 
       if (tab === "IRP" && !hasLoadedIRPOnce) {
         loadIRPSearch();
       }
+      if (tab === "USERS" && typeof openGovtechUsersModal === "function") {
+        openGovtechUsersModal();
+      }
+      if (typeof window.refreshLucideIcons === "function") window.refreshLucideIcons();
     }
 
     // =========================================================================
@@ -9361,116 +9558,6 @@
   </div>
 
   <!-- ===================================================================== -->
-  <!-- MODAL: GERENCIAMENTO DE USUÁRIOS E PERMISSÕES (admin-cfj)             -->
-  <!-- ===================================================================== -->
-  <div id="modalGovtechUsers" class="hidden fixed inset-0 z-[90] bg-slate-950/75 backdrop-blur-xs p-4 flex items-center justify-center no-print">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-5xl w-full border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
-      <div class="px-6 py-4 bg-[#0e1a2b] text-white flex items-center justify-between border-b border-[#c5a365]/30">
-        <div>
-          <h3 class="text-sm font-black uppercase tracking-wide">👥 Gestão de Usuários e Permissões — Ecossistema CFJ (admin-cfj)</h3>
-          <p class="text-[11px] text-slate-300 mt-0.5">Cadastre, edite, redefina senhas, altere perfis ou remova usuários na base oficial da Capitania.</p>
-        </div>
-        <button onclick="closeGovtechUsersModal()" class="text-slate-300 hover:text-white text-xl font-bold px-2">✕</button>
-      </div>
-
-      <!-- Barra de Busca + Botão Novo Usuário -->
-      <div class="p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2.5">
-        <input
-          id="govtechUsersSearch"
-          type="text"
-          oninput="renderGovtechUsersTable()"
-          placeholder="Buscar por NIP, Nome de Guerra, Posto, Setor ou Perfil..."
-          class="flex-1 min-w-[220px] border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium bg-white text-slate-900"
-        />
-        <span id="govtechUsersCount" class="text-xs font-bold text-[#1e2d3d] px-2">0 usuários</span>
-        <button
-          type="button"
-          onclick="openGovtechUserForm(null)"
-          class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs shadow-xs transition flex items-center gap-1.5"
-        >
-          <span>➕</span> Novo Usuário
-        </button>
-      </div>
-
-      <!-- Formulário Expansível: Cadastro / Edição de Usuário -->
-      <div id="govtechUserFormBox" class="hidden border-b border-slate-300 bg-slate-100/90 p-4 space-y-3">
-        <div class="flex items-center justify-between">
-          <h4 id="govtechUserFormTitle" class="text-xs font-black uppercase text-[#0e1a2b]">➕ Cadastrar Novo Militar</h4>
-          <button type="button" onclick="closeGovtechUserForm()" class="text-xs font-bold text-slate-500 hover:text-slate-800">✕ Fechar formulário</button>
-        </div>
-        <form id="govtechUserForm" onsubmit="handleGovtechUserSave(event)" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
-          <input type="hidden" id="ufEditUid" />
-          <input type="hidden" id="ufEditDocId" />
-          <div>
-            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">NIP (8 dígitos) *</label>
-            <input id="ufNip" type="text" required placeholder="Ex: 00.0000.00" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono bg-white text-slate-900" />
-          </div>
-          <div>
-            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">Posto / Graduação *</label>
-            <input id="ufPosto" type="text" required placeholder="Ex: 2º SG, 3º SG, CB, 1º TEN" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-slate-900 uppercase" />
-          </div>
-          <div>
-            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">Nome de Guerra *</label>
-            <input id="ufNomeGuerra" type="text" required placeholder="Ex: SILVA" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-slate-900 uppercase" />
-          </div>
-          <div>
-            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">Nome Completo</label>
-            <input id="ufNomeCompleto" type="text" placeholder="Nome completo do militar" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-slate-900" />
-          </div>
-          <div class="sm:col-span-2">
-            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">E-mail Institucional *</label>
-            <input id="ufEmail" type="email" required placeholder="militar@marinha.mil.br" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono bg-white text-slate-900" />
-          </div>
-          <div>
-            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">Setor / Divisão</label>
-            <input id="ufSetor" type="text" value="CFJ" placeholder="Ex: SECOM, CFJ-32.3" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-slate-900" />
-          </div>
-          <div>
-            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">Perfil / Permissão *</label>
-            <select id="ufPerfil" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold bg-white text-slate-900">
-              <option value="CONSULTA">CONSULTA (Leitura)</option>
-              <option value="GESTOR">GESTOR (Operação Completa)</option>
-              <option value="ADMIN_AUXILIAR">ADMIN_AUXILIAR (Gestão)</option>
-            </select>
-          </div>
-          <div id="ufPassContainer" class="sm:col-span-2">
-            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">Senha Inicial (mín. 8 caracteres, letras e números) *</label>
-            <input id="ufSenhaInicial" type="password" minlength="8" placeholder="Ex: Marinh@2026" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono bg-white text-slate-900" />
-          </div>
-          <div class="sm:col-span-2 flex items-end justify-end gap-2">
-            <button type="button" onclick="closeGovtechUserForm()" class="px-3.5 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-200 text-slate-700 font-bold text-xs">Cancelar</button>
-            <button id="btnUfSave" type="submit" class="px-4 py-1.5 rounded-lg bg-[#0e1a2b] hover:bg-[#1e2d3d] text-white font-extrabold text-xs shadow-xs">💾 Salvar Usuário</button>
-          </div>
-        </form>
-        <div id="govtechUserFormFeedback" class="hidden p-2.5 rounded-lg text-xs font-bold"></div>
-      </div>
-
-      <!-- Tabela de Usuários -->
-      <div class="overflow-y-auto flex-1 p-4">
-        <table class="w-full text-left border-collapse text-xs">
-          <thead>
-            <tr class="border-b border-slate-300 text-[11px] uppercase text-slate-700 font-black">
-              <th class="p-2">NIP</th>
-              <th class="p-2">Militar</th>
-              <th class="p-2">E-mail</th>
-              <th class="p-2">Perfil / Permissão</th>
-              <th class="p-2 text-center">Status</th>
-              <th class="p-2 text-center">Ações</th>
-            </tr>
-          </thead>
-          <tbody id="govtechUsersTableBody" class="divide-y divide-slate-200">
-            <tr><td colspan="6" class="p-6 text-center text-slate-500">Carregando lista oficial de usuários...</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="px-6 py-3 bg-slate-100 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
-        <span>Perfis: <strong>SUPERADMIN</strong> (plenos poderes), <strong>ADMIN_AUXILIAR</strong> (gestão), <strong>GESTOR</strong> (operação), <strong>CONSULTA</strong> (leitura).</span>
-        <button onclick="closeGovtechUsersModal()" class="px-4 py-1.5 rounded-xl bg-[#0e1a2b] hover:bg-[#1e2d3d] text-white font-bold text-xs">Fechar</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ===================================================================== -->
   <!-- MODAL: ALTERAR MINHA SENHA                                            -->
   <!-- ===================================================================== -->
   <div id="modalGovtechChangePass" class="hidden fixed inset-0 z-[90] bg-slate-950/75 backdrop-blur-xs p-4 flex items-center justify-center no-print">
@@ -9656,10 +9743,16 @@
           roleEl.textContent = sessao.perfil.replace("_", " ");
           roleEl.className = `px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${ROLE_STYLES[sessao.perfil] || ROLE_STYLES.CONSULTA}`;
         }
+        const btnTabUsers = document.getElementById("tabBtnUsers");
         if (btnUsers) {
           if (canManageUsers(sessao)) btnUsers.classList.remove("hidden");
           else btnUsers.classList.add("hidden");
         }
+        if (btnTabUsers) {
+          if (canManageUsers(sessao)) btnTabUsers.classList.remove("hidden");
+          else btnTabUsers.classList.add("hidden");
+        }
+        if (typeof window.refreshLucideIcons === "function") window.refreshLucideIcons();
 
         // Restrição suave para perfil CONSULTA (somente leitura)
         const isConsulta = sessao.perfil === PERFIS.CONSULTA;
@@ -10043,13 +10136,33 @@
         }
       };
 
+      window.refreshLucideIcons = function () {
+        try {
+          if (typeof lucide !== "undefined" && typeof lucide.createIcons === "function") {
+            lucide.createIcons();
+          }
+        } catch (_) {}
+      };
+
       window.renderGovtechUsersTable = function () {
         const tb = document.getElementById("govtechUsersTableBody");
         const cnt = document.getElementById("govtechUsersCount");
         const q = (document.getElementById("govtechUsersSearch")?.value || "").trim().toLowerCase();
+        const roleFilter = (document.getElementById("govtechUsersRoleFilter")?.value || "ALL").toUpperCase();
         if (!tb) return;
 
-        const filtered = (window.govtechUsersCache || []).filter(u => {
+        const allUsers = window.govtechUsersCache || [];
+        const kTotal = document.getElementById("usersKpiTotal");
+        const kActive = document.getElementById("usersKpiActive");
+        const kMgr = document.getElementById("usersKpiManagers");
+        const kCons = document.getElementById("usersKpiConsulta");
+        if (kTotal) kTotal.textContent = String(allUsers.length);
+        if (kActive) kActive.textContent = String(allUsers.filter(u => u.ativo !== false).length);
+        if (kMgr) kMgr.textContent = String(allUsers.filter(u => ["SUPERADMIN", "ADMIN_AUXILIAR", "GESTOR"].includes(u.perfil)).length);
+        if (kCons) kCons.textContent = String(allUsers.filter(u => u.perfil === "CONSULTA").length);
+
+        const filtered = allUsers.filter(u => {
+          if (roleFilter !== "ALL" && u.perfil !== roleFilter) return false;
           if (!q) return true;
           return `${u.nip} ${u.posto} ${u.nomeGuerra} ${u.nome} ${u.email} ${u.setor} ${u.perfil}`.toLowerCase().includes(q);
         });
@@ -10063,41 +10176,43 @@
           const safeEmailArg = String(u.email || "").replace(/'/g, "\\'");
 
           const roleControl = (superAdmin && !isTargetSuper && (u.uid || u.docId))
-            ? `<select onchange="updateGovtechUserRole('${u.uid || u.docId}', '${u.nip}', this.value)" class="border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold bg-white text-slate-900">
+            ? `<select onchange="updateGovtechUserRole('${u.uid || u.docId}', '${u.nip}', this.value)" class="border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold bg-white text-slate-900">
                  <option value="ADMIN_AUXILIAR" ${u.perfil === 'ADMIN_AUXILIAR' ? 'selected' : ''}>ADMIN_AUXILIAR</option>
                  <option value="GESTOR" ${u.perfil === 'GESTOR' ? 'selected' : ''}>GESTOR</option>
                  <option value="CONSULTA" ${u.perfil === 'CONSULTA' ? 'selected' : ''}>CONSULTA</option>
                </select>`
-            : `<span class="px-2 py-0.5 rounded font-black text-[10px] ${u.perfil === 'SUPERADMIN' ? 'bg-amber-100 text-amber-900' : 'bg-slate-200 text-slate-800'}">${escapeHtml(u.perfil)}</span>`;
+            : `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-black text-[10px] ${u.perfil === 'SUPERADMIN' ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-slate-200 text-slate-800'}"><i data-lucide="shield-check" class="w-3 h-3"></i>${escapeHtml(u.perfil)}</span>`;
 
           const statusBtn = (superAdmin && !isTargetSuper && (u.uid || u.docId))
-            ? `<button onclick="toggleGovtechUserActive('${u.uid || u.docId}', '${u.nip}', ${!u.ativo})" class="px-2.5 py-1 rounded-lg text-[10px] font-black ${u.ativo ? 'bg-emerald-100 text-emerald-800 hover:bg-rose-100 hover:text-rose-800' : 'bg-rose-100 text-rose-800 hover:bg-emerald-100 hover:text-emerald-800'} transition">
-                 ${u.ativo ? '✅ ATIVO' : '🚫 INATIVO'}
+            ? `<button onclick="toggleGovtechUserActive('${u.uid || u.docId}', '${u.nip}', ${!u.ativo})" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black ${u.ativo ? 'bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-rose-50 hover:text-rose-800 hover:border-rose-300' : 'bg-rose-50 text-rose-800 border border-rose-300 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300'} transition">
+                 <i data-lucide="${u.ativo ? 'check-circle-2' : 'ban'}" class="w-3 h-3"></i>${u.ativo ? 'ATIVO' : 'INATIVO'}
                </button>`
-            : `<span class="px-2 py-0.5 rounded text-[10px] font-bold ${u.ativo ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${u.ativo ? 'ATIVO' : 'INATIVO'}</span>`;
+            : `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black ${u.ativo ? 'bg-emerald-50 text-emerald-800 border border-emerald-300' : 'bg-rose-50 text-rose-800 border border-rose-300'}"><i data-lucide="${u.ativo ? 'check-circle-2' : 'ban'}" class="w-3 h-3"></i>${u.ativo ? 'ATIVO' : 'INATIVO'}</span>`;
 
           const actionBtns = `
-            <div class="flex items-center justify-center gap-1">
-              <button type="button" onclick="openGovtechUserForm('${u.nip}')" class="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] border border-slate-300 transition" title="Editar dados do militar">✏️</button>
-              <button type="button" onclick="resetGovtechUserPassword('${safeEmailArg}', '${safeLabelArg}', '${u.nip}')" class="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[11px] border border-amber-300 transition" title="${isTargetSuper ? 'Alterar minha senha' : 'Enviar link de redefinição de senha por e-mail'}">🔑</button>
-              ${(superAdmin && !isTargetSuper) ? `<button type="button" onclick="deleteGovtechUser('${u.uid || ''}', '${u.docId || ''}', '${u.nip}', '${safeLabelArg}')" class="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white font-bold text-[11px] border border-rose-300 transition" title="Excluir usuário">🗑️</button>` : ''}
+            <div class="flex items-center justify-center gap-1.5">
+              <button type="button" onclick="openGovtechUserForm('${u.nip}')" class="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition" title="Editar dados do militar"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+              <button type="button" onclick="resetGovtechUserPassword('${safeEmailArg}', '${safeLabelArg}', '${u.nip}')" class="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 transition" title="${isTargetSuper ? 'Alterar minha senha' : 'Enviar link de redefinição de senha por e-mail'}"><i data-lucide="key-round" class="w-3.5 h-3.5"></i></button>
+              ${(superAdmin && !isTargetSuper) ? `<button type="button" onclick="deleteGovtechUser('${u.uid || ''}', '${u.docId || ''}', '${u.nip}', '${safeLabelArg}')" class="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-300 transition" title="Excluir usuário"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
             </div>
           `;
 
           return `
-            <tr class="hover:bg-slate-50">
-              <td class="p-2 font-mono font-bold text-[#1e2d3d] whitespace-nowrap">${escapeHtml(u.nipFormatado)}</td>
-              <td class="p-2">
+            <tr class="hover:bg-slate-50 transition">
+              <td class="p-3 font-mono font-bold text-[#1e2d3d] whitespace-nowrap">${escapeHtml(u.nipFormatado)}</td>
+              <td class="p-3">
                 <div class="font-bold text-slate-900">${escapeHtml(displayLabel)}</div>
                 <div class="text-[10px] text-slate-500">${escapeHtml(u.setor || "CFJ")}</div>
               </td>
-              <td class="p-2 font-mono text-[11px] text-slate-700">${escapeHtml(u.email)}</td>
-              <td class="p-2">${roleControl}</td>
-              <td class="p-2 text-center">${statusBtn}</td>
-              <td class="p-2 text-center">${actionBtns}</td>
+              <td class="p-3 font-mono text-[11px] text-slate-700">${escapeHtml(u.email)}</td>
+              <td class="p-3">${roleControl}</td>
+              <td class="p-3 text-center">${statusBtn}</td>
+              <td class="p-3 text-center">${actionBtns}</td>
             </tr>
           `;
-        }).join("") || `<tr><td colspan="6" class="p-6 text-center text-slate-500">Nenhum usuário encontrado.</td></tr>`;
+        }).join("") || `<tr><td colspan="6" class="p-8 text-center text-slate-500">Nenhum usuário encontrado para o filtro aplicado.</td></tr>`;
+
+        window.refreshLucideIcons();
       };
 
       window.updateGovtechUserRole = async function (uid, nip, novoPerfil) {
@@ -10107,6 +10222,7 @@
           await db.collection("usuarios").doc(uid).set({ perfil: novoPerfil, atualizadoEm: new Date().toISOString() }, { merge: true });
           const item = (window.govtechUsersCache || []).find(u => u.nip === nip);
           if (item) item.perfil = novoPerfil;
+          renderGovtechUsersTable();
           if (typeof showAppNotification === "function") showAppNotification(`Permissão atualizada para ${novoPerfil}.`, "success");
         } catch (err) {
           if (typeof showAppNotification === "function") showAppNotification("Erro ao atualizar permissão: " + err.message, "error");
@@ -10195,8 +10311,12 @@
       }
 
       if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", initGovtechAuthObserver);
+        document.addEventListener("DOMContentLoaded", () => {
+          window.refreshLucideIcons();
+          initGovtechAuthObserver();
+        });
       } else {
+        window.refreshLucideIcons();
         initGovtechAuthObserver();
       }
     })();
