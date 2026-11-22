@@ -9364,24 +9364,88 @@
   <!-- MODAL: GERENCIAMENTO DE USUÁRIOS E PERMISSÕES (admin-cfj)             -->
   <!-- ===================================================================== -->
   <div id="modalGovtechUsers" class="hidden fixed inset-0 z-[90] bg-slate-950/75 backdrop-blur-xs p-4 flex items-center justify-center no-print">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full border border-slate-200 overflow-hidden flex flex-col max-h-[88vh]">
-      <div class="px-6 py-4 bg-[#1e2d3d] text-white flex items-center justify-between">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-5xl w-full border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+      <div class="px-6 py-4 bg-[#0e1a2b] text-white flex items-center justify-between border-b border-[#c5a365]/30">
         <div>
-          <h3 class="text-sm font-black uppercase tracking-wide">👥 Usuários e Permissões — Ecossistema CFJ (admin-cfj)</h3>
-          <p class="text-[11px] text-slate-300 mt-0.5">Lista oficial sincronizada com o banco de usuários da Capitania Fluvial de Juazeiro.</p>
+          <h3 class="text-sm font-black uppercase tracking-wide">👥 Gestão de Usuários e Permissões — Ecossistema CFJ (admin-cfj)</h3>
+          <p class="text-[11px] text-slate-300 mt-0.5">Cadastre, edite, redefina senhas, altere perfis ou remova usuários na base oficial da Capitania.</p>
         </div>
         <button onclick="closeGovtechUsersModal()" class="text-slate-300 hover:text-white text-xl font-bold px-2">✕</button>
       </div>
-      <div class="p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
+
+      <!-- Barra de Busca + Botão Novo Usuário -->
+      <div class="p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2.5">
         <input
           id="govtechUsersSearch"
           type="text"
           oninput="renderGovtechUsersTable()"
           placeholder="Buscar por NIP, Nome de Guerra, Posto, Setor ou Perfil..."
-          class="flex-1 min-w-[240px] border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium bg-white text-slate-900"
+          class="flex-1 min-w-[220px] border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium bg-white text-slate-900"
         />
         <span id="govtechUsersCount" class="text-xs font-bold text-[#1e2d3d] px-2">0 usuários</span>
+        <button
+          type="button"
+          onclick="openGovtechUserForm(null)"
+          class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs shadow-xs transition flex items-center gap-1.5"
+        >
+          <span>➕</span> Novo Usuário
+        </button>
       </div>
+
+      <!-- Formulário Expansível: Cadastro / Edição de Usuário -->
+      <div id="govtechUserFormBox" class="hidden border-b border-slate-300 bg-slate-100/90 p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <h4 id="govtechUserFormTitle" class="text-xs font-black uppercase text-[#0e1a2b]">➕ Cadastrar Novo Militar</h4>
+          <button type="button" onclick="closeGovtechUserForm()" class="text-xs font-bold text-slate-500 hover:text-slate-800">✕ Fechar formulário</button>
+        </div>
+        <form id="govtechUserForm" onsubmit="handleGovtechUserSave(event)" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
+          <input type="hidden" id="ufEditUid" />
+          <input type="hidden" id="ufEditDocId" />
+          <div>
+            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">NIP (8 dígitos) *</label>
+            <input id="ufNip" type="text" required placeholder="Ex: 00.0000.00" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono bg-white text-slate-900" />
+          </div>
+          <div>
+            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">Posto / Graduação *</label>
+            <input id="ufPosto" type="text" required placeholder="Ex: 2º SG, 3º SG, CB, 1º TEN" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-slate-900 uppercase" />
+          </div>
+          <div>
+            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">Nome de Guerra *</label>
+            <input id="ufNomeGuerra" type="text" required placeholder="Ex: SILVA" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-slate-900 uppercase" />
+          </div>
+          <div>
+            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">Nome Completo</label>
+            <input id="ufNomeCompleto" type="text" placeholder="Nome completo do militar" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-slate-900" />
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">E-mail Institucional *</label>
+            <input id="ufEmail" type="email" required placeholder="militar@marinha.mil.br" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono bg-white text-slate-900" />
+          </div>
+          <div>
+            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">Setor / Divisão</label>
+            <input id="ufSetor" type="text" value="CFJ" placeholder="Ex: SECOM, CFJ-32.3" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-slate-900" />
+          </div>
+          <div>
+            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">Perfil / Permissão *</label>
+            <select id="ufPerfil" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold bg-white text-slate-900">
+              <option value="CONSULTA">CONSULTA (Leitura)</option>
+              <option value="GESTOR">GESTOR (Operação Completa)</option>
+              <option value="ADMIN_AUXILIAR">ADMIN_AUXILIAR (Gestão)</option>
+            </select>
+          </div>
+          <div id="ufPassContainer" class="sm:col-span-2">
+            <label class="block text-[10px] font-black uppercase text-slate-600 mb-1">Senha Inicial (mín. 8 caracteres, letras e números) *</label>
+            <input id="ufSenhaInicial" type="password" minlength="8" placeholder="Ex: Marinh@2026" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono bg-white text-slate-900" />
+          </div>
+          <div class="sm:col-span-2 flex items-end justify-end gap-2">
+            <button type="button" onclick="closeGovtechUserForm()" class="px-3.5 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-200 text-slate-700 font-bold text-xs">Cancelar</button>
+            <button id="btnUfSave" type="submit" class="px-4 py-1.5 rounded-lg bg-[#0e1a2b] hover:bg-[#1e2d3d] text-white font-extrabold text-xs shadow-xs">💾 Salvar Usuário</button>
+          </div>
+        </form>
+        <div id="govtechUserFormFeedback" class="hidden p-2.5 rounded-lg text-xs font-bold"></div>
+      </div>
+
+      <!-- Tabela de Usuários -->
       <div class="overflow-y-auto flex-1 p-4">
         <table class="w-full text-left border-collapse text-xs">
           <thead>
@@ -9391,16 +9455,17 @@
               <th class="p-2">E-mail</th>
               <th class="p-2">Perfil / Permissão</th>
               <th class="p-2 text-center">Status</th>
+              <th class="p-2 text-center">Ações</th>
             </tr>
           </thead>
           <tbody id="govtechUsersTableBody" class="divide-y divide-slate-200">
-            <tr><td colspan="5" class="p-6 text-center text-slate-500">Carregando lista oficial de usuários...</td></tr>
+            <tr><td colspan="6" class="p-6 text-center text-slate-500">Carregando lista oficial de usuários...</td></tr>
           </tbody>
         </table>
       </div>
-      <div class="px-6 py-3 bg-slate-100 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-600">
-        <span>Perfis: <strong>SUPERADMIN</strong> (plenos poderes), <strong>ADMIN_AUXILIAR</strong> (gestão), <strong>GESTOR</strong> (operação completa), <strong>CONSULTA</strong> (leitura).</span>
-        <button onclick="closeGovtechUsersModal()" class="px-4 py-1.5 rounded-xl bg-[#1e2d3d] hover:bg-[#27394d] text-white font-bold text-xs">Fechar</button>
+      <div class="px-6 py-3 bg-slate-100 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
+        <span>Perfis: <strong>SUPERADMIN</strong> (plenos poderes), <strong>ADMIN_AUXILIAR</strong> (gestão), <strong>GESTOR</strong> (operação), <strong>CONSULTA</strong> (leitura).</span>
+        <button onclick="closeGovtechUsersModal()" class="px-4 py-1.5 rounded-xl bg-[#0e1a2b] hover:bg-[#1e2d3d] text-white font-bold text-xs">Fechar</button>
       </div>
     </div>
   </div>
@@ -9772,7 +9837,210 @@
       };
 
       window.closeGovtechUsersModal = function () {
+        closeGovtechUserForm();
         document.getElementById("modalGovtechUsers")?.classList.add("hidden");
+      };
+
+      window.openGovtechUserForm = function (nipToEdit) {
+        const box = document.getElementById("govtechUserFormBox");
+        const title = document.getElementById("govtechUserFormTitle");
+        const fb = document.getElementById("govtechUserFormFeedback");
+        const passBox = document.getElementById("ufPassContainer");
+        const passInp = document.getElementById("ufSenhaInicial");
+        const nipInp = document.getElementById("ufNip");
+        const emailInp = document.getElementById("ufEmail");
+        if (!box) return;
+        if (fb) fb.classList.add("hidden");
+
+        const existing = nipToEdit ? (window.govtechUsersCache || []).find(u => u.nip === nipToEdit) : null;
+        if (existing) {
+          if (title) title.textContent = `✏️ Editar Militar — ${existing.posto} ${existing.nomeGuerra || existing.nome}`;
+          document.getElementById("ufEditUid").value = existing.uid || "";
+          document.getElementById("ufEditDocId").value = existing.docId || "";
+          nipInp.value = existing.nipFormatado || existing.nip;
+          nipInp.readOnly = true;
+          document.getElementById("ufPosto").value = existing.posto || "";
+          document.getElementById("ufNomeGuerra").value = existing.nomeGuerra || "";
+          document.getElementById("ufNomeCompleto").value = existing.nome || "";
+          emailInp.value = existing.email || "";
+          emailInp.readOnly = !!existing.uid;
+          document.getElementById("ufSetor").value = existing.setor || "CFJ";
+          const selPerf = document.getElementById("ufPerfil");
+          if (selPerf) selPerf.value = existing.perfil === "SUPERADMIN" ? "ADMIN_AUXILIAR" : (existing.perfil || "CONSULTA");
+          if (passBox) passBox.classList.add("hidden");
+          if (passInp) { passInp.required = false; passInp.value = ""; }
+        } else {
+          if (title) title.textContent = "➕ Cadastrar Novo Militar na Base Oficial (admin-cfj)";
+          document.getElementById("ufEditUid").value = "";
+          document.getElementById("ufEditDocId").value = "";
+          nipInp.value = "";
+          nipInp.readOnly = false;
+          document.getElementById("ufPosto").value = "";
+          document.getElementById("ufNomeGuerra").value = "";
+          document.getElementById("ufNomeCompleto").value = "";
+          emailInp.value = "";
+          emailInp.readOnly = false;
+          document.getElementById("ufSetor").value = "CFJ";
+          const selPerf = document.getElementById("ufPerfil");
+          if (selPerf) selPerf.value = "CONSULTA";
+          if (passBox) passBox.classList.remove("hidden");
+          if (passInp) { passInp.required = true; passInp.value = ""; }
+        }
+        box.classList.remove("hidden");
+        nipInp.focus();
+      };
+
+      window.closeGovtechUserForm = function () {
+        document.getElementById("govtechUserFormBox")?.classList.add("hidden");
+      };
+
+      window.handleGovtechUserSave = async function (e) {
+        if (e) e.preventDefault();
+        if (!canManageUsers(window.govtechCurrentUser)) return;
+        const fb = document.getElementById("govtechUserFormFeedback");
+        const btn = document.getElementById("btnUfSave");
+        const showFb = (ok, txt) => {
+          if (!fb) return;
+          fb.className = `p-2.5 rounded-lg text-xs font-bold ${ok ? 'bg-emerald-50 text-emerald-800 border border-emerald-300' : 'bg-rose-50 text-rose-800 border border-rose-300'}`;
+          fb.textContent = txt;
+          fb.classList.remove("hidden");
+        };
+
+        const editUid = (document.getElementById("ufEditUid")?.value || "").trim();
+        const editDocId = (document.getElementById("ufEditDocId")?.value || "").trim();
+        const cleanNip = normalizeNip(document.getElementById("ufNip")?.value || "");
+        const posto = (document.getElementById("ufPosto")?.value || "").trim().toUpperCase();
+        const nomeGuerra = (document.getElementById("ufNomeGuerra")?.value || "").trim().toUpperCase();
+        const nomeCompleto = (document.getElementById("ufNomeCompleto")?.value || "").trim() || `${posto} ${nomeGuerra}`.trim();
+        const email = (document.getElementById("ufEmail")?.value || "").trim().toLowerCase();
+        const setor = (document.getElementById("ufSetor")?.value || "CFJ").trim().toUpperCase();
+        const perfil = (document.getElementById("ufPerfil")?.value || "CONSULTA").trim().toUpperCase();
+        const senhaInicial = (document.getElementById("ufSenhaInicial")?.value || "");
+
+        if (cleanNip.length !== 8) { showFb(false, "Informe um NIP válido com 8 dígitos."); return; }
+        if (!email || !email.includes("@")) { showFb(false, "Informe um e-mail institucional válido."); return; }
+        if (!editUid && (senhaInicial.length < 8 || !/[A-Za-z]/.test(senhaInicial) || !/[0-9]/.test(senhaInicial))) {
+          showFb(false, "A senha inicial deve ter ao menos 8 caracteres combinando letras e números.");
+          return;
+        }
+
+        const { db } = getFirebaseAuthAndDb();
+        if (!db) { showFb(false, "Firestore indisponível."); return; }
+
+        if (btn) { btn.disabled = true; btn.textContent = "⏳ Salvando..."; }
+        let secApp = null;
+        try {
+          let uidDestino = editUid || null;
+          // Se for novo usuário, provisiona no Firebase Auth via instância secundária (mantém admin logado)
+          if (!uidDestino) {
+            const existingSameNip = (window.govtechUsersCache || []).find(u => u.nip === cleanNip);
+            if (existingSameNip) {
+              throw new Error(`Já existe um militar cadastrado com o NIP ${formatNip(cleanNip)}.`);
+            }
+            const appName = `GovTechSecAuth_${Date.now()}`;
+            secApp = firebase.initializeApp(firebase.app().options, appName);
+            const secAuth = secApp.auth();
+            const cred = await secAuth.createUserWithEmailAndPassword(email, senhaInicial);
+            uidDestino = cred.user.uid;
+            await secAuth.signOut();
+          }
+
+          const docId = uidDestino || editDocId || cleanNip;
+          const payload = {
+            uid: uidDestino,
+            nip: cleanNip,
+            nipFormatado: formatNip(cleanNip),
+            posto,
+            nomeGuerra,
+            nome: nomeCompleto,
+            email,
+            setor,
+            perfil: cleanNip === SUPERADMIN_NIP ? PERFIS.SUPERADMIN : perfil,
+            ativo: true,
+            status: "ATIVO",
+            atualizadoEm: new Date().toISOString(),
+            atualizadoPor: normalizeNip(window.govtechCurrentUser?.nip || "SUPERADMIN")
+          };
+
+          await db.collection("usuarios").doc(docId).set(payload, { merge: true });
+          await db.collection("authLookup").doc(cleanNip).set({ email }, { merge: true });
+
+          if (typeof logAuditEvent === "function") {
+            logAuditEvent(
+              editUid ? "EDICAO_USUARIO" : "CRIACAO_USUARIO",
+              `NIP ${formatNip(cleanNip)}`,
+              `${posto} ${nomeGuerra} (${email}) — Perfil: ${payload.perfil}`,
+              "Gestão de Acessos RBAC • Ecossistema CFJ"
+            );
+          }
+
+          showFb(true, editUid ? "Cadastro atualizado com sucesso!" : `Usuário ${posto} ${nomeGuerra} cadastrado e habilitado no Firebase Auth!`);
+          await openGovtechUsersModal();
+          setTimeout(() => closeGovtechUserForm(), 1200);
+        } catch (err) {
+          let msg = err?.message || "Erro ao salvar usuário.";
+          if (err?.code === "auth/email-already-in-use") {
+            msg = "Este e-mail já possui conta ativa no Firebase Auth. Use outro e-mail ou edite o usuário existente.";
+          }
+          showFb(false, msg);
+        } finally {
+          if (secApp) { try { await secApp.delete(); } catch (_) {} }
+          if (btn) { btn.disabled = false; btn.textContent = "💾 Salvar Usuário"; }
+        }
+      };
+
+      window.resetGovtechUserPassword = async function (email, label, nip) {
+        if (!canManageUsers(window.govtechCurrentUser)) return;
+        if (window.govtechCurrentUser && normalizeNip(window.govtechCurrentUser.nip) === normalizeNip(nip)) {
+          openGovtechChangePassModal();
+          return;
+        }
+        if (!email) {
+          if (typeof showAppNotification === "function") showAppNotification("Usuário sem e-mail institucional cadastrado.", "warn");
+          return;
+        }
+        if (!confirm(`Enviar link oficial de redefinição de senha para ${label} (${email})?`)) return;
+        const { auth } = getFirebaseAuthAndDb();
+        try {
+          await auth.sendPasswordResetEmail(email);
+          if (typeof logAuditEvent === "function") {
+            logAuditEvent("REDEFINICAO_SENHA_USUARIO", `NIP ${formatNip(nip)}`, `Link de redefinição enviado para ${email}`, "Segurança Zero-Trust • Firebase Auth");
+          }
+          if (typeof showAppNotification === "function") {
+            showAppNotification(`Link de redefinição de senha enviado para ${email}.`, "success");
+          }
+        } catch (err) {
+          if (typeof showAppNotification === "function") showAppNotification("Erro ao enviar redefinição: " + err.message, "error");
+        }
+      };
+
+      window.deleteGovtechUser = async function (uid, docId, nip, label) {
+        if (!isSuperAdmin(window.govtechCurrentUser)) {
+          if (typeof showAppNotification === "function") showAppNotification("Apenas o SUPERADMIN pode excluir usuários.", "warn");
+          return;
+        }
+        if (normalizeNip(nip) === SUPERADMIN_NIP) {
+          if (typeof showAppNotification === "function") showAppNotification("A conta do Administrador Geral (SUPERADMIN) não pode ser excluída.", "warn");
+          return;
+        }
+        if (!confirm(`Confirma a EXCLUSÃO permanente de ${label} (NIP ${formatNip(nip)}) da lista de usuários e do acesso por NIP?`)) return;
+        const { db } = getFirebaseAuthAndDb();
+        try {
+          const idsToDelete = new Set([docId, uid, normalizeNip(nip)].filter(Boolean));
+          for (const id of idsToDelete) {
+            try { await db.collection("usuarios").doc(id).delete(); } catch (_) {}
+          }
+          try { await db.collection("authLookup").doc(normalizeNip(nip)).delete(); } catch (_) {}
+
+          if (typeof logAuditEvent === "function") {
+            logAuditEvent("EXCLUSAO_USUARIO", `NIP ${formatNip(nip)}`, `Usuário ${label} removido da base de acessos.`, "Gestão de Acessos RBAC • Ecossistema CFJ");
+          }
+          window.govtechUsersCache = (window.govtechUsersCache || []).filter(u => u.nip !== normalizeNip(nip));
+          renderGovtechUsersTable();
+          if (typeof showAppNotification === "function") showAppNotification(`Usuário ${label} excluído com sucesso.`, "success");
+        } catch (err) {
+          if (typeof showAppNotification === "function") showAppNotification("Erro ao excluir usuário: " + err.message, "error");
+        }
       };
 
       window.renderGovtechUsersTable = function () {
@@ -9790,33 +10058,46 @@
         const superAdmin = isSuperAdmin(window.govtechCurrentUser);
         tb.innerHTML = filtered.map(u => {
           const isTargetSuper = u.nip === SUPERADMIN_NIP;
-          const roleControl = (superAdmin && !isTargetSuper && u.uid)
-            ? `<select onchange="updateGovtechUserRole('${u.uid}', '${u.nip}', this.value)" class="border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold bg-white text-slate-900">
+          const displayLabel = `${u.posto} ${u.nomeGuerra || u.nome}`.trim();
+          const safeLabelArg = displayLabel.replace(/'/g, "\\'");
+          const safeEmailArg = String(u.email || "").replace(/'/g, "\\'");
+
+          const roleControl = (superAdmin && !isTargetSuper && (u.uid || u.docId))
+            ? `<select onchange="updateGovtechUserRole('${u.uid || u.docId}', '${u.nip}', this.value)" class="border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold bg-white text-slate-900">
                  <option value="ADMIN_AUXILIAR" ${u.perfil === 'ADMIN_AUXILIAR' ? 'selected' : ''}>ADMIN_AUXILIAR</option>
                  <option value="GESTOR" ${u.perfil === 'GESTOR' ? 'selected' : ''}>GESTOR</option>
                  <option value="CONSULTA" ${u.perfil === 'CONSULTA' ? 'selected' : ''}>CONSULTA</option>
                </select>`
             : `<span class="px-2 py-0.5 rounded font-black text-[10px] ${u.perfil === 'SUPERADMIN' ? 'bg-amber-100 text-amber-900' : 'bg-slate-200 text-slate-800'}">${escapeHtml(u.perfil)}</span>`;
 
-          const statusBtn = (superAdmin && !isTargetSuper && u.uid)
-            ? `<button onclick="toggleGovtechUserActive('${u.uid}', '${u.nip}', ${!u.ativo})" class="px-2.5 py-1 rounded-lg text-[10px] font-black ${u.ativo ? 'bg-emerald-100 text-emerald-800 hover:bg-rose-100 hover:text-rose-800' : 'bg-rose-100 text-rose-800 hover:bg-emerald-100 hover:text-emerald-800'} transition">
+          const statusBtn = (superAdmin && !isTargetSuper && (u.uid || u.docId))
+            ? `<button onclick="toggleGovtechUserActive('${u.uid || u.docId}', '${u.nip}', ${!u.ativo})" class="px-2.5 py-1 rounded-lg text-[10px] font-black ${u.ativo ? 'bg-emerald-100 text-emerald-800 hover:bg-rose-100 hover:text-rose-800' : 'bg-rose-100 text-rose-800 hover:bg-emerald-100 hover:text-emerald-800'} transition">
                  ${u.ativo ? '✅ ATIVO' : '🚫 INATIVO'}
                </button>`
             : `<span class="px-2 py-0.5 rounded text-[10px] font-bold ${u.ativo ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${u.ativo ? 'ATIVO' : 'INATIVO'}</span>`;
+
+          const actionBtns = `
+            <div class="flex items-center justify-center gap-1">
+              <button type="button" onclick="openGovtechUserForm('${u.nip}')" class="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] border border-slate-300 transition" title="Editar dados do militar">✏️</button>
+              <button type="button" onclick="resetGovtechUserPassword('${safeEmailArg}', '${safeLabelArg}', '${u.nip}')" class="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[11px] border border-amber-300 transition" title="${isTargetSuper ? 'Alterar minha senha' : 'Enviar link de redefinição de senha por e-mail'}">🔑</button>
+              ${(superAdmin && !isTargetSuper) ? `<button type="button" onclick="deleteGovtechUser('${u.uid || ''}', '${u.docId || ''}', '${u.nip}', '${safeLabelArg}')" class="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white font-bold text-[11px] border border-rose-300 transition" title="Excluir usuário">🗑️</button>` : ''}
+            </div>
+          `;
 
           return `
             <tr class="hover:bg-slate-50">
               <td class="p-2 font-mono font-bold text-[#1e2d3d] whitespace-nowrap">${escapeHtml(u.nipFormatado)}</td>
               <td class="p-2">
-                <div class="font-bold text-slate-900">${escapeHtml((u.posto + " " + (u.nomeGuerra || u.nome)).trim())}</div>
+                <div class="font-bold text-slate-900">${escapeHtml(displayLabel)}</div>
                 <div class="text-[10px] text-slate-500">${escapeHtml(u.setor || "CFJ")}</div>
               </td>
               <td class="p-2 font-mono text-[11px] text-slate-700">${escapeHtml(u.email)}</td>
               <td class="p-2">${roleControl}</td>
               <td class="p-2 text-center">${statusBtn}</td>
+              <td class="p-2 text-center">${actionBtns}</td>
             </tr>
           `;
-        }).join("") || `<tr><td colspan="5" class="p-6 text-center text-slate-500">Nenhum usuário encontrado.</td></tr>`;
+        }).join("") || `<tr><td colspan="6" class="p-6 text-center text-slate-500">Nenhum usuário encontrado.</td></tr>`;
       };
 
       window.updateGovtechUserRole = async function (uid, nip, novoPerfil) {
