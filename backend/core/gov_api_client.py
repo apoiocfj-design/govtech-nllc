@@ -518,80 +518,85 @@ class PriceResearchController:
         self._demand_cache: Dict[str, Dict[str, Any]] = {}
 
     def check_single_demand(self, catalog_code: int, item_type: str = "MATERIAL", months_back: int = 12) -> Dict[str, Any]:
-        """Verifica rapidamente na API Compras.gov.br se o CATMAT/CATSER teve compras nos últimos 12 meses."""
+        """
+        Verifica rapidamente na API Compras.gov.br se o CATMAT/CATSER teve compras nos últimos 12 meses.
+        Caso não haja compras em 12 meses, amplia automaticamente a verificação até 24 meses
+        (sinalizando used_24m_window=True para exibição da ressalva da IN SEGES/ME nº 65/2021).
+        """
         import statistics
         from collections import Counter
 
-        itype = (item_type or "MATERIAL").strip().upper()
-        key = f"{itype}:{catalog_code}"
-        if key in self._demand_cache:
-            return self._demand_cache[key]
+        orig_itype = (item_type or "MATERIAL").strip().upper()
+        itype = orig_itype
+        cache_key = f"{orig_itype}:{catalog_code}"
+        if cache_key in self._demand_cache:
+            return self._demand_cache[cache_key]
 
-        is_material = itype == "MATERIAL"
-        endpoint = (
-            "/modulo-pesquisa-preco/1_consultarMaterial"
-            if is_material
-            else "/modulo-pesquisa-preco/3_consultarServico"
-        )
-        url = f"{self.api_client.COMPRAS_GOV_BASE_URL}{endpoint}"
         end_date = date.today()
-        start_date = end_date - timedelta(days=30 * months_back)
 
-        params: Dict[str, Any] = {
-            "pagina": 1,
-            "tamanhoPagina": 15,
-            "dataCompraInicio": start_date.isoformat(),
-            "dataCompraFim": end_date.isoformat(),
-        }
-        if is_material:
-            params["tipo"] = "codigoItemCatalogo"
-            params["codigo"] = str(catalog_code)
-        else:
-            params["codigoItemCatalogo"] = int(catalog_code)
+        def _probe(probe_type: str, win_months: int):
+            is_mat = probe_type == "MATERIAL"
+            ep = (
+                "/modulo-pesquisa-preco/1_consultarMaterial"
+                if is_mat
+                else "/modulo-pesquisa-preco/3_consultarServico"
+            )
+            u = f"{self.api_client.COMPRAS_GOV_BASE_URL}{ep}"
+            s_date = end_date - timedelta(days=30 * win_months)
+            p: Dict[str, Any] = {
+                "pagina": 1,
+                "tamanhoPagina": 15,
+                "dataCompraInicio": s_date.isoformat(),
+                "dataCompraFim": end_date.isoformat(),
+            }
+            if is_mat:
+                p["tipo"] = "codigoItemCatalogo"
+                p["codigo"] = str(catalog_code)
+            else:
+                p["codigoItemCatalogo"] = int(catalog_code)
+            try:
+                r = self.api_client.session.get(u, params=p, timeout=12)
+                if r.status_code == 200:
+                    pl = r.json()
+                    rw = pl.get("resultado") or []
+                    tot = int(pl.get("totalRegistros") or len(rw))
+                    pp = [float(x.get("precoUnitario") or 0) for x in rw if float(x.get("precoUnitario") or 0) > 0]
+                    return rw, tot, pp
+            except Exception:
+                pass
+            return [], 0, []
+
+        used_24m_window = False
+        window_months = int(months_back or 12)
 
         try:
-            resp = self.api_client.session.get(url, params=params, timeout=12)
-            if resp.status_code == 200:
-                payload = resp.json()
-                rows = payload.get("resultado") or []
-                total_reg = int(payload.get("totalRegistros") or len(rows))
-                pos_prices = [float(r.get("precoUnitario") or 0) for r in rows if float(r.get("precoUnitario") or 0) > 0]
-            else:
-                rows, total_reg, pos_prices = [], 0, []
+            alt_type = "SERVICO" if itype == "MATERIAL" else "MATERIAL"
 
-            # Se não encontrou cotações no tipo inicial, realiza fallback automático no tipo complementar (MATERIAL <-> SERVICO)
+            # 1) Janela prioritária (12 meses)
+            rows, total_reg, pos_prices = _probe(itype, window_months)
             if total_reg == 0 or len(pos_prices) == 0:
-                alt_type = "SERVICO" if is_material else "MATERIAL"
-                alt_endpoint = "/modulo-pesquisa-preco/3_consultarServico" if is_material else "/modulo-pesquisa-preco/1_consultarMaterial"
-                alt_url = f"{self.api_client.COMPRAS_GOV_BASE_URL}{alt_endpoint}"
-                alt_params = {
-                    "pagina": 1,
-                    "tamanhoPagina": 15,
-                    "dataCompraInicio": start_date.isoformat(),
-                    "dataCompraFim": end_date.isoformat(),
-                }
-                if alt_type == "MATERIAL":
-                    alt_params["tipo"] = "codigoItemCatalogo"
-                    alt_params["codigo"] = str(catalog_code)
-                else:
-                    alt_params["codigoItemCatalogo"] = int(catalog_code)
-                try:
-                    alt_resp = self.api_client.session.get(alt_url, params=alt_params, timeout=12)
-                    if alt_resp.status_code == 200:
-                        alt_payload = alt_resp.json()
-                        alt_rows = alt_payload.get("resultado") or []
-                        alt_total = int(alt_payload.get("totalRegistros") or len(alt_rows))
-                        alt_prices = [float(r.get("precoUnitario") or 0) for r in alt_rows if float(r.get("precoUnitario") or 0) > 0]
-                        if alt_total > 0 and len(alt_prices) > 0:
-                            itype = alt_type
-                            is_material = (itype == "MATERIAL")
-                            rows = alt_rows
-                            total_reg = alt_total
-                            pos_prices = alt_prices
-                            key = f"{itype}:{catalog_code}"
-                except Exception:
-                    pass
+                alt_rows, alt_total, alt_prices = _probe(alt_type, window_months)
+                if alt_total > 0 and len(alt_prices) > 0:
+                    itype = alt_type
+                    rows, total_reg, pos_prices = alt_rows, alt_total, alt_prices
 
+            # 2) Ampliação automática até 24 meses (com ressalva IN SEGES/ME nº 65/2021)
+            if (total_reg == 0 or len(pos_prices) == 0) and window_months < 24:
+                rows24, total24, prices24 = _probe(orig_itype, 24)
+                if total24 > 0 and len(prices24) > 0:
+                    itype = orig_itype
+                    rows, total_reg, pos_prices = rows24, total24, prices24
+                    used_24m_window = True
+                    window_months = 24
+                else:
+                    alt_rows24, alt_total24, alt_prices24 = _probe(alt_type, 24)
+                    if alt_total24 > 0 and len(alt_prices24) > 0:
+                        itype = alt_type
+                        rows, total_reg, pos_prices = alt_rows24, alt_total24, alt_prices24
+                        used_24m_window = True
+                        window_months = 24
+
+            is_material = (itype == "MATERIAL")
             units = [
                 str(r.get("siglaUnidadeFornecimento") or r.get("siglaUnidadeMedida") or r.get("nomeUnidadeMedida") or "").strip().upper()
                 for r in rows
@@ -599,27 +604,32 @@ class PriceResearchController:
             ]
             pred_unit = Counter(units).most_common(1)[0][0] if units else ("SV" if not is_material else "UN")
             med_price = round(statistics.median(pos_prices), 2) if pos_prices else None
+            has_dem = total_reg > 0 and len(pos_prices) > 0
             res_obj = {
-                "key": key,
+                "key": cache_key,
                 "code": int(catalog_code),
                 "item_type": itype,
-                "has_demand": total_reg > 0 and len(pos_prices) > 0,
+                "has_demand": has_dem,
                 "total_quotes_12m": total_reg if pos_prices else 0,
+                "used_24m_window": used_24m_window,
+                "window_months": window_months if has_dem else 24,
                 "predominant_unit": pred_unit,
                 "sample_median": med_price,
             }
         except Exception:
             res_obj = {
-                "key": key,
+                "key": cache_key,
                 "code": int(catalog_code),
                 "item_type": itype,
                 "has_demand": False,
                 "total_quotes_12m": 0,
+                "used_24m_window": False,
+                "window_months": 24,
                 "predominant_unit": "UN",
                 "sample_median": None,
             }
 
-        self._demand_cache[key] = res_obj
+        self._demand_cache[cache_key] = res_obj
         return res_obj
 
     def check_12m_demand_batch(self, items: List[Dict[str, Any]], months_back: int = 12) -> Dict[str, Dict[str, Any]]:

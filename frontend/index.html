@@ -2976,9 +2976,13 @@
         if (dem) {
           if (!dem.has_demand || dem.total_quotes_12m === 0) {
             rowBg = "bg-rose-50/90 hover:bg-rose-100/80 border-l-4 border-l-rose-600";
-            demandBadge = `<span class="text-[10px] font-black px-2 py-0.5 rounded bg-rose-600 text-white shadow-sm">🚫 Sem compras (12m) — Não converge</span>`;
+            demandBadge = `<span class="text-[10px] font-black px-2 py-0.5 rounded bg-rose-600 text-white shadow-sm">🚫 Sem compras (até 24m) — Não converge</span>`;
             btnBatchCls = "bg-rose-200 hover:bg-rose-300 text-rose-900 border border-rose-400";
             btnDirectCls = "bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300";
+          } else if (dem.used_24m_window) {
+            rowBg = "bg-amber-50/60 hover:bg-amber-50 border-l-4 border-l-amber-500";
+            const medTxt = dem.sample_median ? ` • ~R$ ${Number(dem.sample_median).toFixed(2)}` : "";
+            demandBadge = `<span class="text-[10px] font-black px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-400" title="Sem compras nos últimos 12 meses; encontrada referência na janela ampliada de 13 a 24 meses (com ressalva automática da IN SEGES/ME nº 65/2021 nos relatórios)">⚠️ ${dem.total_quotes_12m} compra(s) (13–24m • ressalva IN 65/2021) • Unid: ${dem.predominant_unit || 'UN'}${medTxt}</span>`;
           } else if (dem.total_quotes_12m < 3) {
             rowBg = "bg-amber-50/50 hover:bg-amber-50 border-l-4 border-l-amber-500";
             const medTxt = dem.sample_median ? ` • ~R$ ${Number(dem.sample_median).toFixed(2)}` : "";
@@ -5738,7 +5742,9 @@
               }
             }
             if (dInfo && !dInfo.has_demand) {
-              showAppNotification(`Atenção: O código ${codeNum} incluído no lote não teve compras nos últimos 12 meses (marcado em vermelho abaixo). Recomendamos excluí-lo antes de processar.`, "warn");
+              showAppNotification(`Atenção: O código ${codeNum} incluído no lote não teve compras homologadas nos últimos 24 meses (marcado em vermelho abaixo).`, "warn");
+            } else if (dInfo && dInfo.used_24m_window) {
+              showAppNotification(`Ressalva (IN 65/2021): O código ${codeNum} não teve compras nos últimos 12 meses, mas possui ${dInfo.total_quotes_12m} compra(s) na janela ampliada de 13 a 24 meses — será pesquisado com justificativa normativa automática.`, "info");
             }
             renderBatchTray();
           }
@@ -6505,12 +6511,19 @@
         const key = `${(it.type || 'MATERIAL').toUpperCase()}:${it.code}`;
         const dem = demandMap[key];
         const noDemand = dem && !dem.has_demand;
-        const rowCls = noDemand ? "bg-rose-950/70 border-l-4 border-l-rose-500" : "hover:bg-slate-800/60";
-        let statusPill = `<span class="text-[10px] text-slate-400 ml-1">⏳ Verificando compras no Gov...</span>`;
+        const isExt24Dem = dem && dem.has_demand && dem.used_24m_window;
+        const rowCls = noDemand
+          ? "bg-rose-950/70 border-l-4 border-l-rose-500"
+          : (isExt24Dem ? "bg-amber-950/40 border-l-4 border-l-amber-400" : "hover:bg-slate-800/60");
+        let statusPill = `<span class="text-[10px] text-slate-400 ml-1">⏳ Verificando compras no Gov (12m / 24m)...</span>`;
         if (dem) {
-          statusPill = noDemand
-            ? `<span class="inline-block ml-1.5 px-1.5 py-0.5 rounded bg-[#9e4747] text-white text-[10px] font-bold">🚫 Sem compras em 12 meses — será ignorado</span>`
-            : `<span class="inline-block ml-1.5 px-1.5 py-0.5 rounded bg-[#3b6e5c]/30 text-emerald-200 border border-[#3b6e5c]/50 text-[10px] font-bold">✅ ${dem.total_quotes_12m} compras (12m)</span>`;
+          if (noDemand) {
+            statusPill = `<span class="inline-block ml-1.5 px-1.5 py-0.5 rounded bg-[#9e4747] text-white text-[10px] font-bold">🚫 Sem compras em até 24 meses — será ignorado</span>`;
+          } else if (isExt24Dem) {
+            statusPill = `<span class="inline-block ml-1.5 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200 border border-amber-400/50 text-[10px] font-bold" title="Pesquisa ampliada excepcionalmente para 13 a 24 meses (IN SEGES/ME nº 65/2021). O relatório emitirá automaticamente a ressalva e justificativa jurídica.">⏳ ${dem.total_quotes_12m} compra(s) (13–24m • com ressalva IN 65/2021)</span>`;
+          } else {
+            statusPill = `<span class="inline-block ml-1.5 px-1.5 py-0.5 rounded bg-[#3b6e5c]/30 text-emerald-200 border border-[#3b6e5c]/50 text-[10px] font-bold">✅ ${dem.total_quotes_12m} compras (12m)</span>`;
+          }
         }
 
         return `
@@ -6610,13 +6623,15 @@
 
         const okCount = batchResearchResults.filter(r => r.has_data).length;
         if (okCount === 0) {
-          showAppNotification("Nenhum item teve compras homologadas nos últimos 12 meses. Troque os códigos e pesquise novamente.", "error");
+          showAppNotification("Nenhum item teve compras homologadas nos últimos 24 meses. Troque os códigos e pesquise novamente.", "error");
           return;
         }
         switchBatchWorkflowView("results");
         inspectBatchItem(activeBatchItemIndex, false);
-        const msgSkip = skipped.length ? ` ${skipped.length} item(ns) sem compras em 12 meses foram ignorados.` : "";
-        showAppNotification(`Pesquisa concluída: ${okCount} de ${batchResearchResults.length} item(ns) com preço de referência.${msgSkip}`, okCount === batchResearchResults.length ? "success" : "warn");
+        const ext24Count = batchResearchResults.filter(r => r.has_data && r.report && (r.report.used_24m_fallback || r.report.extended_24m)).length;
+        const msgExt24 = ext24Count ? ` (${ext24Count} item(ns) na janela ampliada de 13–24 meses com ressalva automática IN 65/2021).` : "";
+        const msgSkip = skipped.length ? ` ${skipped.length} item(ns) sem compras em até 24 meses foram ignorados.` : "";
+        showAppNotification(`Pesquisa concluída: ${okCount} de ${batchResearchResults.length} item(ns) com preço de referência.${msgExt24}${msgSkip}`, okCount === batchResearchResults.length ? "success" : "warn");
       } catch (e) {
         hideCountdownProgress();
         if (btn) btn.disabled = false;
@@ -6693,10 +6708,13 @@
       if (lbl) lbl.textContent = marked.length ? `Pesquisar Preços (${marked.length - noDem} ${marked.length - noDem === 1 ? "item" : "itens"})` : "Pesquisar Preços no Compras.gov.br";
       if (btn) btn.disabled = marked.length === 0;
       if (s2) {
+        const ext24 = marked.filter(it => { const d = dm[`${it.type}:${it.code}`]; return d && d.has_demand && d.used_24m_window; }).length;
         if (total === 0) s2.textContent = "Adicione itens no passo 1.";
         else if (stale) s2.textContent = "⚠️ Lote alterado — pesquise novamente para atualizar.";
         else if (hasResults) s2.textContent = `✅ Pesquisa concluída (${batchResearchResults.filter(r => r.has_data).length}/${batchResearchResults.length} com preço).`;
-        else s2.textContent = noDem ? `Pronto. ${noDem} item(ns) sem compras em 12m serão ignorados.` : "Pronto para pesquisar.";
+        else if (noDem) s2.textContent = `Pronto. ${noDem} item(ns) sem compras em até 24m serão ignorados.`;
+        else if (ext24) s2.textContent = `Pronto. ${ext24} item(ns) usarão janela ampliada (13–24m) com ressalva IN 65/2021.`;
+        else s2.textContent = "Pronto para pesquisar.";
       }
       if (s3) s3.textContent = hasResults ? (stale ? "Resultados desatualizados em relação ao lote." : "✅ Resultados prontos para análise e emissão.") : "Disponível após o passo 2.";
       if (bRes) bRes.disabled = !hasResults;
